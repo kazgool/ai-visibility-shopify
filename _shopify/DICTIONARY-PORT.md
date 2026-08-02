@@ -110,6 +110,11 @@ normalized word is empty or a stopword. Then shift words off the
 **front** the same way. Join with single spaces and trim the characters
 `" ,.;:-"` from both ends.
 
+*Correction (verified 2 Aug 2026 while porting):* the PHP docblock claims
+this turns "drept si bretele" into "drept". It does not — trimming only
+touches the ends, and "bretele" is not a stopword. That phrase is
+rejected wholesale by §5.2 instead. Port the behaviour, not the comment.
+
 ### 5.2 Usable-phrase test
 
 A phrase is unusable if any of:

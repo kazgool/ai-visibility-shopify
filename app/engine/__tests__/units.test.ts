@@ -84,8 +84,17 @@ describe("counted", () => {
 });
 
 describe("phrase hygiene", () => {
-  it("trims filler from both ends", () => {
-    expect(trimPhrase("drept si bretele", stops)).toBe("drept");
+  it("trims filler from the end", () => {
+    expect(trimPhrase("extensibila si", stops)).toBe("extensibila");
+  });
+  it("trims filler from the front", () => {
+    expect(trimPhrase("cu blat sticla", stops)).toBe("blat sticla");
+  });
+  // Trimming only touches the ends. A stopword in the middle means the phrase
+  // is a piece of a sentence, and the stricter test below throws it away.
+  it("leaves a stopword in the middle for isUsablePhrase to reject", () => {
+    expect(trimPhrase("blat si picioare", stops)).toBe("blat si picioare");
+    expect(isUsablePhrase("blat si picioare", stops)).toBe(false);
   });
   it("rejects a phrase carrying a stopword in the middle", () => {
     expect(isUsablePhrase("masa are blatul", stops)).toBe(false);
