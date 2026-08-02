@@ -247,7 +247,11 @@ export default function ProductEditor() {
         <Card>
           <BlockStack gap="200">
             <Text as="h2" variant="headingMd">
-              What extraction reads today
+              For comparison: what the dictionary reads from this description
+            </Text>
+            <Text as="p" tone="subdued">
+              This never changes when you edit above — it is the automatic
+              reading, kept so you can see what you are overriding.
             </Text>
             {autoFacts.length === 0 ? (
               <Text as="p" tone="subdued">
