@@ -16,6 +16,30 @@ export type ExtractOptions = {
   maxValues?: number;
 };
 
+/**
+ * Plain terms that collide with a connector or verb and are therefore never
+ * matched. Surfaced in the dictionary editor so the merchant can rename them
+ * rather than wonder why nothing matches.
+ */
+export function collidingTerms(
+  dictionary: DictionaryGroup[] | string,
+  extraStopwords: string[] = [],
+): { label: string; term: string }[] {
+  const groups =
+    typeof dictionary === "string" ? parseDictionary(dictionary) : dictionary;
+  const stops = stopwordSet(extraStopwords);
+  const out: { label: string; term: string }[] = [];
+
+  for (const group of groups) {
+    for (const term of group.terms) {
+      if (term.startsWith("*") || term.endsWith("*")) continue;
+      if (term.trim().toLowerCase() === "#size") continue;
+      if (stops.has(normalize(term))) out.push({ label: group.label, term });
+    }
+  }
+  return out;
+}
+
 /** Remove terms contained in a longer matched term: "Chantilly lace" beats "lace". */
 function dropSubsumed(hits: string[]): string[] {
   const normalized = hits.map((h) => normalize(h));
@@ -98,6 +122,12 @@ export function extractFromText(
         hits = hits.concat(prefixCapture(text, base, stops));
         continue;
       }
+
+      // A plain term that is also a connector or a verb cannot be trusted:
+      // Romanian "in" (linen) is also the preposition "in", so every product
+      // would claim to be made of linen. Skip it and let the dictionary test
+      // report the collision (collidingTerms below).
+      if (stops.has(normalize(base))) continue;
 
       // Word-boundary match so "tul" does not match "tulpina".
       const exact = new RegExp(

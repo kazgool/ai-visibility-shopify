@@ -3,7 +3,12 @@
 // Pure functions only: no Shopify, no Prisma, no I/O. That is what makes the
 // port testable against the WordPress original (DICTIONARY-PORT §9 exit test).
 
-export { extractFromText, type Fact, type ExtractOptions } from "./extract";
+export {
+  extractFromText,
+  collidingTerms,
+  type Fact,
+  type ExtractOptions,
+} from "./extract";
 export {
   parseDictionary,
   presetText,

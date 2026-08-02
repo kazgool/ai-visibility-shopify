@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, Link, useLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -170,9 +170,11 @@ export default function Index() {
                   />
                 </IndexTable.Cell>
                 <IndexTable.Cell>
-                  <Text as="span" variant="bodyMd" fontWeight="semibold">
-                    {p.title}
-                  </Text>
+                  <Link to={`/app/products/${p.id.split("/").pop()}`}>
+                    <Text as="span" variant="bodyMd" fontWeight="semibold">
+                      {p.title}
+                    </Text>
+                  </Link>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
                   {factCount(p) > 0 ? (

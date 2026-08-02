@@ -22,6 +22,7 @@ import {
   presetText,
   coverage,
   extractProduct,
+  collidingTerms,
 } from "../engine";
 
 // The dictionary is the product. This screen is where a merchant decides what
@@ -87,8 +88,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     title: p.title,
     facts: extractProduct(p, dictionary),
   }));
+  const collisions = collidingTerms(dictionary);
 
-  return { report, examples };
+  return { report, examples, collisions };
 };
 
 export default function DictionaryPage() {
@@ -195,6 +197,25 @@ export default function DictionaryPage() {
             </Text>
           </BlockStack>
         </Card>
+
+        {result?.collisions?.length ? (
+          <Banner tone="warning" title="Some terms were ignored">
+            <BlockStack gap="100">
+              <Text as="p">
+                These terms are also connectors or verbs, so matching them would
+                tag every product. They are skipped — rename them to something
+                unambiguous.
+              </Text>
+              <List>
+                {result.collisions.map((c: any) => (
+                  <List.Item key={`${c.label}-${c.term}`}>
+                    {c.label}: <b>{c.term}</b>
+                  </List.Item>
+                ))}
+              </List>
+            </BlockStack>
+          </Banner>
+        ) : null}
 
         {result?.report ? (
           <Card>
