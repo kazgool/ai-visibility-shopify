@@ -13,7 +13,7 @@ async function workerUtils(): Promise<WorkerUtils> {
 }
 
 export async function enqueue(
-  task: "bulk_extract" | "extract_product",
+  task: "bulk_extract" | "extract_product" | "bulk_alt_text",
   payload: Record<string, unknown>,
 ) {
   const u = await workerUtils();

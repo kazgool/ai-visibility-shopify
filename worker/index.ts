@@ -12,6 +12,7 @@ async function main() {
     taskList: {
       bulk_extract: tasks.bulk_extract,
       extract_product: tasks.extract_product,
+      bulk_alt_text: tasks.bulk_alt_text,
     },
   });
   await runner.promise;

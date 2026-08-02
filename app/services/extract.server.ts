@@ -173,6 +173,9 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const facts = extractProduct(product, dictionary, { extraStopwords });
   if (facts.length === 0) return { written: [], skipped: [] };
 
-  const [outcome] = await writeFacts(graphql, [{ product, facts }]);
+  const [outcome] = await writeFacts(graphql, [
+    { product, facts, fields: capsuleFields(product, facts) },
+  ]);
+  await cacheMirror(shopId, shop.domain, product, facts);
   return outcome;
 }

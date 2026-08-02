@@ -71,6 +71,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { ok: false };
 
+  const mode = String(form.get("mode") ?? "dry");
+
+  if (mode === "alt") {
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "alt_text" },
+    });
+    await enqueue("bulk_alt_text", { shopId: shop.id, jobRunId: jobRun.id });
+    return { ok: true };
+  }
+
   const jobRun = await db.jobRun.create({
     data: { shopId: shop.id, kind: dryRun ? "dry_run" : "bulk_extract" },
   });
@@ -145,6 +155,12 @@ export default function Index() {
                 <input type="hidden" name="mode" value="write" />
                 <Button submit variant="primary" loading={busy}>
                   Fill catalogue
+                </Button>
+              </Form>
+              <Form method="post">
+                <input type="hidden" name="mode" value="alt" />
+                <Button submit loading={busy}>
+                  Write missing alt text
                 </Button>
               </Form>
             </InlineStack>

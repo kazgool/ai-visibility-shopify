@@ -54,8 +54,14 @@ const SINGLE_PRODUCT = `#graphql
   query OneProduct($id: ID!) {
     product(id: $id) {
       id
+      handle
       title
       descriptionHtml
+      vendor
+      productType
+      onlineStoreUrl
+      priceRangeV2 { minVariantPrice { amount currencyCode } }
+      totalInventory
       metafields(namespace: "${NAMESPACE}", first: 10) {
         nodes { key value }
       }
@@ -72,8 +78,15 @@ export async function fetchProduct(
   if (!p) return null;
   return {
     id: p.id,
+    handle: p.handle,
     title: p.title,
     descriptionHtml: p.descriptionHtml,
+    vendor: p.vendor,
+    productType: p.productType,
+    onlineStoreUrl: p.onlineStoreUrl,
+    price: p.priceRangeV2?.minVariantPrice?.amount ?? null,
+    currency: p.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
+    available: typeof p.totalInventory === "number" ? p.totalInventory > 0 : undefined,
     metafields: (p.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
   };
 }
