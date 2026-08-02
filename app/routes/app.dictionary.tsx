@@ -120,27 +120,31 @@ export default function DictionaryPage() {
               helpText="A preset is a starting point. Edit the terms into the language your descriptions are actually written in — a term only matches text in its own language."
             />
 
-            <Form method="post">
-              <input type="hidden" name="dictionary" value={text} />
-              <BlockStack gap="300">
-                <TextField
-                  label="Dictionary"
-                  value={text}
-                  onChange={setText}
-                  multiline={14}
-                  autoComplete="off"
-                  helpText="One attribute per line: Label: term, term. Use 'term *' to capture what follows, '* term' for a count written before the word, '#size' to read measurements, and '| default: value' for a fallback."
-                />
-                <InlineStack gap="200">
-                  <Button submit name="intent" value="test" loading={busy}>
-                    Test on 40 products
-                  </Button>
-                  <Button submit name="intent" value="save" variant="primary" loading={busy}>
-                    Save
-                  </Button>
-                </InlineStack>
-              </BlockStack>
-            </Form>
+            <TextField
+              label="Dictionary"
+              value={text}
+              onChange={setText}
+              multiline={14}
+              autoComplete="off"
+              helpText="One attribute per line: Label: term, term. Use 'term *' to capture what follows, '* term' for a count written before the word, '#size' to read measurements, and '| default: value' for a fallback."
+            />
+
+            <InlineStack gap="200">
+              <Form method="post">
+                <input type="hidden" name="dictionary" value={text} />
+                <input type="hidden" name="intent" value="test" />
+                <Button submit loading={busy}>
+                  Test on 40 products
+                </Button>
+              </Form>
+              <Form method="post">
+                <input type="hidden" name="dictionary" value={text} />
+                <input type="hidden" name="intent" value="save" />
+                <Button submit variant="primary" loading={busy}>
+                  Save
+                </Button>
+              </Form>
+            </InlineStack>
           </BlockStack>
         </Card>
 
