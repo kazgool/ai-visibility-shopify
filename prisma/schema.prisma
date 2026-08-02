@@ -1,0 +1,126 @@
+// AI Visibility All-in-One — operational database (ARCHITECTURE §4).
+// Merchant-authored data lives in Shopify metafields, never here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Shopify session storage (PrismaSessionStorage adapter).
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+
+  @@index([shop])
+}
+
+model Shop {
+  id             String    @id @default(uuid())
+  domain         String    @unique
+  installedAt    DateTime  @default(now())
+  uninstalledAt  DateTime?
+  plan           String    @default("none")
+  metafieldsInit Boolean   @default(false)
+
+  settings      Setting[]
+  jobRuns       JobRun[]
+  mirrorCache   MirrorCache[]
+  themeScans    ThemeScan[]
+  crawlerChecks CrawlerCheck[]
+}
+
+model Setting {
+  id     String @id @default(uuid())
+  shopId String
+  key    String
+  value  String // dictionary text, stopword additions, module toggles (JSON where structured)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, key])
+}
+
+model JobRun {
+  id         String    @id @default(uuid())
+  shopId     String
+  kind       String // bulk_extract | dry_run | alt_text | crawler_check
+  status     String    @default("queued") // queued | running | done | failed
+  startedAt  DateTime?
+  finishedAt DateTime?
+  progress   Int       @default(0)
+  total      Int       @default(0)
+  report     Json?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, kind])
+}
+
+model MirrorCache {
+  id        String   @id @default(uuid())
+  shopId    String
+  handle    String
+  body      String // rendered markdown, served as-is by the proxy route
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, handle])
+}
+
+model ThemeScan {
+  id           String   @id @default(uuid())
+  shopId       String
+  themeId      String
+  hasProductLd Boolean?
+  detail       Json?
+  scannedAt    DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, themeId])
+}
+
+model CrawlerCheck {
+  id        String   @id @default(uuid())
+  shopId    String
+  agent     String // GPTBot, OAI-SearchBot, ChatGPT-User, Claude-SearchBot, PerplexityBot
+  status    Int?
+  cause     String? // password_page | bot_app | cloudflare | robots | ok | unknown
+  checkedAt DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, checkedAt])
+}
+
+// Self-measured latency, so Built for Shopify numbers are known before Shopify's email.
+model RequestMetric {
+  id       BigInt   @id @default(autoincrement())
+  path     String
+  ms       Int
+  ok       Boolean  @default(true)
+  region   String?
+  at       DateTime @default(now())
+
+  @@index([at])
+}

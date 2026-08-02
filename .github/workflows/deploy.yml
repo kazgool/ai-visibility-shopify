@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # PHASE-1-SPEC §7: a single REST Admin API call is a review rejection.
+      - name: No REST Admin API calls
+        run: |
+          if grep -rn "admin/api/" app/ worker/ --include='*.ts' --include='*.tsx' | grep -v "graphql"; then
+            echo "REST Admin API usage detected"; exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx prisma generate && npx tsc --noEmit
+
+  deploy:
+    needs: guard
+    runs-on: ubuntu-latest
+    concurrency: deploy-group
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly (runs prisma migrate on boot)
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Release Shopify config + extensions
+        run: npx shopify app deploy --force
+        env:
+          SHOPIFY_CLI_PARTNERS_TOKEN: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN }}

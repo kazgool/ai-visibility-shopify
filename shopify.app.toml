@@ -1,0 +1,67 @@
+# AI Visibility All-in-One — app configuration.
+# Deployed with `shopify app deploy`; never edited in the Dev Dashboard by hand.
+
+client_id = "4261bcd7389bbd477f25254bd79d6298"
+name = "AI Visibility All-in-One"
+handle = "ai-visibility-all-in-one"
+application_url = "https://ai-visibility.fly.dev"
+embedded = true
+
+[access_scopes]
+# PRD/ARCHITECTURE §5: nothing beyond what features demand.
+scopes = "write_products,read_themes"
+
+[auth]
+redirect_urls = [
+  "https://ai-visibility.fly.dev/auth/callback",
+  "https://ai-visibility.fly.dev/auth/shopify/callback",
+  "https://ai-visibility.fly.dev/api/auth/callback",
+]
+
+[webhooks]
+api_version = "2026-07"
+
+  # Mandatory compliance topics (PHASE-1-SPEC §3)
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/data_request"
+  compliance_topics = ["customers/data_request"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/redact"
+  compliance_topics = ["customers/redact"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = ["shop/redact"]
+
+  # Operational
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = ["app/uninstalled"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = ["app/scopes_update"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = ["products/update"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/delete"
+  topics = ["products/delete"]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/themes/publish"
+  topics = ["themes/publish"]
+
+[app_proxy]
+url = "https://ai-visibility.fly.dev/proxy"
+prefix = "apps"
+subpath = "ai-visibility"
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
