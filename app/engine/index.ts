@@ -11,6 +11,7 @@ export {
   PRESETS,
   type DictionaryGroup,
 } from "./dictionary";
+export type { ProductLike } from "./types";
 export { normalize, prepareText, diacriticPattern } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 
