@@ -1,7 +1,7 @@
 # AI Visibility All-in-One — Fly.io (ARCHITECTURE §1).
 # web: ams + iad. worker: ams, next to the database (Neon Frankfurt).
 
-app = "ai-visibility"
+app = "ai-visibility-all-in-one"
 primary_region = "ams"
 
 [build]
