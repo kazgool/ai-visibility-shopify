@@ -11,6 +11,7 @@ import { adminGraphql } from "../app/services/admin.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
+import { runCrawlerCheck } from "../app/services/crawler-check.server";
 import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
 
 export const bulk_extract: Task = async (payload, helpers) => {
@@ -64,6 +65,70 @@ export const extract_product: Task = async (payload, helpers) => {
     `extract_product ${productGid}: wrote ${outcome.written.join(",") || "nothing"}` +
       (outcome.skipped.length ? `, skipped ${outcome.skipped.join(",")}` : ""),
   );
+};
+
+const FIRST_ONLINE_PRODUCT = `#graphql
+  query FirstOnlineProduct {
+    products(first: 1, query: "published_status:published") {
+      nodes { onlineStoreUrl }
+    }
+  }
+`;
+
+/**
+ * Ask the storefront, from outside, whether each AI crawler can read it.
+ * Runs on the worker because five agents with a retry each can take half a
+ * minute, and no admin request should wait that long (PRD §5.2).
+ */
+export const crawler_check: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = payload as { shopId: string; jobRunId?: string };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+
+  if (jobRunId) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "running", startedAt: new Date(), total: 5 },
+    });
+  }
+
+  try {
+    const graphql = await adminGraphql(shop.domain);
+    const data = await graphql<any>(FIRST_ONLINE_PRODUCT);
+    const url =
+      data?.products?.nodes?.[0]?.onlineStoreUrl ?? `https://${shop.domain}`;
+
+    const result = await runCrawlerCheck(shopId, url);
+
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "done",
+          finishedAt: new Date(),
+          progress: 5,
+          report: result as any,
+        },
+      });
+    }
+    helpers.logger.info(
+      `crawler_check ${shop.domain}: ` +
+        result.results.map((r) => `${r.agent}=${r.cause}`).join(" "),
+    );
+  } catch (error) {
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "failed",
+          finishedAt: new Date(),
+          report: { error: String(error) } as any,
+        },
+      });
+    }
+    throw error;
+  }
 };
 
 const PRODUCTS_SINCE = `#graphql

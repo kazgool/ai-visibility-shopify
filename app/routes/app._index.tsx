@@ -77,12 +77,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ])
     : [null, null, null, null];
 
+  // Latest verdict per crawler: one row each, newest first.
+  const checks = shop
+    ? await db.crawlerCheck.findMany({
+        where: { shopId: shop.id },
+        orderBy: { checkedAt: "desc" },
+        take: 25,
+      })
+    : [];
+  const latestByAgent = new Map<string, (typeof checks)[number]>();
+  for (const c of checks) if (!latestByAgent.has(c.agent)) latestByAgent.set(c.agent, c);
+
+  const crawlerJob = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, kind: "crawler_check" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
+
   return {
     products: json.data?.products?.nodes ?? [],
     totalProducts: json.data?.productsCount?.count ?? 0,
     lastRun,
     lastAlt,
     lastWrite,
+    crawlers: Array.from(latestByAgent.values()),
+    crawlerJob,
     hasDictionary: Boolean(dictionary?.value?.trim()),
     domain: session.shop,
   };
@@ -101,6 +121,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { shopId: shop.id, kind: "alt_text" },
     });
     await enqueue("bulk_alt_text", { shopId: shop.id, jobRunId: jobRun.id });
+    return { ok: true };
+  }
+
+  if (mode === "crawlers") {
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "crawler_check" },
+    });
+    await enqueue("crawler_check", { shopId: shop.id, jobRunId: jobRun.id });
     return { ok: true };
   }
 
@@ -129,6 +157,18 @@ function factCount(p: ProductRow): number {
     return 0;
   }
 }
+
+/** Short labels for the dashboard; Diagnostics carries the full explanation. */
+const CAUSE_SHORT: Record<string, string> = {
+  password_page: "Sees the password page",
+  bot_protection: "Blocked by bot protection",
+  cloudflare: "Blocked by Cloudflare",
+  redirect_loop: "Lost in redirects",
+  robots_disallow: "Disallowed in robots.txt",
+  server_error: "Store returned an error",
+  unreachable: "No response — not the same as blocked",
+  unknown: "Unclear response",
+};
 
 function Metric({
   label,
@@ -179,14 +219,25 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 }
 
 export default function Dashboard() {
-  const { products, totalProducts, lastRun, lastAlt, lastWrite, hasDictionary, domain } =
-    useLoaderData<typeof loader>() as any;
+  const {
+    products,
+    totalProducts,
+    lastRun,
+    lastAlt,
+    lastWrite,
+    crawlers,
+    crawlerJob,
+    hasDictionary,
+    domain,
+  } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
   const running = lastRun?.status === "queued" || lastRun?.status === "running";
   const altRunning = lastAlt?.status === "queued" || lastAlt?.status === "running";
-  const anyRunning = running || altRunning;
+  const crawlerRunning =
+    crawlerJob?.status === "queued" || crawlerJob?.status === "running";
+  const anyRunning = running || altRunning || crawlerRunning;
   const active = running ? lastRun : lastAlt;
 
   const total = active?.total ?? 0;
@@ -220,7 +271,7 @@ export default function Dashboard() {
       subtitle="Make this catalogue readable by ChatGPT, Claude, Gemini and Perplexity"
     >
       <BlockStack gap="500">
-        {anyRunning ? (
+        {running || altRunning ? (
           <Card>
             <BlockStack gap="300">
               <InlineStack gap="300" blockAlign="center">
@@ -260,6 +311,83 @@ export default function Dashboard() {
             hint={altReport ? `${altReport.keptHuman} left as written` : "not run yet"}
           />
         </InlineGrid>
+
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+              <BlockStack gap="050">
+                <Text as="h2" variant="headingMd">
+                  Can AI assistants read this store?
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  We request a product page from outside Shopify, once per
+                  crawler, with the exact user agent it uses.
+                </Text>
+              </BlockStack>
+              <Form method="post">
+                <input type="hidden" name="mode" value="crawlers" />
+                <Button submit loading={busy} disabled={crawlerRunning}>
+                  {crawlers.length ? "Check again" : "Check now"}
+                </Button>
+              </Form>
+            </InlineStack>
+
+            {crawlerRunning ? (
+              <InlineStack gap="200" blockAlign="center">
+                <Spinner size="small" />
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Asking each crawler…
+                </Text>
+              </InlineStack>
+            ) : crawlers.length === 0 ? (
+              <Text as="p" tone="subdued">
+                Not checked yet.
+              </Text>
+            ) : (
+              <InlineGrid columns={{ xs: 1, sm: 2, md: 5 }} gap="300">
+                {crawlers.map((c: any) => (
+                  <Box
+                    key={c.agent}
+                    padding="300"
+                    borderRadius="200"
+                    borderWidth="025"
+                    borderColor="border"
+                    background={c.cause === "ok" ? "bg-fill-success-secondary" : "bg-fill-critical-secondary"}
+                  >
+                    <BlockStack gap="100">
+                      <InlineStack gap="100" blockAlign="center" wrap={false}>
+                        <Icon
+                          source={c.cause === "ok" ? CheckIcon : AlertCircleIcon}
+                          tone={c.cause === "ok" ? "success" : "critical"}
+                        />
+                        <Text as="p" variant="bodySm" fontWeight="semibold">
+                          {c.agent}
+                        </Text>
+                      </InlineStack>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {c.cause === "ok" ? "Can read your products" : CAUSE_SHORT[c.cause] ?? c.cause}
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                ))}
+              </InlineGrid>
+            )}
+
+            {crawlers.length > 0 && crawlers.some((c: any) => c.cause !== "ok") ? (
+              <Banner tone="warning">
+                <InlineStack gap="200" align="space-between" blockAlign="center" wrap={false}>
+                  <Text as="p">
+                    Some crawlers cannot reach your products. Diagnostics
+                    explains each cause and what to change.
+                  </Text>
+                  <Link to="/app/diagnostics">
+                    <Button size="slim">See why</Button>
+                  </Link>
+                </InlineStack>
+              </Banner>
+            ) : null}
+          </BlockStack>
+        </Card>
 
         <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
           <Card>
