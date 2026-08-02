@@ -367,9 +367,34 @@ and how merchants compare.
 
 | Plan | Price | Products | Notes |
 |---|---|---|---|
-| Starter | $19 / month | up to 300 | The default |
-| Growth | $39 / month | up to 2,000 | Bulk passes, priority jobs |
-| Scale | $79 / month | unlimited | Multi-market, priority support |
+| Standard | $29 / month | up to 20,000 | Everything the app does |
+| High volume | $49 / month | above 20,000 | Same features, priority support |
+
+**Why two plans and not three (decided 2 Aug 2026).** Over 99% of Shopify
+stores hold fewer than 20,000 products, so in practice every customer sees
+one price and makes no decision. The second plan is a fair-use valve for
+the rare large catalogue, not a growth lever. Three tiers would have cost
+days of enforcement code — counting, blocking, upgrade and downgrade
+flows — and produced a permanent stream of "why am I limited" tickets.
+
+**Why a flat price is safe here.** Our marginal cost per merchant is close
+to zero: the extraction engine is deterministic regex with **no model
+calls**, and Shopify does not charge per API call. A 10,000-product
+catalogue costs one worker machine roughly fifteen minutes of CPU once,
+then incremental webhooks, plus about 20 MB of cached text. Competitors
+that call an LLM per product pay a real per-product cost and must impose
+hard limits (10 products free, 500 on their entry plan). We can offer
+effectively unlimited products at a flat price, and they cannot copy that
+without rewriting their product.
+
+The real scaling risk is **concurrency**, not catalogue size: many shops
+running a full pass at once. That is solved in code — queue concurrency
+limits and a cap on full passes per shop per day — not in pricing.
+
+**No hard cut-off.** A store that grows past 20,000 products sees a banner
+asking it to move to High volume, with a grace period. Silently breaking a
+growing merchant costs a one-star review, which is worth more than the
+difference in price.
 
 Rationale: the WordPress product sells a licence to a self-hosted site once a
 year. The Shopify product sells continuous work on a hosted catalogue, and
@@ -379,13 +404,12 @@ match.
 A free tier is worth considering only after the paid funnel works, because free
 installs are the main source of one star reviews.
 
-*Pricing decision (2 Aug 2026): an alternative anchor of $29/$79/$299 was
-proposed and rejected. Against the scanned field — AIO at $4.49–12.49,
-Mento at $19–67, Attributify at $49–149 — $19/$39/$79 undercuts the
-serious competitor while staying above the noise, and $299 has no
-comparable on this market yet. Revisit after the first 50 installs with
-real conversion data; raising prices later is easier than recovering from
-a launch nobody tried.*
+*Pricing history: $29/$79/$299 and $19/$39/$79 were both considered and
+rejected in favour of the two-plan structure above. Against the scanned
+field — AIO at $4.49–12.49, Mento at $19–67, Attributify at $49–149 —
+$29 sits above the thin AI-wrapper noise and below the serious PIM
+competitor, while covering small catalogues that $39+ would scare off.
+Revisit after the first 50 installs with real conversion data.*
 
 ### 6.1 Platform terms, obligations and exit (researched 2 Aug 2026)
 

@@ -67,6 +67,52 @@ export const extract_product: Task = async (payload, helpers) => {
 };
 
 /**
+ * Safety net. Webhook delivery is not guaranteed — Shopify retries, but a
+ * failed endpoint or an app restart can still lose one. Once a day we look for
+ * products that carry no attributes yet and queue them, so a merchant never
+ * discovers months later that half a season is missing.
+ *
+ * Cheap by design: it reads through one bulk operation and only writes what is
+ * genuinely absent.
+ */
+export const sweep_missing: Task = async (_payload, helpers) => {
+  const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
+
+  for (const shop of shops) {
+    try {
+      const graphql = await adminGraphql(shop.domain);
+      const dictionary = await dictionaryFor(shop.id);
+      const extraStopwords = await extraStopwordsFor(shop.id);
+      const products = await fetchAllProducts(graphql);
+
+      const missing = products.filter(
+        (p) => !p.metafields?.some((m) => m.key === "facts" && m.value),
+      );
+      if (missing.length === 0) continue;
+
+      let queued = 0;
+      for (const product of missing) {
+        // Only bother when the engine actually finds something to write.
+        const facts = extractProduct(product, dictionary, { extraStopwords });
+        if (facts.length === 0) continue;
+        await helpers.addJob(
+          "extract_product",
+          { shopId: shop.id, productGid: product.id },
+          { maxAttempts: 3 },
+        );
+        queued += 1;
+      }
+
+      helpers.logger.info(
+        `sweep_missing ${shop.domain}: ${missing.length} without attributes, ${queued} queued`,
+      );
+    } catch (error) {
+      helpers.logger.error(`sweep_missing failed for ${shop.domain}: ${String(error)}`);
+    }
+  }
+};
+
+/**
  * Alt text for the whole catalogue. Separate from extraction because it writes
  * to media, not metafields, and because a merchant may want one without the
  * other.

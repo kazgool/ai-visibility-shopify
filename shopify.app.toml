@@ -42,6 +42,10 @@ api_version = "2026-07"
   topics = [ "products/update" ]
 
   [[webhooks.subscriptions]]
+  uri = "/webhooks/products/create"
+  topics = [ "products/create" ]
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/themes/publish"
   topics = [ "themes/publish" ]
 
