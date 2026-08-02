@@ -139,7 +139,7 @@ export async function runBulkExtract(
     examples: [],
   };
 
-  const batch: { product: ProductInput; facts: Fact[] }[] = [];
+  const batch: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[] = [];
   let done = 0;
 
   for (const product of products) {
