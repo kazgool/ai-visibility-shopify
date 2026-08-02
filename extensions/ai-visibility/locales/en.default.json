@@ -1,0 +1,23 @@
+{
+  "name": "AI Visibility",
+  "settings": {
+    "enabled": {
+      "label": "Enable AI Visibility output"
+    },
+    "mode": {
+      "label": "Structured data mode",
+      "info": "Extend is safe on themes that already emit a Product node. Use Full only if your theme emits none.",
+      "options": {
+        "extend": "Extend the theme's Product data",
+        "full": "Emit a complete Product node"
+      }
+    },
+    "mirror": {
+      "label": "Link to the plain text version"
+    },
+    "lift_snippets": {
+      "label": "Allow assistants to quote the full page",
+      "info": "Adds max-snippet:-1, so answers can cite you properly instead of a truncated line."
+    }
+  }
+}
