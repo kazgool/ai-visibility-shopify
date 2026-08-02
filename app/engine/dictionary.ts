@@ -116,19 +116,6 @@ export const PRESETS: Record<string, { label: string; lines: string[] }> = {
       "Delivery: delivery *, turnaround *, working days, lead time *",
     ],
   },
-  "furniture-ro": {
-    label: "Furniture — Romanian terms",
-    lines: [
-      "Material: PAL, PAL melaminat, MDF, lemn masiv, stejar, nuc, fag, pin, furnir, sticla, sticla securizata, metal, inox, otel, alama, marmura, piatra, ratan, piele, piele ecologica, textil, catifea, canepa, bumbac, burete, plastic",
-      "Finisaj: lacuit, vopsit, uleiat, mat, lucios, natural, periat, patinat, cromat, auriu, argintiu",
-      "Stil: modern, scandinav, industrial, clasic, rustic, minimalist, vintage, retro, boho, contemporan",
-      "Dimensiuni: #size",
-      "Capacitate: * scaune, * persoane, * locuri, * sertare, * rafturi, * usi, * usi",
-      "Functionalitate: extensibil, extensibila, pliabil, pliabila, rabatabil, rabatabila, reglabil, reglabila, modular, modulara, cu depozitare, cu sertare, pe rotile, canapea extensibila, mecanism *",
-      "Culoare: alb, negru, gri, antracit, bej, crem, natur, stejar, nuc, wenge, auriu, argintiu, verde, albastru, rosu",
-      "Camera: sufragerie, living, dormitor, bucatarie, sala de mese, birou, hol, baie, terasa, camera copii",
-    ],
-  },
   food: {
     label: "Food and drink",
     lines: [
