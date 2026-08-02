@@ -118,58 +118,47 @@ a permanent comparison card showing what the dictionary reads today.
 
 ## 9. Billing screen — the brief in full
 
-Two plans, no trial, and a free tier of *seeing* rather than a free tier of
-*doing*. Design it so the merchant understands that in three seconds.
-
-**Plans**
+**Two plans. No trial, no free tier.** A merchant picks a plan before the
+app does anything. This is the first screen after install, and for a
+non-paying shop it is the only screen.
 
 - **Standard — $29 / month**, up to 20,000 products. Everything the app does.
 - **High volume — $49 / month**, above 20,000 products. Same features,
   priority support.
 
 Not "Pro" and not "Enterprise". The second plan is for bigger catalogues,
-not better software — the copy should say exactly that, or a merchant with
-400 products will assume they are missing features.
+not better software — say exactly that, or a merchant with 400 products
+will assume they are missing features.
 
-**The free/paid split, shown as a comparison the merchant can trust**
+**The hard part of this screen.** The merchant has installed and cannot see
+the product working yet. So the screen has to carry the proof itself:
 
-| Free, no card, no expiry | Included in a plan |
-|---|---|
-| Dictionary editor and all 20 trade presets | Attributes written to your products |
-| Test a dictionary on 40 real products | Summaries, starter questions, who-it-suits |
-| Full preview: coverage, per-attribute counts, 20 worked examples | Alt text for images |
-| Crawler visibility check | Structured data and plain text output on the storefront |
-
-There is no countdown anywhere in the interface. Nothing expires. The
-merchant runs the preview as often as they like, on their own catalogue,
-and decides with real numbers in front of them.
-
-**Copy that must appear on the screen**
-
-- The merchant's own numbers: *"You have 355 products — Standard covers
-  your catalogue."* Never an abstract "up to 20,000".
-- What happens if they cancel: *"Your extracted attributes stay in your
-  Shopify metafields and keep working, with or without this app."* This is
-  a selling point, not fine print — give it visual weight.
-- Why it is a subscription rather than a one-off: *"New products are picked
-  up automatically, alt text is written for new images, and crawler access
-  is re-checked when your theme or apps change."* Maintenance, not a
-  one-time clean-up.
+- **Their own numbers, immediately.** We can read the catalogue before they
+  pay: *"You have 355 products. Standard covers your catalogue."*
+- **A worked example, not a feature list.** Show one real product from
+  their store — title, a line of its description, and the attributes we
+  would extract from it. Computed live, not a stock screenshot. This is the
+  single most persuasive element on the screen and deserves the space.
+- **What happens if they cancel**, with visual weight: *"Your extracted
+  attributes stay in your Shopify metafields and keep working, with or
+  without this app."* A selling point, not fine print.
+- **Why it is a subscription**: *"New products are picked up automatically,
+  alt text is written for new images, and crawler access is re-checked when
+  your theme or apps change."* Maintenance, not a one-time clean-up.
 
 **States to design**
 
-1. No plan yet, preview never run — lead with the free preview, not the
-   plans. The button says "See what we would find", not "Start free trial".
-2. No plan, preview run — show the result inline next to the plans
-   ("352 of your 355 products would get comparable attributes"), then the
-   plans. This is the conversion moment; it deserves the most care.
-3. Active plan — quiet confirmation, current plan marked, no upsell noise.
-4. Over the limit on Standard — one banner with the real number and 14 days
+1. Fresh install, no plan — the screen above. One clear choice, no second
+   button competing with it.
+2. Active plan — quiet confirmation, current plan marked, no upsell noise.
+3. Over the limit on Standard — one banner with the real number and 14 days
    of grace. Never a locked screen.
+4. Cancelled — the app keeps rendering what was already written; explain
+   that plainly rather than showing an error.
 
-**Tone**: no urgency, no scarcity, no "most popular" badge. The product's
-whole argument is that we show you the truth before you pay; the billing
-screen is where that argument is either kept or broken.
+**Tone**: no urgency, no scarcity, no countdown, no "most popular" badge.
+There is no trial to expire and nothing to rush. The argument is competence
+and honesty, and the screen should sound like it.
 
 ## 10. Brand
 

@@ -56,41 +56,42 @@ What we never do:
   passes." A growing merchant surprised by a broken app leaves a one-star
   review that costs more than the price difference.
 
-## 4. No time-limited trial. The dry run is the trial.
+## 4. No trial, no free tier. Subscribe to use it.
 
-**Why no trial (decided 2 Aug 2026).** This app's value is front-loaded:
-one full pass does most of the work a catalogue will ever need. A seven-day
-trial is therefore an invitation to extract everything and cancel on day
-two — the merchant keeps the metafields, because they are genuinely theirs,
-and we are paid nothing for the work.
+**The rule (decided 2 Aug 2026).** A plan is required before the app does
+anything. No seven-day trial, no free preview, no partially working state.
 
-**What replaces it, and why it is better.** The dry run is free, unlimited,
-and needs no card:
+**Why.** The value is front-loaded — one full pass does most of the work a
+catalogue will ever need — so a trial is an invitation to extract
+everything and cancel on day two, keeping the metafields (which are
+genuinely theirs) while we are paid nothing. A free tier would need
+per-feature gating, upgrade prompts and a permanent stream of "why is this
+locked" tickets. One gate at the entrance is a fraction of the code and
+nothing to explain.
 
-| Free, forever | Requires a plan |
-|---|---|
-| Dictionary editor, all 20 trade presets | Writing attributes to metafields |
-| "Test on 40 products" with real examples | Summaries, questions, who-it-suits |
-| Full dry run: coverage, per-label counts, 20 worked examples | Alt text |
-| Crawler visibility check | The plain text mirror and JSON-LD output |
+**Where the merchant sees proof before paying:** the App Store listing.
+Screenshots and the video show real extraction on a real catalogue —
+coverage numbers, worked examples, before and after. The listing does the
+convincing; the app does the work. This is the one place where investing
+in the assets genuinely replaces product complexity.
 
-The merchant sees precisely what they would get — computed from their own
-descriptions, not a demo — without receiving it. No countdown, no expiry,
-no "I never got round to testing it" churn, and nothing to free-ride on.
+**Implementation.** A single check in the `/app` route loader: no active
+subscription redirects to the billing screen. Everything downstream can
+assume a paying shop, which keeps the rest of the code free of plan
+conditionals.
 
-**The remaining risk, stated honestly.** A merchant can pay for one month,
-run the pass, and cancel. That cannot be engineered away: the data lives in
-their metafields and stays theirs (PRD §4.1) — that promise is worth more
-than the churn it costs. Mitigate it with what is genuinely recurring, and
-say so on the listing rather than hiding it:
+**The trade-off, stated plainly.** Conversion from install to paid will be
+lower than an app with a trial, and some reviews will say they wanted to
+try it first. That is accepted deliberately: fewer, better-qualified
+customers, and no free-riders on a product whose value arrives in the first
+ten minutes.
 
-- new and edited products processed automatically (three freshness layers,
-  ARCHITECTURE §4.1);
-- the dictionary refined as the catalogue grows into new categories;
-- alt text for every new image;
-- crawler checks after a theme change, a security app, or a new domain.
-
-The line for the listing: *this is maintenance, not a one-off clean-up.*
+**Churn after one month** remains possible and cannot be engineered away —
+the data stays with the merchant by design (PRD §4.1). What is recurring
+should be said on the listing rather than hidden: new products processed
+automatically, alt text for new images, crawler access re-checked after
+theme or app changes, the dictionary refined as the catalogue grows.
+*Maintenance, not a one-off clean-up.*
 
 ## 5. Screens
 
