@@ -72,6 +72,8 @@
     "vite": "^6.2.2"
   },
   "overrides": {
+    "@shopify/shopify-api": "13.1.0",
+    "@shopify/shopify-app-session-storage": "5.0.1",
     "@graphql-tools/url-loader": "8.0.16",
     "@graphql-codegen/client-preset": "4.7.0",
     "@graphql-codegen/typescript-operations": "4.5.0",
