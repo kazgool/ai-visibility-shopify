@@ -148,6 +148,54 @@ export default function DictionaryPage() {
           </BlockStack>
         </Card>
 
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              How to write a dictionary
+            </Text>
+            <Text as="p">
+              One attribute group per line, in the form <b>Label: term, term</b>.
+              The label is what a buyer sees and what an assistant compares; the
+              terms are what we look for in your product descriptions. Write the
+              terms in the same language your descriptions are written in — a
+              term only matches its own language, and a list nobody can read is
+              worse than no list at all.
+            </Text>
+            <List>
+              <List.Item>
+                <b>Plain term</b> — <code>Material: oak, tempered glass</code>. Matches
+                the whole word only, so "tul" never matches "tulip".
+              </List.Item>
+              <List.Item>
+                <b>term *</b> — <code>Cut: silhouette *</code> captures up to three
+                words after the term, so you do not have to list every variation.
+                If a verb or a connector follows, nothing is captured: half a
+                sentence is worse than a missing attribute.
+              </List.Item>
+              <List.Item>
+                <b>* term</b> — <code>Capacity: * seats</code> reads a number written
+                before the word: "6 seats", "4 people".
+              </List.Item>
+              <List.Item>
+                <b>#size</b> — <code>Dimensions: #size</code> reads measurements
+                straight out of the prose: "80x200 cm", "l 80, L 130, h 79 cm",
+                "4 mm". No terms needed.
+              </List.Item>
+              <List.Item>
+                <b>| default: value</b> — <code>Colour: white, black | default: white</code>{" "}
+                fills the attribute when nothing matched, for a fact that is true
+                of your whole catalogue.
+              </List.Item>
+            </List>
+            <Text as="p" tone="subdued">
+              Up to four values are published per label, longer terms win over
+              shorter ones ("Chantilly lace" beats "lace"), and values that
+              differ only by diacritics are listed once. Nothing a person wrote
+              is ever overwritten.
+            </Text>
+          </BlockStack>
+        </Card>
+
         {result?.report ? (
           <Card>
             <BlockStack gap="300">

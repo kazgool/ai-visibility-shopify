@@ -139,6 +139,52 @@ export const PRESETS: Record<string, { label: string; lines: string[] }> = {
       "Storage: refrigerated, frozen, ambient, shelf life *, best before *",
     ],
   },
+  supplements: {
+    label: "Supplements and health",
+    lines: [
+      "Form: capsules, tablets, powder, liquid, softgel, gummies, sachets, drops",
+      "Active ingredient: contains *, with *, extract of *, standardised to *",
+      "Strength: #size, * mg, * mcg, * IU, * billion CFU",
+      "Servings: * capsules, * tablets, * servings, * doses, * days",
+      "Diet: vegan, vegetarian, gluten free, lactose free, sugar free, non-GMO, halal, kosher",
+      "Suited to: adults, children, athletes, pregnancy, seniors",
+      "Certification: GMP, ISO, organic, third-party tested, lab tested",
+    ],
+  },
+  telco: {
+    label: "Telecom and connectivity",
+    lines: [
+      "Plan: prepaid, postpaid, monthly, annual, unlimited, family, business",
+      "Data: * GB, * TB, unlimited data, data *",
+      "Speed: * Mbps, * Gbps, download *, upload *, fibre, DSL, 4G, 5G",
+      "Contract: contract *, no contract, * months, * years, cancel anytime",
+      "Included: minutes *, SMS *, roaming *, hotspot, router included, installation",
+      "Coverage: national, international, EU roaming, coverage *",
+    ],
+  },
+  retail: {
+    label: "General retail (mixed catalogue)",
+    lines: [
+      "Material: cotton, polyester, leather, plastic, metal, steel, aluminium, wood, glass, ceramic, silicone, rubber",
+      "Size: #size, * pieces, * pack",
+      "Colour: white, black, grey, blue, red, green, yellow, pink, brown, beige, silver, gold, multicolour",
+      "Compatibility: compatible with *, fits *, for *",
+      "Power: * W, * V, * mAh, battery *, rechargeable, mains powered, USB",
+      "Care: machine washable, hand wash, dishwasher safe, wipe clean",
+      "Warranty: warranty *, * years, * months",
+      "Certification: CE, RoHS, FSC, OEKO-TEX, energy class *",
+    ],
+  },
+  custom: {
+    label: "Start from scratch",
+    lines: [
+      "# One attribute group per line: Label: term, term, term",
+      "# Delete these lines and write the attributes buyers compare in your trade.",
+      "Material: ",
+      "Size: #size",
+      "Colour: ",
+    ],
+  },
 };
 
 export function presetText(key: string): string {
