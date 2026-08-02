@@ -1,5 +1,5 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -7,12 +7,19 @@ import {
   Thumbnail,
   Text,
   Badge,
-  EmptyState,
+  Button,
+  BlockStack,
+  InlineStack,
+  Banner,
+  List,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
+import { enqueue } from "../services/queue.server";
 
-// PHASE-1-SPEC §5: one page, first 50 products, no actions. Proves embedded
-// auth + GraphQL work. Everything else comes in later phases.
+// Phase 2 trigger surface. Deliberately minimal — the real admin experience
+// (dictionary editor, presets, progress view) is Phase 4. This exists so the
+// engine can be exercised against a real catalogue end to end.
 
 const PRODUCTS = `#graphql
   query FirstProducts {
@@ -21,19 +28,46 @@ const PRODUCTS = `#graphql
         id
         title
         status
-        featuredMedia {
-          preview { image { url altText } }
-        }
+        featuredMedia { preview { image { url altText } } }
+        metafields(namespace: "$app", first: 5) { nodes { key value } }
       }
     }
   }
 `;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const res = await admin.graphql(PRODUCTS);
   const json = await res.json();
-  return { products: json.data?.products?.nodes ?? [] };
+
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  const lastRun = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
+
+  return {
+    products: json.data?.products?.nodes ?? [],
+    lastRun,
+  };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const form = await request.formData();
+  const dryRun = form.get("mode") !== "write";
+
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  if (!shop) return { ok: false };
+
+  const jobRun = await db.jobRun.create({
+    data: { shopId: shop.id, kind: dryRun ? "dry_run" : "bulk_extract" },
+  });
+  await enqueue("bulk_extract", { shopId: shop.id, dryRun, jobRunId: jobRun.id });
+
+  return { ok: true };
 };
 
 type ProductRow = {
@@ -41,27 +75,90 @@ type ProductRow = {
   title: string;
   status: string;
   featuredMedia?: { preview?: { image?: { url: string; altText?: string } } };
+  metafields?: { nodes: { key: string; value: string }[] };
 };
 
+function factCount(p: ProductRow): number {
+  const raw = p.metafields?.nodes?.find((m) => m.key === "facts")?.value;
+  if (!raw) return 0;
+  try {
+    return (JSON.parse(raw) as unknown[]).length;
+  } catch {
+    return 0;
+  }
+}
+
 export default function Index() {
-  const { products } = useLoaderData<typeof loader>() as { products: ProductRow[] };
+  const { products, lastRun } = useLoaderData<typeof loader>() as {
+    products: ProductRow[];
+    lastRun: any;
+  };
+  const nav = useNavigation();
+  const busy = nav.state !== "idle";
+  const report = lastRun?.report as
+    | { sampled: number; none: number; wouldSkip: number; byAttr: [string, number][] }
+    | undefined;
 
   return (
-    <Page title="Products">
-      <Card padding="0">
-        {products.length === 0 ? (
-          <EmptyState
-            heading="No products yet"
-            image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-          >
-            <p>Import a catalogue to get started.</p>
-          </EmptyState>
-        ) : (
+    <Page title="AI Visibility">
+      <BlockStack gap="400">
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
+              Extraction
+            </Text>
+            <Text as="p" tone="subdued">
+              Reads your product descriptions and pulls out comparable attributes.
+              A dry run writes nothing and shows what would change.
+            </Text>
+            <InlineStack gap="200">
+              <Form method="post">
+                <input type="hidden" name="mode" value="dry" />
+                <Button submit loading={busy}>
+                  Run dry run
+                </Button>
+              </Form>
+              <Form method="post">
+                <input type="hidden" name="mode" value="write" />
+                <Button submit variant="primary" loading={busy}>
+                  Fill catalogue
+                </Button>
+              </Form>
+            </InlineStack>
+
+            {lastRun ? (
+              <Banner tone={lastRun.status === "failed" ? "critical" : "info"}>
+                <BlockStack gap="100">
+                  <Text as="p">
+                    Last {lastRun.kind === "dry_run" ? "dry run" : "pass"}:{" "}
+                    {lastRun.status} ({lastRun.progress}/{lastRun.total})
+                  </Text>
+                  {report ? (
+                    <List>
+                      <List.Item>{report.sampled} products read</List.Item>
+                      <List.Item>{report.none} produced no attributes</List.Item>
+                      <List.Item>
+                        {report.wouldSkip} protected (a person wrote those values)
+                      </List.Item>
+                      {report.byAttr?.slice(0, 5).map(([label, n]) => (
+                        <List.Item key={label}>
+                          {label}: {n} products
+                        </List.Item>
+                      ))}
+                    </List>
+                  ) : null}
+                </BlockStack>
+              </Banner>
+            ) : null}
+          </BlockStack>
+        </Card>
+
+        <Card padding="0">
           <IndexTable
             resourceName={{ singular: "product", plural: "products" }}
             itemCount={products.length}
             selectable={false}
-            headings={[{ title: "" }, { title: "Title" }, { title: "Status" }]}
+            headings={[{ title: "" }, { title: "Title" }, { title: "Attributes" }, { title: "Status" }]}
           >
             {products.map((p, i) => (
               <IndexTable.Row id={p.id} key={p.id} position={i}>
@@ -78,6 +175,15 @@ export default function Index() {
                   </Text>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
+                  {factCount(p) > 0 ? (
+                    <Badge tone="success">{`${factCount(p)}`}</Badge>
+                  ) : (
+                    <Text as="span" tone="subdued">
+                      —
+                    </Text>
+                  )}
+                </IndexTable.Cell>
+                <IndexTable.Cell>
                   <Badge tone={p.status === "ACTIVE" ? "success" : "info"}>
                     {p.status.toLowerCase()}
                   </Badge>
@@ -85,8 +191,8 @@ export default function Index() {
               </IndexTable.Row>
             ))}
           </IndexTable>
-        )}
-      </Card>
+        </Card>
+      </BlockStack>
     </Page>
   );
 }

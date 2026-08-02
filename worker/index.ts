@@ -1,6 +1,8 @@
-// graphile-worker runner (ARCHITECTURE §1). Task list fills in Phase 2:
-// bulk_extract, alt_text, crawler_check, theme_scan, indexnow_ping.
+// graphile-worker runner (ARCHITECTURE §1). Runs in its own Fly process
+// group, next to the database, so bulk passes survive a closed browser tab.
+
 import { run } from "graphile-worker";
+import * as tasks from "./tasks";
 
 async function main() {
   const runner = await run({
@@ -8,10 +10,8 @@ async function main() {
     concurrency: 2,
     pollInterval: 2000,
     taskList: {
-      // Placeholder so the runner boots; removed when real tasks land.
-      noop: async (_payload, helpers) => {
-        helpers.logger.info("noop task executed");
-      },
+      bulk_extract: tasks.bulk_extract,
+      extract_product: tasks.extract_product,
     },
   });
   await runner.promise;
