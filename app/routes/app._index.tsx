@@ -55,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const json = await res.json();
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  const [lastRun, lastAlt, dictionary] = shop
+  const [lastRun, lastAlt, dictionary, lastWrite] = shop
     ? await Promise.all([
         db.jobRun.findFirst({
           where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
@@ -68,14 +68,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         db.setting.findUnique({
           where: { shopId_key: { shopId: shop.id, key: "dictionary" } },
         }),
+        // A preview run after a real pass must not make the checklist forget
+        // that the catalogue was already filled.
+        db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "bulk_extract", status: "done" },
+          orderBy: { finishedAt: "desc" },
+        }),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
 
   return {
     products: json.data?.products?.nodes ?? [],
     totalProducts: json.data?.productsCount?.count ?? 0,
     lastRun,
     lastAlt,
+    lastWrite,
     hasDictionary: Boolean(dictionary?.value?.trim()),
     domain: session.shop,
   };
@@ -172,7 +179,7 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 }
 
 export default function Dashboard() {
-  const { products, totalProducts, lastRun, lastAlt, hasDictionary, domain } =
+  const { products, totalProducts, lastRun, lastAlt, lastWrite, hasDictionary, domain } =
     useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -197,7 +204,7 @@ export default function Dashboard() {
   const coverage = report && report.sampled > 0
     ? Math.round((covered / report.sampled) * 100)
     : 0;
-  const written = lastRun?.kind === "bulk_extract" && lastRun?.status === "done";
+  const written = Boolean(lastWrite);
 
   // Keep the numbers moving while a pass runs, or people press the button twice.
   const revalidator = useRevalidator();
@@ -349,9 +356,9 @@ export default function Dashboard() {
                       ? "Saved. Edit it whenever your catalogue changes."
                       : "Pick a preset and translate the terms into the language your descriptions use."}
                   </Step>
-                  <Step done={Boolean(written)} title="Attributes written">
+                  <Step done={written} title="Attributes written">
                     {written
-                      ? "Your products carry comparable attributes."
+                      ? `Written ${new Date(lastWrite.finishedAt).toLocaleDateString()}. New and edited products are picked up automatically.`
                       : "Run a preview first, then fill the catalogue."}
                   </Step>
                   <Step done={false} title="App embed active in your theme">
