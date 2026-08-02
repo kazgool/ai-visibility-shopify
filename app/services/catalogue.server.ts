@@ -36,8 +36,11 @@ const PRODUCTS_QUERY = `
           title
           descriptionHtml
           vendor
+          productType
           onlineStoreUrl
           featuredMedia { preview { image { url } } }
+          priceRangeV2 { minVariantPrice { amount currencyCode } }
+          totalInventory
           metafields(namespace: "${NAMESPACE}", first: 10) {
             edges { node { key value } }
           }
@@ -116,7 +119,11 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         title: row.title,
         descriptionHtml: row.descriptionHtml,
         vendor: row.vendor,
+        productType: row.productType,
         onlineStoreUrl: row.onlineStoreUrl,
+        price: row.priceRangeV2?.minVariantPrice?.amount ?? null,
+        currency: row.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
+        available: typeof row.totalInventory === "number" ? row.totalInventory > 0 : undefined,
         metafields: [],
       });
       continue;

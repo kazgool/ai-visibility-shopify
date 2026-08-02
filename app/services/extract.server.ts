@@ -4,7 +4,46 @@
 // committing (PHASE-2-SPEC §7). It is what makes a bulk write safe to offer.
 
 import db from "../db.server";
-import { extractProduct, coverage, type Fact } from "../engine";
+import {
+  extractProduct,
+  coverage,
+  buildSummary,
+  buildQuestions,
+  buildFitFor,
+  type Fact,
+} from "../engine";
+import type { FieldValue } from "./facts.server";
+
+/**
+ * The three companion fields, built from the same facts. Each is written only
+ * if it has something honest to say — an empty capsule is worse than none.
+ */
+function capsuleFields(product: ProductInput, facts: Fact[]): FieldValue[] {
+  const input = {
+    title: product.title,
+    descriptionHtml: product.descriptionHtml,
+    facts,
+    price: product.price ?? null,
+    currency: product.currency ?? null,
+    available: product.available,
+    vendor: product.vendor ?? null,
+    productType: product.productType ?? null,
+  };
+
+  const summary = buildSummary(input);
+  const questions = buildQuestions(input);
+  const fitFor = buildFitFor(input);
+
+  const fields: FieldValue[] = [];
+  if (summary) fields.push({ key: "summary", type: "multi_line_text_field", value: summary });
+  if (questions.length > 0) {
+    fields.push({ key: "questions", type: "json", value: JSON.stringify(questions) });
+  }
+  if (fitFor) {
+    fields.push({ key: "fit_for", type: "single_line_text_field", value: fitFor });
+  }
+  return fields;
+}
 import { adminGraphql } from "./admin.server";
 import { fetchAllProducts, fetchProduct } from "./catalogue.server";
 import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
@@ -99,8 +138,8 @@ export async function runBulkExtract(
     }
 
     if (!options.dryRun && facts.length > 0) {
-      batch.push({ product, facts });
-      if (batch.length >= 12) {
+      batch.push({ product, facts, fields: capsuleFields(product, facts) });
+      if (batch.length >= 8) {
         await writeFacts(graphql, batch.splice(0));
       }
       await cacheMirror(shopId, shop.domain, product, facts);

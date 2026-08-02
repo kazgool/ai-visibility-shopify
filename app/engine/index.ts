@@ -17,6 +17,13 @@ export {
   type DictionaryGroup,
 } from "./dictionary";
 export type { ProductLike } from "./types";
+export {
+  buildSummary,
+  buildQuestions,
+  buildFitFor,
+  type CapsuleInput,
+  type QA,
+} from "./summary";
 export { normalize, prepareText, diacriticPattern } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 

@@ -20,7 +20,11 @@ export type ProductInput = {
   handle?: string | null;
   descriptionHtml?: string | null;
   vendor?: string | null;
+  productType?: string | null;
   onlineStoreUrl?: string | null;
+  price?: string | null;
+  currency?: string | null;
+  available?: boolean;
   metafields?: { key: string; value: string }[];
 };
 
@@ -63,6 +67,8 @@ export type WriteOutcome = {
   skipped: string[];
 };
 
+export type FieldValue = { key: string; type: string; value: string };
+
 /**
  * Write facts (and refresh state) for a batch of products. metafieldsSet
  * accepts 25 entries per call; each product contributes 2 (facts + state),
@@ -70,41 +76,53 @@ export type WriteOutcome = {
  */
 export async function writeFacts(
   graphql: GraphqlFn,
-  entries: { product: ProductInput; facts: Fact[] }[],
+  entries: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[],
 ): Promise<WriteOutcome[]> {
   const outcomes: WriteOutcome[] = [];
   const metafields: Record<string, unknown>[] = [];
 
-  for (const { product, facts } of entries) {
+  for (const { product, facts, fields = [] } of entries) {
     const outcome: WriteOutcome = { productId: product.id, written: [], skipped: [] };
-
-    if (!mayWrite(product, "facts")) {
-      outcome.skipped.push("facts");
-      outcomes.push(outcome);
-      continue;
-    }
-
     const state = parseState(product);
-    state.facts = { source: "auto", at: new Date().toISOString(), engine: ENGINE_VERSION };
+    const now = new Date().toISOString();
 
-    metafields.push(
-      {
+    const candidates: FieldValue[] = [
+      { key: "facts", type: "json", value: JSON.stringify(facts) },
+      ...fields,
+    ];
+
+    let touched = false;
+    for (const field of candidates) {
+      // Each field is guarded on its own: a merchant may have written the
+      // summary by hand while leaving the attributes automatic.
+      if (!mayWrite(product, field.key)) {
+        outcome.skipped.push(field.key);
+        continue;
+      }
+      if (field.value === "" || field.value === "[]" || field.value === "{}") continue;
+
+      metafields.push({
         ownerId: product.id,
         namespace: NAMESPACE,
-        key: "facts",
-        type: "json",
-        value: JSON.stringify(facts),
-      },
-      {
+        key: field.key,
+        type: field.type,
+        value: field.value,
+      });
+      state[field.key] = { source: "auto", at: now, engine: ENGINE_VERSION };
+      outcome.written.push(field.key);
+      touched = true;
+    }
+
+    if (touched) {
+      metafields.push({
         ownerId: product.id,
         namespace: NAMESPACE,
         key: "state",
         type: "json",
         value: JSON.stringify(state),
-      },
-    );
+      });
+    }
 
-    outcome.written.push("facts");
     outcomes.push(outcome);
   }
 
