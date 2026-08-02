@@ -66,8 +66,81 @@ export const extract_product: Task = async (payload, helpers) => {
   );
 };
 
+const PRODUCTS_SINCE = `#graphql
+  query ProductsSince($query: String!, $cursor: String) {
+    products(first: 100, after: $cursor, query: $query, sortKey: UPDATED_AT) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id updatedAt }
+    }
+  }
+`;
+
 /**
- * Safety net. Webhook delivery is not guaranteed — Shopify retries, but a
+ * Layer two of freshness (layer one is webhooks, layer three is the weekly
+ * reconciliation below).
+ *
+ * Every fifteen minutes we ask Shopify which products changed since we last
+ * looked. This is cheap — one paginated query, no bulk operation — and it
+ * closes the window when a webhook is dropped, delayed, or lost during a
+ * deploy. Processing something twice is harmless: extraction is idempotent and
+ * the state metafield protects human values.
+ */
+export const poll_changes: Task = async (_payload, helpers) => {
+  const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
+
+  for (const shop of shops) {
+    const key = "last_polled_at";
+    const setting = await db.setting.findUnique({
+      where: { shopId_key: { shopId: shop.id, key } },
+    });
+
+    // First run: look back an hour rather than replaying the whole catalogue.
+    const since = setting?.value ?? new Date(Date.now() - 3600_000).toISOString();
+    const startedAt = new Date().toISOString();
+
+    try {
+      const graphql = await adminGraphql(shop.domain);
+      let cursor: string | null = null;
+      let queued = 0;
+
+      do {
+        const data: any = await graphql(PRODUCTS_SINCE, {
+          query: `updated_at:>'${since}'`,
+          cursor,
+        });
+        const page = data?.products;
+        if (!page) break;
+
+        for (const node of page.nodes ?? []) {
+          await helpers.addJob(
+            "extract_product",
+            { shopId: shop.id, productGid: node.id },
+            { maxAttempts: 3, jobKey: `extract:${node.id}` },
+          );
+          queued += 1;
+        }
+
+        cursor = page.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
+      } while (cursor);
+
+      await db.setting.upsert({
+        where: { shopId_key: { shopId: shop.id, key } },
+        create: { shopId: shop.id, key, value: startedAt },
+        update: { value: startedAt },
+      });
+
+      if (queued > 0) {
+        helpers.logger.info(`poll_changes ${shop.domain}: queued ${queued} changed products`);
+      }
+    } catch (error) {
+      // Do not advance the cursor on failure: the next run retries the window.
+      helpers.logger.error(`poll_changes failed for ${shop.domain}: ${String(error)}`);
+    }
+  }
+};
+
+/**
+ * Layer three. Webhook delivery is not guaranteed — Shopify retries, but a
  * failed endpoint or an app restart can still lose one. Once a day we look for
  * products that carry no attributes yet and queue them, so a merchant never
  * discovers months later that half a season is missing.

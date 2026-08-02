@@ -13,7 +13,15 @@ async function main() {
       bulk_extract: tasks.bulk_extract,
       extract_product: tasks.extract_product,
       bulk_alt_text: tasks.bulk_alt_text,
+      poll_changes: tasks.poll_changes,
+      sweep_missing: tasks.sweep_missing,
     },
+    // Freshness in layers: webhooks fire instantly, the poll closes the gap
+    // when one is dropped, the sweep guarantees nothing is missed for long.
+    crontab: [
+      "*/15 * * * * poll_changes",
+      "30 3 * * 1 sweep_missing", // Monday 03:30 UTC
+    ].join("\n"),
   });
   await runner.promise;
 }

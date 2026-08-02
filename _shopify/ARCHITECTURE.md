@@ -72,6 +72,31 @@ Nothing merchant-authored is stored here. Uninstall (`app/uninstalled` +
 `shop/redact`) deletes the shop's rows; metafields stay with the store —
 the honest-exit promise from PRD §6.1 is enforced by this split.
 
+## 4.1 Keeping the catalogue fresh — three layers
+
+Webhook delivery is best-effort: Shopify retries, but a deploy, a timeout
+or an endpoint hiccup can still lose one. A merchant must never discover
+months later that a season of products was never processed. So freshness
+is layered, each layer catching what the one before it missed:
+
+| Layer | Trigger | Latency | Cost |
+|---|---|---|---|
+| 1. Webhooks | `products/create`, `products/update`, `products/delete` | seconds | negligible |
+| 2. Incremental poll | cron, every 15 minutes: `updated_at:>last_polled_at` | ≤15 min | one paginated query per shop |
+| 3. Reconciliation sweep | cron, weekly: bulk read, queue anything with no `facts` | ≤7 days | one bulk operation per shop |
+
+Two properties make layering safe rather than wasteful:
+
+- **Writes are idempotent.** The same description produces the same
+  attributes, and the `state` metafield refuses to overwrite human values,
+  so processing a product twice changes nothing.
+- **`jobKey` deduplicates.** A product queued by both a webhook and the
+  poll collapses into a single job.
+
+The poll advances its cursor only on success: a failed run retries the
+same window rather than skipping it. This is the one place where being
+slightly wasteful is correct.
+
 ## 5. Secrets and config
 
 - `DATABASE_URL` (Neon pooled), `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`,
