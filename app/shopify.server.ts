@@ -29,8 +29,10 @@ const shopify = shopifyApp({
         create: { domain: session.shop },
         update: { uninstalledAt: null },
       });
+      // Runs on every auth, not only the first: it also repairs definitions
+      // created before storefront access was requested. Cheap and idempotent.
+      await ensureMetafieldDefinitions(admin.graphql);
       if (!shop.metafieldsInit) {
-        await ensureMetafieldDefinitions(admin.graphql);
         await prisma.shop.update({
           where: { id: shop.id },
           data: { metafieldsInit: true },

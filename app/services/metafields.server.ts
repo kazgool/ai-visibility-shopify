@@ -1,6 +1,11 @@
 // Metafield definitions, created once per shop on install (PHASE-1-SPEC §4).
 // Namespace $app resolves to our app-reserved namespace; definitions survive
 // uninstall on purpose — the data belongs to the merchant (PRD §4.1).
+//
+// Storefront access matters: with PUBLIC_READ the merchant's theme (and the
+// Storefront API, and Shopify's own agent surfaces) can read our data without
+// this app running. That is the whole "your data stays yours" promise, so it
+// is repaired on every install, not only on the first one.
 
 const DEFINITIONS = [
   { key: "summary", type: "multi_line_text_field", name: "AI summary" },
@@ -19,10 +24,22 @@ const CREATE = `#graphql
   }
 `;
 
+const UPDATE_ACCESS = `#graphql
+  mutation UpdateDefinition($definition: MetafieldDefinitionUpdateInput!) {
+    metafieldDefinitionUpdate(definition: $definition) {
+      updatedDefinition { id key }
+      userErrors { field message code }
+    }
+  }
+`;
+
 const EXISTING = `#graphql
   query ExistingDefinitions {
     metafieldDefinitions(first: 20, ownerType: PRODUCT, namespace: "$app") {
-      nodes { key }
+      nodes {
+        key
+        access { storefront }
+      }
     }
   }
 `;
@@ -32,30 +49,54 @@ type AdminGraphql = (query: string, options?: { variables?: object }) => Promise
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
   const existingRes = await graphql(EXISTING);
   const existing = await existingRes.json();
-  const have = new Set<string>(
-    existing.data?.metafieldDefinitions?.nodes?.map((n: { key: string }) => n.key) ?? [],
-  );
+  const nodes: { key: string; access?: { storefront?: string } }[] =
+    existing.data?.metafieldDefinitions?.nodes ?? [];
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
 
   for (const def of DEFINITIONS) {
-    if (have.has(def.key)) continue;
-    const res = await graphql(CREATE, {
-      variables: {
-        definition: {
-          key: def.key,
-          name: def.name,
-          type: def.type,
-          namespace: "$app",
-          ownerType: "PRODUCT",
-          access: { storefront: "PUBLIC_READ" },
+    const found = byKey.get(def.key);
+
+    if (!found) {
+      const res = await graphql(CREATE, {
+        variables: {
+          definition: {
+            key: def.key,
+            name: def.name,
+            type: def.type,
+            namespace: "$app",
+            ownerType: "PRODUCT",
+            access: { storefront: "PUBLIC_READ" },
+          },
         },
-      },
-    });
-    const json = await res.json();
-    const errors = json.data?.metafieldDefinitionCreate?.userErrors ?? [];
-    // TAKEN = created concurrently; anything else is a real problem.
-    const real = errors.filter((e: { code?: string }) => e.code !== "TAKEN");
-    if (real.length) {
-      throw new Error(`metafieldDefinitionCreate ${def.key}: ${JSON.stringify(real)}`);
+      });
+      const json = await res.json();
+      const errors = json.data?.metafieldDefinitionCreate?.userErrors ?? [];
+      // TAKEN = created concurrently; anything else is a real problem.
+      const real = errors.filter((e: { code?: string }) => e.code !== "TAKEN");
+      if (real.length) {
+        throw new Error(`metafieldDefinitionCreate ${def.key}: ${JSON.stringify(real)}`);
+      }
+      continue;
+    }
+
+    // Repair a definition created before storefront access was requested.
+    if (found.access?.storefront !== "PUBLIC_READ") {
+      const res = await graphql(UPDATE_ACCESS, {
+        variables: {
+          definition: {
+            key: def.key,
+            namespace: "$app",
+            ownerType: "PRODUCT",
+            access: { storefront: "PUBLIC_READ" },
+          },
+        },
+      });
+      const json = await res.json();
+      const errors = json.data?.metafieldDefinitionUpdate?.userErrors ?? [];
+      if (errors.length) {
+        // Not fatal: the app still works, the theme just cannot read directly.
+        console.warn(`metafieldDefinitionUpdate ${def.key}: ${JSON.stringify(errors)}`);
+      }
     }
   }
 }
