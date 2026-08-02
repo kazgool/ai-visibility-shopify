@@ -17,7 +17,10 @@ export type ProductState = Record<string, FieldState>;
 export type ProductInput = {
   id: string;
   title: string;
+  handle?: string | null;
   descriptionHtml?: string | null;
+  vendor?: string | null;
+  onlineStoreUrl?: string | null;
   metafields?: { key: string; value: string }[];
 };
 

@@ -1,9 +1,36 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
+import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
 
-// TODO(phase-3): re-run theme Product JSON-LD detection (PRD §4.2), warn merchant.
+// A theme change can silently introduce or remove a Product node, which is
+// exactly when duplicate structured data appears (PRD §8). Re-scan on publish.
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, topic } = await authenticate.webhook(request);
-  console.log(`[stub] ${topic} for ${shop}`);
+  const { shop, admin, payload } = await authenticate.webhook(request);
+
+  const shopRow = await db.shop.findUnique({ where: { domain: shop } });
+  if (!shopRow || !admin) return new Response();
+
+  const themeId = String((payload as { id?: number })?.id ?? "current");
+
+  // One product page is enough to tell what the theme emits.
+  const res = await admin.graphql(`#graphql
+    query FirstOnlineProduct {
+      products(first: 1, query: "published_status:published") {
+        nodes { onlineStoreUrl }
+      }
+    }
+  `);
+  const json = await res.json();
+  const url = json.data?.products?.nodes?.[0]?.onlineStoreUrl;
+  if (!url) return new Response();
+
+  try {
+    const result = await scanThemeForProductLd(url);
+    await recordThemeScan(shopRow.id, themeId, result);
+  } catch (error) {
+    console.warn(`theme scan failed for ${shop}: ${String(error)}`);
+  }
+
   return new Response();
 };

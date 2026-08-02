@@ -1,0 +1,144 @@
+{% comment %}
+  AI Visibility — app embed block.
+
+  Static markup only: no JavaScript, no fetch, no external requests. Everything
+  needed is already in the metafields at render time (PRD §5.2). Built for
+  Shopify allows no more than a 10 point storefront performance impact, and the
+  cheapest way to guarantee that is to ship nothing that executes.
+
+  Two modes, chosen by the merchant after we detect what the theme already does:
+    extend  — emit only the properties the theme's Product node omits, linked
+              to it by @id. Default, and the honest choice.
+    full    — emit a complete Product node, for themes with none of their own.
+{% endcomment %}
+
+{%- if block.settings.enabled -%}
+  {%- assign av_facts = product.metafields.app.facts.value -%}
+  {%- assign av_summary = product.metafields.app.summary.value -%}
+  {%- assign av_fit = product.metafields.app.fit_for.value -%}
+
+  {%- if template.name == 'product' and product -%}
+    {%- if block.settings.mode == 'full' -%}
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "@id": {{ shop.url | append: product.url | append: '#product' | json }},
+          "name": {{ product.title | json }},
+          {%- if av_summary %}
+          "description": {{ av_summary | json }},
+          {%- else %}
+          "description": {{ product.description | strip_html | truncate: 500 | json }},
+          {%- endif %}
+          "url": {{ shop.url | append: product.url | json }},
+          {%- if product.featured_image %}
+          "image": {{ product.featured_image | image_url: width: 1200 | prepend: 'https:' | json }},
+          {%- endif %}
+          {%- if product.vendor != blank %}
+          "brand": { "@type": "Brand", "name": {{ product.vendor | json }} },
+          {%- endif %}
+          {%- if product.selected_or_first_available_variant.sku != blank %}
+          "sku": {{ product.selected_or_first_available_variant.sku | json }},
+          {%- endif %}
+          {%- if product.selected_or_first_available_variant.barcode != blank %}
+          "gtin": {{ product.selected_or_first_available_variant.barcode | json }},
+          {%- endif %}
+          {%- if av_facts %}
+          "additionalProperty": [
+            {%- for fact in av_facts -%}
+              { "@type": "PropertyValue", "name": {{ fact.k | json }}, "value": {{ fact.v | json }} }{% unless forloop.last %},{% endunless %}
+            {%- endfor -%}
+          ],
+          {%- endif %}
+          "offers": {
+            "@type": "Offer",
+            "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},
+            "priceCurrency": {{ cart.currency.iso_code | json }},
+            "availability": {%- if product.available %} "https://schema.org/InStock"{% else %} "https://schema.org/OutOfStock"{% endif %},
+            "url": {{ shop.url | append: product.url | json }}
+          }
+        }
+      </script>
+    {%- elsif av_facts or av_summary -%}
+      {%- comment -%}
+        Extend mode: never a second complete Product node. We add only what
+        themes almost never emit, referencing the theme's node by @id so an
+        assistant reads one product, not two.
+      {%- endcomment -%}
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "@id": {{ shop.url | append: product.url | append: '#product' | json }},
+          {%- if av_summary %}
+          "description": {{ av_summary | json }},
+          {%- endif %}
+          {%- if av_fit != blank %}
+          "audience": { "@type": "Audience", "audienceType": {{ av_fit | json }} },
+          {%- endif %}
+          {%- if av_facts %}
+          "additionalProperty": [
+            {%- for fact in av_facts -%}
+              { "@type": "PropertyValue", "name": {{ fact.k | json }}, "value": {{ fact.v | json }} }{% unless forloop.last %},{% endunless %}
+            {%- endfor -%}
+          ]
+          {%- endif %}
+        }
+      </script>
+    {%- endif -%}
+
+    {%- if block.settings.mirror -%}
+      {%- comment -%} Discovery link for the plain text mirror. {%- endcomment -%}
+      <link rel="alternate" type="text/plain"
+            href="{{ shop.url }}/apps/ai-visibility/{{ product.handle }}"
+            title="Plain text version">
+    {%- endif -%}
+  {%- endif -%}
+
+  {%- if block.settings.lift_snippets -%}
+    {%- comment -%}
+      One line, outsized effect: assistants may quote the page in full rather
+      than a truncated snippet. Ported from the WordPress module.
+    {%- endcomment -%}
+    <meta name="robots" content="max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  {%- endif -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "AI Visibility",
+  "target": "head",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable AI Visibility output",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "mode",
+      "label": "Structured data mode",
+      "info": "Extend is safe on themes that already emit a Product node. Use Full only if your theme emits none.",
+      "options": [
+        { "value": "extend", "label": "Extend the theme's Product data" },
+        { "value": "full", "label": "Emit a complete Product node" }
+      ],
+      "default": "extend"
+    },
+    {
+      "type": "checkbox",
+      "id": "mirror",
+      "label": "Link to the plain text version",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "lift_snippets",
+      "label": "Allow assistants to quote the full page",
+      "info": "Adds max-snippet:-1, so answers can cite you properly instead of a truncated line.",
+      "default": true
+    }
+  ]
+}
+{% endschema %}

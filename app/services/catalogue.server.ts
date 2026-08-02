@@ -32,8 +32,12 @@ const PRODUCTS_QUERY = `
       edges {
         node {
           id
+          handle
           title
           descriptionHtml
+          vendor
+          onlineStoreUrl
+          featuredMedia { preview { image { url } } }
           metafields(namespace: "${NAMESPACE}", first: 10) {
             edges { node { key value } }
           }
@@ -108,8 +112,11 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
     if (row.id?.includes("/Product/") && row.title !== undefined) {
       products.set(row.id, {
         id: row.id,
+        handle: row.handle,
         title: row.title,
         descriptionHtml: row.descriptionHtml,
+        vendor: row.vendor,
+        onlineStoreUrl: row.onlineStoreUrl,
         metafields: [],
       });
       continue;

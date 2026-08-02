@@ -1,5 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { Form, Link, useLoaderData, useNavigation } from "@remix-run/react";
+import { useEffect } from "react";
+import {
+  Form,
+  Link,
+  useLoaderData,
+  useNavigation,
+  useRevalidator,
+} from "@remix-run/react";
 import {
   Page,
   Card,
@@ -12,6 +19,8 @@ import {
   InlineStack,
   Banner,
   List,
+  ProgressBar,
+  Spinner,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -99,6 +108,20 @@ export default function Index() {
     | { sampled: number; none: number; wouldSkip: number; byAttr: [string, number][] }
     | undefined;
 
+  const running = lastRun?.status === "queued" || lastRun?.status === "running";
+  const total = lastRun?.total ?? 0;
+  const progress = lastRun?.progress ?? 0;
+  const percent = total > 0 ? Math.round((progress / total) * 100) : 0;
+
+  // A pass on a large catalogue takes minutes on the worker. Without visible
+  // movement people conclude nothing is happening and press the button again.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => revalidator.revalidate(), 2000);
+    return () => clearInterval(id);
+  }, [running, revalidator]);
+
   return (
     <Page title="AI Visibility">
       <BlockStack gap="400">
@@ -126,7 +149,26 @@ export default function Index() {
               </Form>
             </InlineStack>
 
-            {lastRun ? (
+            {running ? (
+              <BlockStack gap="200">
+                <InlineStack gap="200" blockAlign="center">
+                  <Spinner size="small" />
+                  <Text as="p" variant="bodyMd">
+                    {total === 0
+                      ? "Starting — reading your catalogue…"
+                      : `${percent}% — ${progress} of ${total} products`}
+                  </Text>
+                </InlineStack>
+                {total > 0 ? (
+                  <ProgressBar progress={percent} size="small" tone="primary" />
+                ) : null}
+                <Text as="p" tone="subdued" variant="bodySm">
+                  This runs on our servers. You can close this tab and come back.
+                </Text>
+              </BlockStack>
+            ) : null}
+
+            {lastRun && !running ? (
               <Banner tone={lastRun.status === "failed" ? "critical" : "info"}>
                 <BlockStack gap="100">
                   <Text as="p">

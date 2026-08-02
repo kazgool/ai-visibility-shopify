@@ -8,6 +8,37 @@ import { extractProduct, coverage, type Fact } from "../engine";
 import { adminGraphql } from "./admin.server";
 import { fetchAllProducts, fetchProduct } from "./catalogue.server";
 import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
+import { renderMirror } from "./mirror.server";
+
+/**
+ * Render and store the plain text mirror so the proxy route never has to call
+ * the Admin API (ARCHITECTURE §3).
+ */
+async function cacheMirror(
+  shopId: string,
+  domain: string,
+  product: ProductInput,
+  facts: Fact[],
+) {
+  const handle = product.handle;
+  if (!handle) return;
+
+  const body = renderMirror({
+    handle,
+    title: product.title,
+    url: product.onlineStoreUrl ?? `https://${domain}/products/${handle}`,
+    description: product.descriptionHtml ?? "",
+    facts,
+    vendor: product.vendor ?? null,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await db.mirrorCache.upsert({
+    where: { shopId_handle: { shopId, handle } },
+    create: { shopId, handle, body },
+    update: { body },
+  });
+}
 
 export async function dictionaryFor(shopId: string): Promise<string> {
   const row = await db.setting.findUnique({
@@ -46,6 +77,10 @@ export async function runBulkExtract(
   const products = await fetchAllProducts(graphql);
   const engineOptions = { extraStopwords };
 
+  // Publish the total straight away, so the progress bar has a scale before
+  // the first batch finishes.
+  if (options.onProgress) await options.onProgress(0, products.length);
+
   const report: DryRunReport = {
     ...coverage(products, dictionary, engineOptions),
     wouldSkip: 0,
@@ -68,10 +103,11 @@ export async function runBulkExtract(
       if (batch.length >= 12) {
         await writeFacts(graphql, batch.splice(0));
       }
+      await cacheMirror(shopId, shop.domain, product, facts);
     }
 
     done += 1;
-    if (options.onProgress && done % 25 === 0) {
+    if (options.onProgress && done % 10 === 0) {
       await options.onProgress(done, products.length);
     }
   }
