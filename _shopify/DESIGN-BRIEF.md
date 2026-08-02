@@ -116,7 +116,62 @@ a permanent comparison card showing what the dictionary reads today.
    real results, the dashboard with coverage, and a product page's structured
    data.
 
-## 9. Brand
+## 9. Billing screen — the brief in full
+
+Two plans, no trial, and a free tier of *seeing* rather than a free tier of
+*doing*. Design it so the merchant understands that in three seconds.
+
+**Plans**
+
+- **Standard — $29 / month**, up to 20,000 products. Everything the app does.
+- **High volume — $49 / month**, above 20,000 products. Same features,
+  priority support.
+
+Not "Pro" and not "Enterprise". The second plan is for bigger catalogues,
+not better software — the copy should say exactly that, or a merchant with
+400 products will assume they are missing features.
+
+**The free/paid split, shown as a comparison the merchant can trust**
+
+| Free, no card, no expiry | Included in a plan |
+|---|---|
+| Dictionary editor and all 20 trade presets | Attributes written to your products |
+| Test a dictionary on 40 real products | Summaries, starter questions, who-it-suits |
+| Full preview: coverage, per-attribute counts, 20 worked examples | Alt text for images |
+| Crawler visibility check | Structured data and plain text output on the storefront |
+
+There is no countdown anywhere in the interface. Nothing expires. The
+merchant runs the preview as often as they like, on their own catalogue,
+and decides with real numbers in front of them.
+
+**Copy that must appear on the screen**
+
+- The merchant's own numbers: *"You have 355 products — Standard covers
+  your catalogue."* Never an abstract "up to 20,000".
+- What happens if they cancel: *"Your extracted attributes stay in your
+  Shopify metafields and keep working, with or without this app."* This is
+  a selling point, not fine print — give it visual weight.
+- Why it is a subscription rather than a one-off: *"New products are picked
+  up automatically, alt text is written for new images, and crawler access
+  is re-checked when your theme or apps change."* Maintenance, not a
+  one-time clean-up.
+
+**States to design**
+
+1. No plan yet, preview never run — lead with the free preview, not the
+   plans. The button says "See what we would find", not "Start free trial".
+2. No plan, preview run — show the result inline next to the plans
+   ("352 of your 355 products would get comparable attributes"), then the
+   plans. This is the conversion moment; it deserves the most care.
+3. Active plan — quiet confirmation, current plan marked, no upsell noise.
+4. Over the limit on Standard — one banner with the real number and 14 days
+   of grace. Never a locked screen.
+
+**Tone**: no urgency, no scarcity, no "most popular" badge. The product's
+whole argument is that we show you the truth before you pay; the billing
+screen is where that argument is either kept or broken.
+
+## 10. Brand
 
 Ink `#201e1d`, accent `#ec3013` in product surfaces, `#FF2E4D` on the landing
 page and ad creatives. Inter. These belong on the listing, the landing page and

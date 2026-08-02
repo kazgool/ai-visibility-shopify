@@ -8,8 +8,8 @@ Build brief. Written 2 August 2026. Companion to `PRD.md` §6.
 
 | Handle | Name | Price | Limit | Trial |
 |---|---|---|---|---|
-| `standard` | Standard | $29.00 USD / month | up to 20,000 products | 7 days |
-| `high_volume` | High volume | $49.00 USD / month | above 20,000 products | 7 days |
+| `standard` | Standard | $29.00 USD / month | up to 20,000 products | none — see §4 |
+| `high_volume` | High volume | $49.00 USD / month | above 20,000 products | none — see §4 |
 
 Same features on both. The second plan exists as a fair-use valve for the
 rare large catalogue, not as a feature gate. Never describe it as "Pro" or
@@ -56,17 +56,41 @@ What we never do:
   passes." A growing merchant surprised by a broken app leaves a one-star
   review that costs more than the price difference.
 
-## 4. Trial behaviour
+## 4. No time-limited trial. The dry run is the trial.
 
-Seven days, full functionality, no card gymnastics — Shopify handles the
-card. During the trial the dashboard shows days remaining only in the last
-three days, and never as a countdown that induces panic.
+**Why no trial (decided 2 Aug 2026).** This app's value is front-loaded:
+one full pass does most of the work a catalogue will ever need. A seven-day
+trial is therefore an invitation to extract everything and cancel on day
+two — the merchant keeps the metafields, because they are genuinely theirs,
+and we are paid nothing for the work.
 
-If the trial ends without a subscription: the app keeps rendering
-storefront output from metafields already written (it costs us nothing and
-the data is the merchant's), but new passes and alt text runs are
-withheld until a plan is chosen. Say that plainly on the billing screen
-before the trial starts.
+**What replaces it, and why it is better.** The dry run is free, unlimited,
+and needs no card:
+
+| Free, forever | Requires a plan |
+|---|---|
+| Dictionary editor, all 20 trade presets | Writing attributes to metafields |
+| "Test on 40 products" with real examples | Summaries, questions, who-it-suits |
+| Full dry run: coverage, per-label counts, 20 worked examples | Alt text |
+| Crawler visibility check | The plain text mirror and JSON-LD output |
+
+The merchant sees precisely what they would get — computed from their own
+descriptions, not a demo — without receiving it. No countdown, no expiry,
+no "I never got round to testing it" churn, and nothing to free-ride on.
+
+**The remaining risk, stated honestly.** A merchant can pay for one month,
+run the pass, and cancel. That cannot be engineered away: the data lives in
+their metafields and stays theirs (PRD §4.1) — that promise is worth more
+than the churn it costs. Mitigate it with what is genuinely recurring, and
+say so on the listing rather than hiding it:
+
+- new and edited products processed automatically (three freshness layers,
+  ARCHITECTURE §4.1);
+- the dictionary refined as the catalogue grows into new categories;
+- alt text for every new image;
+- crawler checks after a theme change, a security app, or a new domain.
+
+The line for the listing: *this is maintenance, not a one-off clean-up.*
 
 ## 5. Screens
 
