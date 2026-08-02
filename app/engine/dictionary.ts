@@ -43,20 +43,22 @@ export function parseDictionary(raw: string): DictionaryGroup[] {
 }
 
 /**
- * The built-in list. Written for a bridal shop first; it is the wrong list
- * for most shops, which is why the settings screen says so out loud and
- * offers a starting point for other trades.
+ * The built-in list, used until a merchant picks a preset or writes their own.
+ *
+ * Furniture, because it is the trade with the most measurable attributes
+ * buried in prose — the case this engine was built for. It is still the wrong
+ * list for a clothing shop, which is why onboarding asks for the trade before
+ * anything else and the settings screen says so out loud.
  */
 export const DEFAULT_DICTIONARY = [
-  "Material: lace, Chantilly lace, guipure, tulle, satin, silk, crepe, organza, beads, sequins, embroidery, velvet, linen, cotton, wool",
-  "Cut: cut *, silhouette *, A-line, mermaid, ball gown, princess, fitted, straight, flared, column, empire, wrap",
-  "Length: mini, midi, short, long, maxi, knee-length, ankle-length, floor-length",
-  "Neckline: neckline *, V-neck, sweetheart, square, boat, halter, off-shoulder, one shoulder",
-  "Sleeves: sleeves *, straps *, sleeveless, strapless, detachable sleeves, puff sleeves, spaghetti straps",
-  "Back: back *, open back, lace-up, corset, buttons, hidden zip",
-  "Details: train, detachable train, fringe, appliqué, 3D flowers, beading, feathers, crystals, pearls, belt, pockets, veil, cape, slit",
-  "Colour: white, ivory, off-white, nude, champagne, blush, black, navy, grey, beige",
-  "Occasion: wedding, civil ceremony, engagement, christening, party, evening, everyday",
+  "Material: oak, walnut, beech, pine, ash, MDF, chipboard, veneer, glass, tempered glass, metal, steel, stainless steel, brass, marble, stone, rattan, leather, faux leather, fabric, velvet, linen, cotton, foam",
+  "Finish: lacquered, oiled, waxed, matt, gloss, painted, natural, distressed, brushed",
+  "Style: modern, scandinavian, industrial, classic, rustic, minimalist, vintage, retro, boho, contemporary, mid-century",
+  "Dimensions: #size",
+  "Capacity: * seats, * chairs, * drawers, * shelves, * doors, * places, * people",
+  "Features: extendable, folding, reclining, with storage, with drawers, adjustable, modular, on castors, sofa bed, stackable, mechanism *",
+  "Colour: white, black, grey, anthracite, beige, cream, natural, oak, walnut, wenge, gold, green, blue",
+  "Room: living room, bedroom, kitchen, dining room, office, hallway, bathroom, terrace, kids room",
 ].join("\n");
 
 /**

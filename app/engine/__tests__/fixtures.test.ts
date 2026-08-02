@@ -4,21 +4,36 @@
 
 import { describe, expect, it } from "vitest";
 import { extractFromText } from "../extract";
-import { DEFAULT_DICTIONARY } from "../dictionary";
+
 import { normalize, prepareText } from "../normalize";
 
 function valuesOf(facts: { k: string; v: string }[]) {
   return Object.fromEntries(facts.map((f) => [f.k, f.v]));
 }
 
-describe("Fixture A — bridal, built-in English dictionary", () => {
+// The bridal dictionary is no longer the built-in default (that is furniture
+// now), but the fixture must keep running against it: it is the WordPress
+// contract, and it exercises wildcards and subsumption better than any other.
+const BRIDAL_DICTIONARY = [
+  "Material: lace, Chantilly lace, guipure, tulle, satin, silk, crepe, organza, beads, sequins, embroidery, velvet, linen, cotton, wool",
+  "Cut: cut *, silhouette *, A-line, mermaid, ball gown, princess, fitted, straight, flared, column, empire, wrap",
+  "Length: mini, midi, short, long, maxi, knee-length, ankle-length, floor-length",
+  "Neckline: neckline *, V-neck, sweetheart, square, boat, halter, off-shoulder, one shoulder",
+  "Sleeves: sleeves *, straps *, sleeveless, strapless, detachable sleeves, puff sleeves, spaghetti straps",
+  "Back: back *, open back, lace-up, corset, buttons, hidden zip",
+  "Details: train, detachable train, fringe, appliqué, 3D flowers, beading, feathers, crystals, pearls, belt, pockets, veil, cape, slit",
+  "Colour: white, ivory, off-white, nude, champagne, blush, black, navy, grey, beige",
+  "Occasion: wedding, civil ceremony, engagement, christening, party, evening, everyday",
+].join("\n");
+
+describe("Fixture A — bridal dictionary (WordPress contract)", () => {
   const text = prepareText(
     "Lidia — short wedding dress with appliqué",
     "Price 1800 lei. A mini civil ceremony dress made entirely of Chantilly lace, with " +
       "hand-sewn 3D flowers. Fitted silhouette, spaghetti straps and a square neckline. Open back with a " +
       "lace-up corset. Ivory, with a detachable train.",
   );
-  const values = valuesOf(extractFromText(text, DEFAULT_DICTIONARY));
+  const values = valuesOf(extractFromText(text, BRIDAL_DICTIONARY));
 
   it("finds the material", () => {
     expect(values.Material).toBeDefined();
