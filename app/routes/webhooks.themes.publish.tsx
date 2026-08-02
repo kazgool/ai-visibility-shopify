@@ -25,8 +25,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const url = json.data?.products?.nodes?.[0]?.onlineStoreUrl;
   if (!url) return new Response();
 
+  const password = await db.setting.findUnique({
+    where: { shopId_key: { shopId: shopRow.id, key: "storefront_password" } },
+  });
+
   try {
-    const result = await scanThemeForProductLd(url);
+    const result = await scanThemeForProductLd(url, password?.value);
     await recordThemeScan(shopRow.id, themeId, result);
   } catch (error) {
     console.warn(`theme scan failed for ${shop}: ${String(error)}`);

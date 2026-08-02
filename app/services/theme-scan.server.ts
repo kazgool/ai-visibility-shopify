@@ -14,6 +14,8 @@ export type ThemeScanResult = {
   nodeCount: number;
   emitters: string[];
   checkedUrl: string;
+  /** The storefront answered with the password page: nothing can be read. */
+  passwordProtected?: boolean;
 };
 
 const LD_BLOCK = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -41,17 +43,51 @@ function collectNodes(parsed: any): any[] {
  */
 export async function scanThemeForProductLd(
   productUrl: string,
+  storefrontPassword?: string | null,
 ): Promise<ThemeScanResult> {
-  const res = await fetch(productUrl, {
-    headers: {
-      // Identify honestly; some merchants log user agents.
-      "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)",
-      Accept: "text/html",
-    },
-    redirect: "follow",
-  });
+  const headers: Record<string, string> = {
+    // Identify honestly; some merchants log user agents.
+    "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)",
+    Accept: "text/html",
+  };
+
+  // Development stores cannot turn password protection off, and a live store
+  // left password-protected is the first reason assistants cannot see it. If
+  // the merchant gave us the password we unlock a session for the scan; the
+  // crawler check reports the protection either way.
+  if (storefrontPassword) {
+    const origin = new URL(productUrl).origin;
+    const unlock = await fetch(`${origin}/password`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        form_type: "storefront_password",
+        utf8: "✓",
+        password: storefrontPassword,
+      }),
+      redirect: "manual",
+    });
+    const cookie = unlock.headers.get("set-cookie");
+    if (cookie) headers.Cookie = cookie.split(";")[0];
+  }
+
+  const res = await fetch(productUrl, { headers, redirect: "follow" });
 
   const html = await res.text();
+
+  // A password page is not a theme finding — say so plainly.
+  if (/name=["']password["']/i.test(html) && !/ld\+json/i.test(html)) {
+    return {
+      hasProductLd: false,
+      nodeCount: 0,
+      emitters: [],
+      checkedUrl: productUrl,
+      passwordProtected: true,
+    };
+  }
   const emitters: string[] = [];
   let nodeCount = 0;
 
