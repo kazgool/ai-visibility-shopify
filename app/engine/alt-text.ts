@@ -57,6 +57,29 @@ export function looksLikeFilename(value: string): boolean {
   return false;
 }
 
+/**
+ * Alt text no person wrote, even when it is not purely a filename.
+ *
+ * Imports and earlier tools leave descriptions with a filename embedded in
+ * the middle ("Set Masa - Photoroom_20260527_163158"), HTML entities
+ * (&amp;, &#8211;), or UUID fragments. A person typing a description
+ * produces none of those. Anything caught here is treated as replaceable -
+ * the alternative is protecting machine junk as if it were human work.
+ */
+export function looksLikeMachineAlt(value: string): boolean {
+  const v = value.trim();
+  if (v === "") return false;
+  if (looksLikeFilename(v)) return true;
+  // Encoded entities survive only when no human has looked at the text.
+  if (/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(v)) return true;
+  for (const token of v.split(/[\s,]+/)) {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(token)) return true; // UUID
+    if (/^(photoroom|img|dsc|pxl|screenshot|whatsapp)[_-]?\d/i.test(token)) return true;
+    if (/\d{8,}/.test(token)) return true; // timestamps, serials
+  }
+  return false;
+}
+
 function visualFacts(facts: Fact[]): Fact[] {
   const rank = (f: Fact) => {
     const i = VISUAL_KEYS.indexOf(f.k.toLowerCase());

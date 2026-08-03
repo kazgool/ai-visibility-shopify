@@ -8,7 +8,7 @@
 // instead of being surprised.
 
 import type { GraphqlFn } from "./admin.server";
-import { buildAltText, looksLikeFilename } from "../engine/alt-text";
+import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import type { Fact } from "../engine";
 
 const PRODUCT_MEDIA = `#graphql
@@ -63,7 +63,7 @@ export async function writeAltText(
     const existing = (item.alt ?? "").trim();
 
     // Someone wrote this. Never touch it.
-    if (existing !== "" && !looksLikeFilename(existing)) {
+    if (existing !== "" && !looksLikeMachineAlt(existing)) {
       // But if the same file already carries a description we generated for a
       // different product, that is the reuse trap — flag it, do not "fix" it.
       const owner = seenMedia.get(item.id);

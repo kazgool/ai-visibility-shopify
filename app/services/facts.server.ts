@@ -69,12 +69,22 @@ const METAFIELDS_SET = `#graphql
   }
 `;
 
+const METAFIELDS_DELETE = `#graphql
+  mutation DeleteFacts($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      userErrors { field message }
+    }
+  }
+`;
+
 export type WriteOutcome = {
   productId: string;
   written: string[];
   skipped: string[];
   /** Already identical — not written, which is what stops the feedback loop. */
   unchanged: string[];
+  /** Auto-written values whose recomputation came back empty — withdrawn. */
+  removed: string[];
 };
 
 export type FieldValue = { key: string; type: string; value: string };
@@ -90,9 +100,16 @@ export async function writeFacts(
 ): Promise<WriteOutcome[]> {
   const outcomes: WriteOutcome[] = [];
   const metafields: Record<string, unknown>[] = [];
+  const deletions: Record<string, unknown>[] = [];
 
   for (const { product, facts, fields = [] } of entries) {
-    const outcome: WriteOutcome = { productId: product.id, written: [], skipped: [], unchanged: [] };
+    const outcome: WriteOutcome = {
+      productId: product.id,
+      written: [],
+      skipped: [],
+      unchanged: [],
+      removed: [],
+    };
     const state = parseState(product);
     const now = new Date().toISOString();
 
@@ -109,7 +126,23 @@ export async function writeFacts(
         outcome.skipped.push(field.key);
         continue;
       }
-      if (field.value === "" || field.value === "[]" || field.value === "{}") continue;
+
+      const empty = field.value === "" || field.value === "[]" || field.value === "{}";
+      if (empty) {
+        // A fact that stopped being supported must be withdrawn, not merely
+        // left un-renewed. "Suits: 6 scaune" survived a semantics fix for
+        // weeks this way: the new computation was empty, so nothing was
+        // written, and the stale claim kept publishing. Only auto values are
+        // withdrawn; human text is never deleted.
+        const existing = product.metafields?.find((m) => m.key === field.key)?.value;
+        if (existing && existing !== "" && state[field.key]?.source === "auto") {
+          deletions.push({ ownerId: product.id, namespace: NAMESPACE, key: field.key });
+          delete state[field.key];
+          outcome.removed.push(field.key);
+          touched = true;
+        }
+        continue;
+      }
 
       // Writing a metafield marks the product as updated, which fires
       // products/update, which queues another extraction, which writes again.
@@ -152,6 +185,15 @@ export async function writeFacts(
     const errors = data?.metafieldsSet?.userErrors ?? [];
     if (errors.length) {
       throw new Error(`metafieldsSet: ${JSON.stringify(errors)}`);
+    }
+  }
+
+  for (let i = 0; i < deletions.length; i += 24) {
+    const slice = deletions.slice(i, i + 24);
+    const data = await graphql<any>(METAFIELDS_DELETE, { metafields: slice });
+    const errors = data?.metafieldsDelete?.userErrors ?? [];
+    if (errors.length) {
+      throw new Error(`metafieldsDelete: ${JSON.stringify(errors)}`);
     }
   }
 

@@ -17,7 +17,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { extractProduct, type Fact } from "../engine";
-import { buildAltText, looksLikeFilename } from "../engine/alt-text";
+import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 
 // The editor pattern the WordPress module got right, and the reason human work
@@ -98,7 +98,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     .filter((m: any) => m?.id)
     .map((m: any, index: number) => {
       const alt = (m.alt ?? "").trim();
-      const isFilename = alt !== "" && looksLikeFilename(alt);
+      const isFilename = alt !== "" && looksLikeMachineAlt(alt);
       return {
         id: m.id,
         url: m.image?.url ?? "",

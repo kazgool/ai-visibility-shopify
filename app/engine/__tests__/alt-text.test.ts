@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAltText, looksLikeFilename, ALT_MAX_CHARS } from "../alt-text";
+import { buildAltText, looksLikeFilename, ALT_MAX_CHARS , looksLikeMachineAlt } from "../alt-text";
 
 const facts = [
   { k: "Material", v: "lemn masiv, catifea" },
@@ -72,5 +72,29 @@ describe("buildAltText", () => {
 
   it("falls back to the title when nothing is visual", () => {
     expect(buildAltText(product, [], 0)).toBe("Coltar Chesterfield Negru");
+  });
+});
+
+describe("looksLikeMachineAlt", () => {
+  it("catches an embedded filename inside otherwise readable text", () => {
+    expect(
+      looksLikeMachineAlt("Set Masa & 6 Scaune - Negru - Photoroom_20260527_163158, stofa"),
+    ).toBe(true);
+  });
+
+  it("catches HTML entities nobody typed", () => {
+    expect(looksLikeMachineAlt("Set Masa &amp; 6 Scaune &#8211; Negru")).toBe(true);
+  });
+
+  it("catches an embedded UUID", () => {
+    expect(looksLikeMachineAlt("Masa - 596BB88F-AF51-4CB4-9437-BD76349CBC2B")).toBe(true);
+  });
+
+  it("leaves a real human description alone", () => {
+    expect(looksLikeMachineAlt("Masa ovala cu blat lucios si sase scaune negre")).toBe(false);
+  });
+
+  it("leaves our own current output alone", () => {
+    expect(looksLikeMachineAlt("Set Masa & 6 Scaune - Negru - lucios, negru, view 2")).toBe(false);
   });
 });

@@ -140,12 +140,13 @@ function ProductPanel() {
 
         {questions.length > 0 ? (
           <BlockStack gap="small">
-            <Text fontWeight="bold">
-              {questions.length === 1
-                ? "1 buyer question published"
-                : `${questions.length} buyer questions published`}
-            </Text>
-            <Text>{`${questions[0].q} ${questions[0].a}`}</Text>
+            <Text fontWeight="bold">Buyer questions</Text>
+            {questions.map((qa, i) => {
+              const line = `${qa.q} ${qa.a}`;
+              return (
+                <Text key={i}>{line.length > 90 ? `${line.slice(0, 90)}...` : line}</Text>
+              );
+            })}
           </BlockStack>
         ) : null}
 

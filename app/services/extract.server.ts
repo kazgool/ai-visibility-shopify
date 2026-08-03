@@ -48,15 +48,13 @@ function capsuleFields(
   const questions = buildQuestions(input);
   const fitFor = buildFitFor(input);
 
-  const fields: FieldValue[] = [];
-  if (summary) fields.push({ key: "summary", type: "multi_line_text_field", value: summary });
-  if (questions.length > 0) {
-    fields.push({ key: "questions", type: "json", value: JSON.stringify(questions) });
-  }
-  if (fitFor) {
-    fields.push({ key: "fit_for", type: "single_line_text_field", value: fitFor });
-  }
-  return fields;
+  // Empties are included on purpose: writeFacts uses them to withdraw a
+  // previously auto-written value that is no longer supported.
+  return [
+    { key: "summary", type: "multi_line_text_field", value: summary },
+    { key: "questions", type: "json", value: questions.length > 0 ? JSON.stringify(questions) : "" },
+    { key: "fit_for", type: "single_line_text_field", value: fitFor },
+  ];
 }
 
 
