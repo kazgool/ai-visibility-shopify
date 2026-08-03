@@ -48,3 +48,28 @@ describe("buildAnswerPreview", () => {
     expect(p.question).toContain("made of");
   });
 });
+
+describe("answer preview does not repeat itself", () => {
+  it("skips a question whose answer the summary already states", () => {
+    const p = buildAnswerPreview({
+      title: "Masa",
+      facts: [{ k: "Dimensiuni", v: "160 cm, 85 cm, 74 cm" }],
+      summary: "Masa fixa ovala. Key details: dimensiuni: 160 cm, 85 cm, 74 cm.",
+      questions: [{ q: "What are the dimensions?", a: "160 cm, 85 cm, 74 cm." }],
+    })!;
+    const occurrences = p.withApp.split("160 cm, 85 cm, 74 cm").length - 1;
+    expect(occurrences).toBe(1);
+    expect(p.sources).not.toContain("questions");
+  });
+
+  it("still adds a question that says something new", () => {
+    const p = buildAnswerPreview({
+      title: "Masa",
+      facts: [{ k: "Material", v: "stejar" }],
+      summary: "Masa din stejar masiv.",
+      questions: [{ q: "Can I return it?", a: "Yes, within 14 days." }],
+    })!;
+    expect(p.withApp).toContain("Yes, within 14 days.");
+    expect(p.sources).toContain("questions");
+  });
+});

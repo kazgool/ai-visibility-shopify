@@ -88,10 +88,16 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
   }
 
   // A published answer to a real buyer question is the strongest evidence
-  // that the page is quotable, so include one if there is one.
-  const extra = (input.questions ?? []).find(
-    (qa) => qa.a && qa.a.trim() !== "" && !qa.q.toLowerCase().includes("made of"),
-  );
+  // that the page is quotable - but only if it adds something. The summary
+  // already lists the key details, so repeating a dimension two sentences
+  // later reads like a stutter, not like richer data.
+  const said = parts.join(" ").toLowerCase();
+  const extra = (input.questions ?? []).find((qa) => {
+    if (!qa.a || qa.a.trim() === "") return false;
+    if (qa.q.toLowerCase().includes("made of")) return false;
+    const answer = qa.a.replace(/\.$/, "").trim().toLowerCase();
+    return answer !== "" && !said.includes(answer);
+  });
   if (extra) {
     parts.push(cleanOutput(extra.a.replace(/\.$/, "") + "."));
     sources.push("questions");
