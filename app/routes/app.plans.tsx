@@ -28,6 +28,7 @@ import {
   startSubscription,
 } from "../services/billing.server";
 import { extractProduct } from "../engine";
+import { cleanOutput } from "../engine/normalize";
 
 // The merchant has installed and cannot see the product working yet, so this
 // screen carries the proof itself: their own product count, and one real
@@ -67,7 +68,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     count,
     sample: sample
       ? {
-          title: sample.title as string,
+          // Imported catalogues carry HTML entities in titles (&amp; etc).
+          title: cleanOutput(sample.title as string),
           facts: extractProduct(sample, setting?.value ?? "").slice(0, 5),
         }
       : null,
@@ -118,6 +120,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     isTest,
   );
 
+  // Temporary while debugging the payment flow; visible in the dev terminal.
+  console.log("[plans] subscription result", { plan, isTest, confirmationUrl, error });
+
   if (error || !confirmationUrl) return { error: error ?? "Could not start the plan" };
 
   // App Bridge cannot render Shopify's confirmation page inside the iframe,
@@ -136,7 +141,7 @@ export default function Plans() {
     renewsAt: string | null;
   };
   const result = useActionData<typeof action>() as
-    | { codeError?: string; confirmationUrl?: string }
+    | { codeError?: string; error?: string; confirmationUrl?: string }
     | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -163,6 +168,11 @@ export default function Plans() {
       }
     >
       <BlockStack gap="500">
+        {result?.error ? (
+          <Banner tone="critical">
+            <Text as="p">{result.error}</Text>
+          </Banner>
+        ) : null}
         {comped ? (
           <Banner tone="success">
             <Text as="p">
