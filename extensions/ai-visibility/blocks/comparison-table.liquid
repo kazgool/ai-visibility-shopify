@@ -1,0 +1,114 @@
+{% comment %}
+  AI Visibility - comparison table (PRD §4.8).
+
+  An app block the merchant places on the collection template, usually under
+  the product grid. Static markup only: no JavaScript, no fetch, no external
+  requests. Everything is already in the collection metafields at render time.
+
+  The table is built from attributes that actually vary across the collection.
+  A column where every product says the same thing was dropped before it got
+  here, because a column like that looks like information and helps nobody
+  choose.
+
+  Renders nothing at all when there is nothing to compare. An empty table is
+  worse than no table.
+{% endcomment %}
+
+{%- assign av_table = collection.metafields['$app'].table.value -%}
+{%- assign av_summary = collection.metafields['$app'].summary.value -%}
+{%- assign av_criteria = collection.metafields['$app'].criteria.value -%}
+
+{%- if av_table and av_table.columns.size > 0 and av_table.rows.size > 0 -%}
+  <section class="ai-visibility-compare" style="margin: 2rem 0;">
+    {%- if block.settings.heading != blank -%}
+      <h2 style="margin-bottom: 0.5rem;">{{ block.settings.heading }}</h2>
+    {%- endif -%}
+
+    {%- if block.settings.show_summary and av_summary != blank -%}
+      <p style="margin-bottom: 1rem;">{{ av_summary }}</p>
+    {%- endif -%}
+
+    {%- if block.settings.show_criteria and av_criteria and av_criteria.size > 0 -%}
+      <ul style="margin-bottom: 1rem; padding-left: 1.25rem;">
+        {%- for item in av_criteria -%}
+          <li>{{ item }}</li>
+        {%- endfor -%}
+      </ul>
+    {%- endif -%}
+
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <caption class="visually-hidden">{{ collection.title }}: product comparison</caption>
+        <thead>
+          <tr>
+            <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid currentColor;">
+              {{ block.settings.product_column | default: 'Product' }}
+            </th>
+            {%- for column in av_table.columns -%}
+              <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid currentColor;">
+                {{ column }}
+              </th>
+            {%- endfor -%}
+          </tr>
+        </thead>
+        <tbody>
+          {%- for row in av_table.rows -%}
+            <tr>
+              <th scope="row" style="text-align: left; font-weight: 400; padding: 0.5rem; border-bottom: 1px solid rgba(128,128,128,0.3);">
+                {%- if row.handle != blank -%}
+                  <a href="{{ shop.url }}/products/{{ row.handle }}">{{ row.title }}</a>
+                {%- else -%}
+                  {{ row.title }}
+                {%- endif -%}
+              </th>
+              {%- for cell in row.cells -%}
+                <td style="padding: 0.5rem; border-bottom: 1px solid rgba(128,128,128,0.3);">
+                  {%- comment -%}
+                    A blank cell is honest: the description did not say. Filling
+                    it with a dash or a guess would be worse than the gap.
+                  {%- endcomment -%}
+                  {{ cell }}
+                </td>
+              {%- endfor -%}
+            </tr>
+          {%- endfor -%}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "AI Visibility comparison",
+  "target": "section",
+  "templates": ["collection"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Compare these products"
+    },
+    {
+      "type": "text",
+      "id": "product_column",
+      "label": "First column label",
+      "default": "Product"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_summary",
+      "label": "Show the collection summary above the table",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_criteria",
+      "label": "Show what to choose between",
+      "info": "A short list of the attributes that differ across this collection.",
+      "default": true
+    }
+  ]
+}
+{% endschema %}
