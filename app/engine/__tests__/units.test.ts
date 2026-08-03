@@ -200,3 +200,27 @@ describe("appearance qualifiers in English", () => {
     expect(facts.find((f) => f.k === "Material")?.v).toContain("oak");
   });
 });
+
+describe("appearance qualifiers after the term (English word order)", () => {
+  const dict = "Material: marble, oak, leather\nStil: contemporan";
+
+  it("does not claim marble for 'marble effect'", () => {
+    const facts = extractFromText("Worktop with a marble effect surface.", dict);
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("does not claim oak for 'oak-look flooring'", () => {
+    const facts = extractFromText("Durable oak-look flooring.", dict);
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("keeps 'oiled oak finish' as real oak", () => {
+    const facts = extractFromText("Table with an oiled oak finish.", dict);
+    expect(facts.find((f) => f.k === "Material")?.v).toBe("oak");
+  });
+
+  it("romanian 'stil contemporan' still unaffected by the after-guard", () => {
+    const facts = extractFromText("Canapea in stil contemporan.", dict);
+    expect(facts.find((f) => f.k === "Stil")?.v).toBe("contemporan");
+  });
+});

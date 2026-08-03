@@ -96,6 +96,13 @@ function prefixCapture(
 const APPEARANCE_QUALIFIER =
   /(?:aspect(?:\s+de)?|tip|imita[tț]ie(?:\s+de)?|efect(?:\s+de)?|imitation|faux|look(?:\s+of)?|effect)\s*$/iu;
 
+/**
+ * English puts the disclaimer after the noun: "marble effect", "marble-look",
+ * "oak style veneer". Same idea, opposite direction. "finish" is deliberately
+ * absent - "oiled oak finish" is a real oak finish, not an imitation.
+ */
+const APPEARANCE_QUALIFIER_AFTER = /^\s*[-\s]?\s*(?:effect|look(?:alike)?|style)\b/iu;
+
 export function extractFromText(
   text: string,
   dictionary: DictionaryGroup[] | string,
@@ -154,6 +161,8 @@ export function extractFromText(
       for (const m of text.matchAll(exact)) {
         const before = text.slice(Math.max(0, m.index! - 30), m.index!);
         if (APPEARANCE_QUALIFIER.test(before)) continue;
+        const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 20);
+        if (APPEARANCE_QUALIFIER_AFTER.test(after)) continue;
         hits.push(term);
         break;
       }
