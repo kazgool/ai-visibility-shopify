@@ -15,6 +15,7 @@ import {
 import type { FieldValue } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
+import { pingProducts } from "./indexnow.server";
 import { fetchAllProducts, fetchProduct } from "./catalogue.server";
 import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
 import { renderMirror } from "./mirror.server";
@@ -144,6 +145,20 @@ export async function runBulkExtract(
   const batch: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[] = [];
   let done = 0;
 
+  // Handle per product id, so IndexNow pings only pages that changed.
+  const handleById = new Map<string, string>();
+  const changed: string[] = [];
+
+  const flush = async () => {
+    const outcomes = await writeFacts(graphql, batch.splice(0));
+    for (const o of outcomes) {
+      if (o.written.length > 0) {
+        const handle = handleById.get(o.productId);
+        if (handle) changed.push(handle);
+      }
+    }
+  };
+
   for (const product of products) {
     const facts = extractProduct(product, dictionary, engineOptions);
 
@@ -153,10 +168,9 @@ export async function runBulkExtract(
     }
 
     if (!options.dryRun && facts.length > 0) {
+      if (product.handle) handleById.set(product.id, product.handle);
       batch.push({ product, facts, fields: capsuleFields(product, facts) });
-      if (batch.length >= 8) {
-        await writeFacts(graphql, batch.splice(0));
-      }
+      if (batch.length >= 8) await flush();
       await cacheMirror(shopId, shop.domain, product, facts);
     }
 
@@ -166,10 +180,11 @@ export async function runBulkExtract(
     }
   }
 
-  if (!options.dryRun && batch.length > 0) {
-    await writeFacts(graphql, batch);
-  }
+  if (!options.dryRun && batch.length > 0) await flush();
   if (options.onProgress) await options.onProgress(products.length, products.length);
+
+  // Best effort, after the writes: indexing is a bonus, never a failure.
+  if (!options.dryRun) await pingProducts(shopId, shop.domain, changed);
 
   return report;
 }
@@ -192,5 +207,8 @@ export async function extractOneProduct(shopId: string, productGid: string) {
     { product, facts, fields: capsuleFields(product, facts) },
   ]);
   await cacheMirror(shopId, shop.domain, product, facts);
+  if (outcome.written.length > 0 && product.handle) {
+    await pingProducts(shopId, shop.domain, [product.handle]);
+  }
   return outcome;
 }

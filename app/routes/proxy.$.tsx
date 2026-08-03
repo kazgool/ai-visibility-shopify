@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { keyFileBody } from "../services/indexnow.server";
 
 // App proxy: shop.com/apps/ai-visibility/<handle> → here.
 //
@@ -20,6 +21,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
 
   if (!session?.shop || handle === "") {
+    return new Response("Not found.\n", { status: 404, headers });
+  }
+
+  // IndexNow ownership key (PRD §4.9): served from the shop's own domain
+  // through the proxy, so no theme changes are needed. Deterministic, so
+  // this path needs no database.
+  if (handle.startsWith("indexnow-") && handle.endsWith(".txt")) {
+    const body = keyFileBody(session.shop, handle);
+    if (body) {
+      return new Response(body, {
+        status: 200,
+        headers: { ...headers, "Cache-Control": "public, max-age=86400" },
+      });
+    }
     return new Response("Not found.\n", { status: 404, headers });
   }
 

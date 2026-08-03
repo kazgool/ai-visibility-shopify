@@ -9,6 +9,7 @@ import db from "../app/db.server";
 import { extractOneProduct, runBulkExtract } from "../app/services/extract.server";
 import { adminGraphql } from "../app/services/admin.server";
 import { fetchCollections, writeCollections } from "../app/services/collections.server";
+import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
@@ -383,6 +384,13 @@ export const bulk_collections: Task = async (payload, helpers) => {
         });
       }
     }
+
+    // Ping IndexNow for collections whose pages actually changed.
+    await pingCollections(
+      shopId,
+      shop.domain,
+      outcomes.filter((o) => o.written.length > 0).map((o) => o.handle),
+    );
 
     const withTable = outcomes.filter((o) => !o.empty).length;
     if (jobRunId) {
