@@ -197,7 +197,7 @@ export default function Collections() {
                   )}
                 </InlineStack>
                 <Text as="span" tone="subdued">
-                  {row.products} products
+                  {row.products === 1 ? "1 product" : `${row.products} products`}
                 </Text>
               </InlineStack>
 
@@ -218,7 +218,7 @@ export default function Collections() {
                       <Badge key={c}>{c}</Badge>
                     ))}
                     <Text as="span" tone="subdued">
-                      {row.rows} rows
+                      {row.rows === 1 ? "1 row" : `${row.rows} rows`}
                     </Text>
                   </InlineStack>
                 </>
