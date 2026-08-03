@@ -108,6 +108,14 @@ over memory — APIs moved fast in 2025–2026.
   serving requires `fly deploy` + `npx shopify app deploy` with dev OFF
   (dev rewrites URLs back to the tunnel while running).
 - Commit early with meaningful messages. Marius pushes.
+- **Tag every deploy** (`deploy-YYYY-MM-DD-N`, annotated, message says what
+  shipped) and push with `git push --tags`. Reverting is then one line per
+  layer: code `git revert` or redeploy from the tag; Fly
+  `fly releases -a ai-visibility-all-in-one` + `fly deploy -i <old image>`;
+  extensions: Developer Dashboard - Versions - release the previous one;
+  database: Neon point-in-time restore (Console - Branches - Restore).
+  Postgres schema changes additionally need a down path thought out before
+  the migration runs, not after.
 - The Fly worker and a local `npm run worker` share the same Neon queue;
   after changing worker tasks, either `fly deploy` or run the worker
   locally, otherwise jobs sit queued for ever (the dashboard says so after
