@@ -181,3 +181,22 @@ describe("appearance qualifiers (aspect de / tip / imitatie / efect)", () => {
     expect(facts.find((f) => f.k === "Material")?.v).toContain("lemn masiv");
   });
 });
+
+describe("appearance qualifiers in English", () => {
+  const dict = "Material: marble, leather, oak, velvet";
+
+  it("does not claim leather for 'faux leather'", () => {
+    const facts = extractFromText("Upholstered in soft faux leather.", dict);
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("does not claim marble for 'marble effect' wording ('effect marble')", () => {
+    const facts = extractFromText("Tabletop with an imitation marble finish.", dict);
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("still claims oak when stated plainly", () => {
+    const facts = extractFromText("Frame made of solid oak with velvet seats.", dict);
+    expect(facts.find((f) => f.k === "Material")?.v).toContain("oak");
+  });
+});
