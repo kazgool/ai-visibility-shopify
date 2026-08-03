@@ -53,9 +53,11 @@ function valuesByLabel(products: CollectionMember[]): Map<string, string[]> {
         seen.set(label, new Set());
         order.set(label, []);
       }
-      // Values are compared case-insensitively but kept as written: the
-      // merchant's own casing is what buyers recognise.
-      const key = fact.v.toLowerCase();
+      // Values are compared case-insensitively, with whitespace and trailing
+      // punctuation normalised, but kept as written: the merchant's own
+      // casing is what buyers recognise. Without the normalisation "burete"
+      // and "burete " list as two different materials.
+      const key = fact.v.toLowerCase().replace(/\s+/g, " ").replace(/[.,;:]+$/, "").trim();
       const set = seen.get(label)!;
       if (!set.has(key)) {
         set.add(key);
@@ -180,6 +182,9 @@ export function buildCollectionSummary(input: CollectionInput): string {
 
   const labels = comparableLabels(input.products, input.maxColumns ?? 5);
   const values = valuesByLabel(input.products);
+  // Always name the values, four at a time. A merchant's catalogue repeats
+  // more than it looks: the same model appears once per variation, so what
+  // reads as twenty different sizes is often five sizes seen four times.
   const clauses = labels
     .slice(0, 3)
     .map((label) => `${label.toLowerCase()}: ${listValues(values.get(label) ?? [])}`);

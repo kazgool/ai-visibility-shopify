@@ -137,6 +137,31 @@ describe("buildCollectionCapsule", () => {
     for (const qa of capsule.questions) expect(qa.a.trim()).not.toBe("");
   });
 
+  it("counts 'burete' and 'burete ' as one material", () => {
+    const sloppy = [
+      member("a", "Canapea A", [["Material", "burete"], ["Culoare", "gri"]]),
+      member("b", "Canapea B", [["Material", "burete "], ["Culoare", "bej"]]),
+      member("c", "Canapea C", [["Material", "textil."], ["Culoare", "negru"]]),
+      member("d", "Canapea D", [["Material", "Textil"], ["Culoare", "verde"]]),
+    ];
+    const capsule = buildCollectionCapsule({ title: "Canapele", products: sloppy });
+    const materials = capsule.criteria.find((c) => c.startsWith("Material:"))!;
+    expect(materials).toBe("Material: burete, textil.");
+  });
+
+  it("lists four values and counts the rest rather than running on", () => {
+    const varied = Array.from({ length: 12 }, (_, i) =>
+      member(`p${i}`, `Canapea ${i}`, [
+        ["Dimensiuni", `${150 + i * 10} cm`],
+        ["Culoare", i % 2 === 0 ? "gri" : "bej"],
+      ]),
+    );
+    const capsule = buildCollectionCapsule({ title: "Canapele", products: varied });
+    expect(capsule.summary).toContain("150 cm");
+    expect(capsule.summary).toContain("and 8 more");
+    expect(capsule.summary).toContain("culoare: gri, bej");
+  });
+
   it("states criteria as label plus the values to choose between", () => {
     const capsule = buildCollectionCapsule({ title: "Mese", products });
     expect(capsule.criteria.some((c) => c.startsWith("Material:"))).toBe(true);
