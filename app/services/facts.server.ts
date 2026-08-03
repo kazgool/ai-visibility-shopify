@@ -65,6 +65,8 @@ export type WriteOutcome = {
   productId: string;
   written: string[];
   skipped: string[];
+  /** Already identical — not written, which is what stops the feedback loop. */
+  unchanged: string[];
 };
 
 export type FieldValue = { key: string; type: string; value: string };
@@ -82,7 +84,7 @@ export async function writeFacts(
   const metafields: Record<string, unknown>[] = [];
 
   for (const { product, facts, fields = [] } of entries) {
-    const outcome: WriteOutcome = { productId: product.id, written: [], skipped: [] };
+    const outcome: WriteOutcome = { productId: product.id, written: [], skipped: [], unchanged: [] };
     const state = parseState(product);
     const now = new Date().toISOString();
 
@@ -100,6 +102,16 @@ export async function writeFacts(
         continue;
       }
       if (field.value === "" || field.value === "[]" || field.value === "{}") continue;
+
+      // Writing a metafield marks the product as updated, which fires
+      // products/update, which queues another extraction, which writes again.
+      // Without this check the app feeds itself for ever. Identical output
+      // means there is nothing to say, so we say nothing.
+      const current = product.metafields?.find((m) => m.key === field.key)?.value;
+      if (current === field.value) {
+        outcome.unchanged.push(field.key);
+        continue;
+      }
 
       metafields.push({
         ownerId: product.id,

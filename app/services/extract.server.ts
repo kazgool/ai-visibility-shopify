@@ -179,12 +179,12 @@ export async function extractOneProduct(shopId: string, productGid: string) {
 
   const graphql = await adminGraphql(shop.domain);
   const product = await fetchProduct(graphql, productGid);
-  if (!product) return { written: [], skipped: [] };
+  if (!product) return { written: [], skipped: [], unchanged: [] };
 
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const facts = extractProduct(product, dictionary, { extraStopwords });
-  if (facts.length === 0) return { written: [], skipped: [] };
+  if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
   const [outcome] = await writeFacts(graphql, [
     { product, facts, fields: capsuleFields(product, facts) },

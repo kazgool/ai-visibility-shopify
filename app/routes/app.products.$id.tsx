@@ -215,7 +215,20 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 
 export default function ProductEditor() {
   const { product, images, storedFacts, autoFacts, source, updatedAt } =
-    useLoaderData<typeof loader>() as any;
+    useLoaderData<typeof loader>() as {
+      product: { id: string; title: string; image: string | null };
+      images: {
+        id: string;
+        url: string;
+        alt: string;
+        source: string;
+        suggestion: string;
+      }[];
+      storedFacts: Fact[];
+      autoFacts: Fact[];
+      source: string | null;
+      updatedAt: string | null;
+    };
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
