@@ -513,6 +513,15 @@ export default function Dashboard() {
                     </Button>
                   </Form>
                 </InlineStack>
+                {altReport && lastAlt?.status === "done" ? (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    {`Last pass: ${lastAlt.total ?? "all"} products checked, ${
+                      altReport.written
+                    } ${altReport.written === 1 ? "description" : "descriptions"} written, ${
+                      altReport.keptHuman
+                    } left as a person wrote them.`}
+                  </Text>
+                ) : null}
                 {altReport?.shared?.length ? (
                   <Banner tone="warning">
                     {altReport.shared.length} images are used by more than one
