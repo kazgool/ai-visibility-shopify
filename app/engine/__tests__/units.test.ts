@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { parseDictionary } from "../dictionary";
-import { normalize, prepareText, diacriticPattern } from "../normalize";
+import { normalize, prepareText, diacriticPattern, cleanOutput } from "../normalize";
 import { measurements } from "../measurements";
 import { counted } from "../counts";
 import { trimPhrase, isUsablePhrase, looksLikeIdentifier } from "../phrase";
@@ -222,5 +222,11 @@ describe("appearance qualifiers after the term (English word order)", () => {
   it("romanian 'stil contemporan' still unaffected by the after-guard", () => {
     const facts = extractFromText("Canapea in stil contemporan.", dict);
     expect(facts.find((f) => f.k === "Stil")?.v).toBe("contemporan");
+  });
+});
+
+describe("cleanOutput symbol policy", () => {
+  it("turns the multiplication sign into a plain x", () => {
+    expect(cleanOutput("280 × 280 cm")).toBe("280 x 280 cm");
   });
 });

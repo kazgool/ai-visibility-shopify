@@ -47,6 +47,7 @@ export function stripTags(input: string): string {
 export function cleanOutput(input: string): string {
   return decodeEntities(String(input ?? ""))
     .replace(/[–—]/g, "-")
+    .replace(/×/g, "x")
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/…/g, "...")
