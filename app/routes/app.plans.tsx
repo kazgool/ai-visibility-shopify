@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useNavigation } from "@remix-run/react";
+import { useState } from "react";
+import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -12,12 +13,17 @@ import {
   Banner,
   List,
   Box,
+  TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { redirect } from "@remix-run/node";
 import {
   PLANS,
   activeSubscription,
+  checkMasterKey,
+  grantComp,
+  isComped,
   planFromName,
   startSubscription,
   type PlanHandle,
@@ -55,8 +61,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
 
   const subscription = await activeSubscription(admin.graphql);
+  const comped = await isComped(session.shop, shop?.id);
 
   return {
+    comped,
     count,
     sample: sample
       ? {
@@ -72,6 +80,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
+
+  // Access code: opens the gate for this shop without a Shopify subscription.
+  // Deliberately quiet in the interface; the key itself lives in fly secrets.
+  if (form.get("intent") === "code") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return { error: "Shop not found" };
+
+    if (!checkMasterKey(String(form.get("code") ?? ""))) {
+      return { codeError: "That code is not valid." };
+    }
+    await grantComp(shop.id, `code:${new Date().toISOString()}`);
+    throw redirect("/app");
+  }
+
   const plan = String(form.get("plan")) as PlanHandle;
   if (!PLANS[plan]) return { error: "Unknown plan" };
 
@@ -104,14 +126,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Plans() {
-  const { count, sample, currentPlan, renewsAt } = useLoaderData<typeof loader>() as {
+  const { comped, count, sample, currentPlan, renewsAt } = useLoaderData<
+    typeof loader
+  >() as {
+    comped: boolean;
     count: number;
     sample: { title: string; facts: { k: string; v: string }[] } | null;
     currentPlan: PlanHandle | null;
     renewsAt: string | null;
   };
+  const result = useActionData<typeof action>() as { codeError?: string } | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  const [showCode, setShowCode] = useState(Boolean(result?.codeError));
 
   const suggested: PlanHandle = count > 20000 ? "high_volume" : "standard";
 
@@ -125,6 +152,15 @@ export default function Plans() {
       }
     >
       <BlockStack gap="500">
+        {comped ? (
+          <Banner tone="success">
+            <Text as="p">
+              This store has been given access. No subscription is needed and
+              nothing will be charged.
+            </Text>
+          </Banner>
+        ) : null}
+
         {currentPlan ? (
           <Banner tone="success">
             <Text as="p">
@@ -251,6 +287,37 @@ export default function Plans() {
             </Text>
           </BlockStack>
         </Card>
+
+        {!comped && !currentPlan ? (
+          <Box paddingBlockStart="200">
+            {showCode ? (
+              <Card>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="code" />
+                  <BlockStack gap="300">
+                    <TextField
+                      label="Access code"
+                      name="code"
+                      autoComplete="off"
+                      error={result?.codeError}
+                      helpText="If you were given a code, enter it here."
+                    />
+                    <InlineStack gap="200">
+                      <Button submit variant="primary" loading={busy}>
+                        Apply code
+                      </Button>
+                      <Button onClick={() => setShowCode(false)}>Cancel</Button>
+                    </InlineStack>
+                  </BlockStack>
+                </Form>
+              </Card>
+            ) : (
+              <Button variant="plain" onClick={() => setShowCode(true)}>
+                Have an access code?
+              </Button>
+            )}
+          </Box>
+        ) : null}
       </BlockStack>
     </Page>
   );

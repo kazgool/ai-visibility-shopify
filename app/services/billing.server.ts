@@ -4,8 +4,8 @@
 // every check: a locally cached plan is a bug waiting to happen when a
 // merchant cancels from their admin.
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import db from "../db.server";
-import type { GraphqlFn } from "./admin.server";
 
 export type PlanHandle = "standard" | "high_volume";
 
@@ -26,6 +26,56 @@ export const PLANS: Record<
     blurb: "The same features for larger catalogues, with priority support.",
   },
 };
+
+/**
+ * Comped access, for our own stores, agencies and anyone we choose to give the
+ * app to. Two mechanisms, both outside Shopify's billing:
+ *
+ *  - MASTER_KEY: a secret typed once into the plans screen. Opens the gate for
+ *    that shop permanently, no deploy needed.
+ *  - FREE_SHOPS: a comma-separated allowlist of shop domains, for shops we
+ *    want open without anyone typing anything.
+ *
+ * The key is never displayed anywhere in the interface and lives only in
+ * `fly secrets`. Comparison is constant time, so the endpoint cannot be used
+ * to guess it character by character.
+ */
+export function checkMasterKey(candidate: string): boolean {
+  const expected = process.env.MASTER_KEY ?? "";
+  if (expected === "" || candidate === "") return false;
+
+  const a = createHash("sha256").update(candidate.trim()).digest();
+  const b = createHash("sha256").update(expected.trim()).digest();
+  return timingSafeEqual(a, b);
+}
+
+function allowlisted(shopDomain: string): boolean {
+  return (process.env.FREE_SHOPS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(shopDomain.toLowerCase());
+}
+
+const COMP_KEY = "comped";
+
+export async function grantComp(shopId: string, reason: string) {
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: COMP_KEY } },
+    create: { shopId, key: COMP_KEY, value: reason },
+    update: { value: reason },
+  });
+}
+
+/** Does this shop have access without a Shopify subscription? */
+export async function isComped(shopDomain: string, shopId?: string): Promise<boolean> {
+  if (allowlisted(shopDomain)) return true;
+  if (!shopId) return false;
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: COMP_KEY } },
+  });
+  return Boolean(row?.value);
+}
 
 const ACTIVE_SUBSCRIPTIONS = `#graphql
   query ActiveSubscriptions {
@@ -94,6 +144,13 @@ export async function startSubscription(
   plan: PlanHandle,
   returnUrl: string,
   isTestStore: boolean,
+  /**
+   * Optional years of 100% discount (BILLING-SPEC). Unlike a comp, this goes
+   * through Shopify: the subscription is real and shows as $0 on the
+   * merchant's invoice, then bills normally when the discount runs out. Use it
+   * for "first year free", not for permanent access.
+   */
+  freeYears = 0,
 ): Promise<{ confirmationUrl?: string; error?: string }> {
   const details = PLANS[plan];
 
@@ -108,6 +165,14 @@ export async function startSubscription(
             appRecurringPricingDetails: {
               interval: "ANNUAL",
               price: { amount: details.amount, currencyCode: "USD" },
+              ...(freeYears > 0
+                ? {
+                    discount: {
+                      durationLimitInIntervals: freeYears,
+                      value: { percentage: 1.0 },
+                    },
+                  }
+                : {}),
             },
           },
         },

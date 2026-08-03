@@ -129,6 +129,28 @@ product limit is genuinely crossed. Nothing about renewal: Shopify handles
 that, and a countdown on our screen would only create anxiety we cannot
 resolve.
 
+## 5.1 Comped access (our own stores, agencies, gifts)
+
+Three ways to give the app away, in order of preference:
+
+1. **Access code (`MASTER_KEY`).** A quiet "Have an access code?" link on the
+   plans screen reveals one field. A correct code marks the shop comped in
+   `Setting("comped")` and opens the gate permanently — no deploy, no
+   Shopify involvement. The key lives only in `fly secrets`, is never shown
+   anywhere in the interface, and is compared in constant time so the field
+   cannot be used to guess it. Rotate by changing the secret; existing
+   comps survive because they are recorded per shop.
+2. **`FREE_SHOPS` allowlist.** Comma-separated shop domains in the
+   environment, for stores that should be open without anyone typing
+   anything. Ours, mainly.
+3. **100% discount through Shopify** (`startSubscription(..., freeYears)`).
+   A real subscription that bills $0 for N years, then charges normally.
+   Use this for "first year free" on a merchant we expect to keep — it
+   shows correctly on their Shopify invoice and needs no mechanism of ours.
+
+A comped shop skips the Shopify subscription check entirely; the plans
+screen says so plainly rather than pretending a plan exists.
+
 ## 6. Data model
 
 `Shop.plan` holds the handle (`none` | `standard` | `high_volume`), plus
