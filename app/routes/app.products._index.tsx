@@ -1,4 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { useState } from "react";
 import { Link, useLoaderData, useSearchParams, useNavigation } from "@remix-run/react";
 import {
   Page,
@@ -13,6 +14,8 @@ import {
   Button,
   Banner,
   Pagination,
+  TextField,
+  Select,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
@@ -22,6 +25,14 @@ import { cleanOutput } from "../engine";
 // those numbers are made of, one row each, with filters for the three
 // questions a merchant actually asks: what is missing, what did I edit, and
 // where is alt text still absent.
+
+const COLLECTIONS = `#graphql
+  query CollectionsForFilter {
+    collections(first: 50, sortKey: TITLE) {
+      nodes { id title handle productsCount { count } }
+    }
+  }
+`;
 
 const PRODUCTS = `#graphql
   query ProductsOverview($cursor: String, $before: String, $query: String) {
@@ -71,12 +82,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cursor = url.searchParams.get("after");
   const before = url.searchParams.get("before");
   const filter = url.searchParams.get("filter") ?? "all";
+  const search = (url.searchParams.get("q") ?? "").trim();
+  const collection = url.searchParams.get("collection") ?? "";
 
-  const res = await admin.graphql(PRODUCTS, {
-    variables: { cursor, before, query: null },
-  });
+  // Search and collection are handled by Shopify, not by us: filtering a
+  // page of 25 in the browser would be a lie at 2,000 products, where the
+  // match is usually on a page you never loaded.
+  const clauses: string[] = [];
+  if (search !== "") {
+    const escaped = search.replace(/["\\]/g, "");
+    clauses.push(`(title:*${escaped}* OR sku:*${escaped}* OR vendor:*${escaped}*)`);
+  }
+  if (collection !== "") clauses.push(`collection_id:${collection}`);
+  const query = clauses.length > 0 ? clauses.join(" AND ") : null;
+
+  const [res, colRes] = await Promise.all([
+    admin.graphql(PRODUCTS, { variables: { cursor, before, query } }),
+    admin.graphql(COLLECTIONS),
+  ]);
   const json = await res.json();
   const page = json.data?.products;
+  const colJson = await colRes.json();
+  const collections = (colJson.data?.collections?.nodes ?? []).map((c: any) => ({
+    id: String(c.id).split("/").pop(),
+    title: cleanOutput(c.title),
+    count: c.productsCount?.count ?? 0,
+  }));
 
   const rows: Row[] = (page?.nodes ?? []).map((p: any) => {
     const mf = new Map<string, string>(
@@ -120,6 +151,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     rows: filtered,
     total: rows.length,
     filter,
+    search,
+    collection,
+    collections,
     pageInfo: page?.pageInfo ?? null,
   };
 };
@@ -132,12 +166,17 @@ const FILTERS = [
 ];
 
 export default function ProductsOverview() {
-  const { rows, total, filter, pageInfo } = useLoaderData<typeof loader>() as {
-    rows: Row[];
-    total: number;
-    filter: string;
-    pageInfo: any;
-  };
+  const { rows, total, filter, search, collection, collections, pageInfo } =
+    useLoaderData<typeof loader>() as {
+      rows: Row[];
+      total: number;
+      filter: string;
+      search: string;
+      collection: string;
+      collections: { id: string; title: string; count: number }[];
+      pageInfo: any;
+    };
+  const [term, setTerm] = useState(search);
   const [params, setParams] = useSearchParams();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -147,6 +186,19 @@ export default function ProductsOverview() {
     if (key === "all") next.delete("filter");
     else next.set("filter", key);
     // A filter applies to the whole catalogue, so paging starts again.
+    next.delete("after");
+    next.delete("before");
+    setParams(next);
+  };
+
+  const apply = (changes: Record<string, string>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    // Any change of scope restarts paging: a cursor from the old result set
+    // means nothing in the new one.
     next.delete("after");
     next.delete("before");
     setParams(next);
@@ -166,6 +218,45 @@ export default function ProductsOverview() {
       subtitle="What the app has published for each product, and what it has not."
     >
       <BlockStack gap="400">
+        <Card>
+          <InlineStack gap="300" wrap blockAlign="end">
+            <div style={{ flexGrow: 1, minWidth: 260 }}>
+              <TextField
+                label="Search"
+                labelHidden
+                placeholder="Search by title, SKU or vendor"
+                value={term}
+                onChange={setTerm}
+                onBlur={() => apply({ q: term })}
+                autoComplete="off"
+                clearButton
+                onClearButtonClick={() => {
+                  setTerm("");
+                  apply({ q: "" });
+                }}
+              />
+            </div>
+            <div style={{ minWidth: 240 }}>
+              <Select
+                label="Collection"
+                labelHidden
+                options={[
+                  { label: "All collections", value: "" },
+                  ...collections.map((c) => ({
+                    label: `${c.title} (${c.count})`,
+                    value: c.id,
+                  })),
+                ]}
+                value={collection}
+                onChange={(v) => apply({ collection: v })}
+              />
+            </div>
+            <Button onClick={() => apply({ q: term })} loading={busy}>
+              Search
+            </Button>
+          </InlineStack>
+        </Card>
+
         <InlineStack gap="200" wrap>
           {FILTERS.map((f) => (
             <Button
