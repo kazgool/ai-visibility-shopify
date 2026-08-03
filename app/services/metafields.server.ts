@@ -63,15 +63,23 @@ const VARIANT_DEFINITIONS = [
   { key: "state", type: "json", name: "AI Visibility state" },
 ] as const;
 
+// One shop-level record: the commercial answers (delivery, returns,
+// warranty, payment). Public read so the theme block can render shipping
+// and return schema without our app in the request path.
+const SHOP_DEFINITIONS = [
+  { key: "business", type: "json", name: "Business info" },
+] as const;
+
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
   await ensureFor(graphql, "PRODUCT", DEFINITIONS);
   await ensureFor(graphql, "COLLECTION", COLLECTION_DEFINITIONS);
   await ensureFor(graphql, "PRODUCTVARIANT", VARIANT_DEFINITIONS);
+  await ensureFor(graphql, "SHOP", SHOP_DEFINITIONS);
 }
 
 async function ensureFor(
   graphql: AdminGraphql,
-  ownerType: "PRODUCT" | "COLLECTION" | "PRODUCTVARIANT",
+  ownerType: "PRODUCT" | "COLLECTION" | "PRODUCTVARIANT" | "SHOP",
   definitions: readonly { key: string; type: string; name: string }[],
 ) {
   const existingRes = await graphql(EXISTING, { variables: { ownerType } });

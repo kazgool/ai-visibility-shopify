@@ -12,6 +12,28 @@
 import type { Fact } from "./extract";
 import { stripTags, cleanOutput } from "./normalize";
 
+/**
+ * Shop-level commercial answers, set once by the merchant (WP 1.6.7 port).
+ * Every field is optional and a question is only asked when its answer is
+ * real - a policy nobody filled in produces nothing, never a placeholder.
+ */
+export type BusinessInfo = {
+  /** e.g. "2-4 working days". Left empty when it varies by product. */
+  deliveryTime?: string;
+  /** e.g. "25 RON" or "free over 500 RON". */
+  deliveryCost?: string;
+  /** The stated cost is a starting price ("From 25 RON"). */
+  deliveryCostIsFrom?: boolean;
+  /** Bulky and small items ship differently; no single time is published. */
+  deliveryVaries?: boolean;
+  /** Return window in days, e.g. 14. */
+  returnDays?: number;
+  /** e.g. "24 months". */
+  warranty?: string;
+  /** e.g. "card, bank transfer, cash on delivery". */
+  paymentMethods?: string;
+};
+
 export type CapsuleInput = {
   title: string;
   descriptionHtml?: string | null;
@@ -22,6 +44,7 @@ export type CapsuleInput = {
   vendor?: string | null;
   productType?: string | null;
   maxWords?: number;
+  business?: BusinessInfo | null;
 };
 
 /** Labels that describe what a thing *is*, in the order they read naturally. */
@@ -162,7 +185,43 @@ export function buildQuestions(input: CapsuleInput): QA[] {
     });
   }
 
-  return out.slice(0, 5);
+  // Commercial questions (WP 1.6.7/1.6.9 port). Everything here is a product
+  // for sale, so the 1.6.9 "only about things you actually sell" rule is
+  // satisfied by construction. Each question exists only when the merchant
+  // stated the answer.
+  const b = input.business;
+  if (b) {
+    if (b.deliveryTime && !b.deliveryVaries) {
+      out.push({
+        q: `How long does delivery take for ${input.title}?`,
+        a: cleanOutput(
+          b.deliveryCost
+            ? `${b.deliveryTime}. Delivery costs ${b.deliveryCostIsFrom ? "from " : ""}${b.deliveryCost}.`
+            : `${b.deliveryTime}.`,
+        ),
+      });
+    }
+    if (typeof b.returnDays === "number" && b.returnDays > 0) {
+      out.push({
+        q: `Can I return ${input.title}?`,
+        a: `Yes, within ${b.returnDays} days.`,
+      });
+    }
+    if (b.warranty) {
+      out.push({
+        q: `What warranty does ${input.title} have?`,
+        a: cleanOutput(`${b.warranty}.`),
+      });
+    }
+    if (b.paymentMethods) {
+      out.push({
+        q: "How can I pay?",
+        a: cleanOutput(`${b.paymentMethods}.`),
+      });
+    }
+  }
+
+  return out.slice(0, 8);
 }
 
 /**

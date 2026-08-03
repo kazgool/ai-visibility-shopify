@@ -20,12 +20,18 @@ import { pingProducts } from "./indexnow.server";
 import { fetchAllProducts, fetchProduct } from "./catalogue.server";
 import { mayWrite, writeFacts, writeVariantFacts, type ProductInput } from "./facts.server";
 import { renderMirror } from "./mirror.server";
+import { businessFor } from "./business.server";
+import type { BusinessInfo } from "../engine";
 
 /**
  * The three companion fields, built from the same facts. Each is written only
  * if it has something honest to say — an empty capsule is worse than none.
  */
-function capsuleFields(product: ProductInput, facts: Fact[]): FieldValue[] {
+function capsuleFields(
+  product: ProductInput,
+  facts: Fact[],
+  business: BusinessInfo | null = null,
+): FieldValue[] {
   const input = {
     title: product.title,
     descriptionHtml: product.descriptionHtml,
@@ -35,6 +41,7 @@ function capsuleFields(product: ProductInput, facts: Fact[]): FieldValue[] {
     available: product.available,
     vendor: product.vendor ?? null,
     productType: product.productType ?? null,
+    business,
   };
 
   const summary = buildSummary(input);
@@ -129,6 +136,7 @@ export async function runBulkExtract(
   const graphql = await adminGraphql(shop.domain);
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
+  const business = await businessFor(shopId);
 
   const products = await fetchAllProducts(graphql);
   const engineOptions = { extraStopwords };
@@ -177,7 +185,7 @@ export async function runBulkExtract(
         batch.push({
           product,
           facts: split.productFacts,
-          fields: capsuleFields(product, split.productFacts),
+          fields: capsuleFields(product, split.productFacts, business),
         });
         if (batch.length >= 8) await flush();
       }
@@ -220,6 +228,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
 
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
+  const business = await businessFor(shopId);
   const facts = extractProduct(product, dictionary, { extraStopwords });
   if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
@@ -237,7 +246,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   if (split.productFacts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
   const [outcome] = await writeFacts(graphql, [
-    { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts) },
+    { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts, business) },
   ]);
   await cacheMirror(shopId, shop.domain, product, split.productFacts);
   if (outcome.written.length > 0 && product.handle) {

@@ -16,6 +16,14 @@
   {%- assign av_facts = product.metafields['$app'].facts.value -%}
   {%- assign av_summary = product.metafields['$app'].summary.value -%}
   {%- assign av_fit = product.metafields['$app'].fit_for.value -%}
+  {%- assign av_business = shop.metafields['$app'].business.value -%}
+  {%- comment -%}
+    Ratings come from review apps' semi-standard metafields (Judge.me and
+    others write reviews.rating / reviews.rating_count). Published only when
+    real reviews exist - a shop without reviews gets no rating markup at all.
+  {%- endcomment -%}
+  {%- assign av_rating = product.metafields.reviews.rating.value -%}
+  {%- assign av_rating_count = product.metafields.reviews.rating_count.value | default: 0 -%}
 
   {%- if template.name == 'product' and product -%}
     {%- if block.settings.mode == 'full' -%}
@@ -50,13 +58,49 @@
             {%- endfor -%}
           ],
           {%- endif %}
+          {%- if av_rating and av_rating_count > 0 %}
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": {{ av_rating.value | default: av_rating | json }},
+            "reviewCount": {{ av_rating_count | json }}
+          },
+          {%- endif %}
+          {%- if product.price_varies %}
+          {%- comment -%}
+            A variable product publishes its real span, not one figure that
+            is wrong for every variant but one (WP 1.6.7).
+          {%- endcomment -%}
+          "offers": {
+            "@type": "AggregateOffer",
+            "lowPrice": {{ product.price_min | divided_by: 100.0 | json }},
+            "highPrice": {{ product.price_max | divided_by: 100.0 | json }},
+            "priceCurrency": {{ cart.currency.iso_code | json }},
+            "offerCount": {{ product.variants.size | json }},
+            "availability": {%- if product.available %} "https://schema.org/InStock"{% else %} "https://schema.org/OutOfStock"{% endif %},
+            "url": {{ shop.url | append: product.url | json }}
+          }
+          {%- else %}
           "offers": {
             "@type": "Offer",
             "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},
             "priceCurrency": {{ cart.currency.iso_code | json }},
             "availability": {%- if product.available %} "https://schema.org/InStock"{% else %} "https://schema.org/OutOfStock"{% endif %},
+            {%- if av_business.deliveryTime != blank and av_business.deliveryVaries != true %}
+            "shippingDetails": {
+              "@type": "OfferShippingDetails",
+              "deliveryTime": { "@type": "ShippingDeliveryTime", "transitTimeLabel": {{ av_business.deliveryTime | json }} }
+            },
+            {%- endif %}
+            {%- if av_business.returnDays %}
+            "hasMerchantReturnPolicy": {
+              "@type": "MerchantReturnPolicy",
+              "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+              "merchantReturnDays": {{ av_business.returnDays | json }}
+            },
+            {%- endif %}
             "url": {{ shop.url | append: product.url | json }}
           }
+          {%- endif %}
         }
       </script>
     {%- elsif av_facts or av_summary -%}

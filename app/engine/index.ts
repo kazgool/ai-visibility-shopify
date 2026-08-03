@@ -22,6 +22,7 @@ export {
   buildQuestions,
   buildFitFor,
   type CapsuleInput,
+  type BusinessInfo,
   type QA,
 } from "./summary";
 export {
