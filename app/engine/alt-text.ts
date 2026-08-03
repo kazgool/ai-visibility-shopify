@@ -11,7 +11,7 @@
 //  - Gallery images get distinct text, so image three does not repeat image one.
 
 import type { Fact } from "./extract";
-import { decodeEntities } from "./normalize";
+import { cleanOutput } from "./normalize";
 import { looksLikeIdentifier } from "./phrase";
 
 export const ALT_MAX_CHARS = 125;
@@ -67,9 +67,9 @@ function visualFacts(facts: Fact[]): Fact[] {
 
 function truncate(text: string, max = ALT_MAX_CHARS): string {
   if (text.length <= max) return text;
-  const cut = text.slice(0, max - 1);
+  const cut = text.slice(0, max - 3);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim()}...`;
 }
 
 /**
@@ -81,7 +81,7 @@ export function buildAltText(
   position = 0,
 ): string {
   const visual = visualFacts(facts);
-  const base = decodeEntities(product.title).replace(/\s+/g, " ").trim();
+  const base = cleanOutput(product.title);
 
   if (visual.length === 0) {
     return truncate(position === 0 ? base : `${base}, view ${position + 1}`);
@@ -99,5 +99,5 @@ export function buildAltText(
 
   const detail = descriptors.join(", ");
   const suffix = position === 0 ? "" : `, view ${position + 1}`;
-  return truncate(detail ? `${base} — ${detail}${suffix}` : `${base}${suffix}`);
+  return truncate(detail ? `${base} - ${detail}${suffix}` : `${base}${suffix}`);
 }

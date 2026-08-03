@@ -142,7 +142,7 @@ export default function Diagnostics() {
                   </List>
                   <Text as="p">
                     robots.txt lives in your theme as robots.txt.liquid. We can
-                    generate the rules for you to paste — no app can rewrite that
+                    generate the rules for you to paste - no app can rewrite that
                     file on your behalf.
                   </Text>
                 </Banner>
@@ -194,7 +194,7 @@ export default function Diagnostics() {
             </Text>
             <Text as="p">
               Every product with attributes is also served as plain text at{" "}
-              <code>https://{domain}/apps/ai-visibility/&lt;handle&gt;</code> — a
+              <code>https://{domain}/apps/ai-visibility/&lt;handle&gt;</code> - a
               version a crawler can read without executing anything.
             </Text>
           </BlockStack>

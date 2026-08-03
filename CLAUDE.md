@@ -74,6 +74,12 @@ over memory — APIs moved fast in 2025–2026.
   the port has drifted — fix the code, never the fixture.
 - **Product UI is English only.** Only dictionary *terms* are in the
   merchant's language.
+- **Plain characters only in every text the app shows or writes.** No em
+  or en dashes (use "-" or ";"), no HTML entities (`&#038;` becomes `&`),
+  no curly quotes, no ellipsis character (use "..."). Every published
+  string goes through `cleanOutput()` in `app/engine/normalize.ts`; new
+  writers must use it too. Imported catalogues are full of entities, and
+  a screen reader spelling out `&#8211;` is the failure this prevents.
 - **No trial, no free tier.** $99/year (≤20k products), $149/year above.
   Do not add trials, coupons, or gating beyond the single entry gate.
 - **Secrets never enter the repo.** `.env` locally, `fly secrets` in prod.

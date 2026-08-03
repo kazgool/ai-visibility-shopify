@@ -416,7 +416,7 @@ export default function ProductEditor() {
               For comparison: what the dictionary reads from this description
             </Text>
             <Text as="p" tone="subdued">
-              This never changes when you edit above — it is the automatic
+              This never changes when you edit above - it is the automatic
               reading, kept so you can see what you are overriding.
             </Text>
             {autoFacts.length === 0 ? (

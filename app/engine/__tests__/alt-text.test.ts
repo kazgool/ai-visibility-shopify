@@ -34,7 +34,7 @@ describe("imported catalogues", () => {
       [],
       0,
     );
-    expect(alt).toBe("Set Masa & 6 Scaune – Beige");
+    expect(alt).toBe("Set Masa & 6 Scaune - Beige");
     expect(alt).not.toContain("&#");
   });
 

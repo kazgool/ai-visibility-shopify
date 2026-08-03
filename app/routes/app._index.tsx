@@ -31,7 +31,7 @@ import db from "../db.server";
 import { enqueue } from "../services/queue.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
-// in one glance — how much is covered, what is protected, what is left to do —
+// in one glance - how much is covered, what is protected, what is left to do -
 // and reach every action from the same screen.
 
 const PRODUCTS = `#graphql
@@ -117,8 +117,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return { ok: false };
 
   // A merchant who thinks nothing is happening presses the button again.
-  // Progress itself is safe — it lives in the database, so refreshing or
-  // closing the tab loses nothing — but a second job would double the API
+  // Progress itself is safe - it lives in the database, so refreshing or
+  // closing the tab loses nothing - but a second job would double the API
   // calls and muddle the report. One at a time.
   const active = await db.jobRun.findFirst({
     where: { shopId: shop.id, status: { in: ["queued", "running"] } },
@@ -175,7 +175,7 @@ const CAUSE_SHORT: Record<string, string> = {
   redirect_loop: "Lost in redirects",
   robots_disallow: "Disallowed in robots.txt",
   server_error: "Store returned an error",
-  unreachable: "No response — not the same as blocked",
+  unreachable: "No response - not the same as blocked",
   unknown: "Unclear response",
 };
 
@@ -301,7 +301,7 @@ export default function Dashboard() {
         {stalled ? (
           <Banner tone="warning" title="This job has not moved in three minutes">
             <Text as="p">
-              The background worker may be down. Nothing is lost — the job
+              The background worker may be down. Nothing is lost - the job
               stays queued and runs as soon as the worker is back. Refresh to
               check again.
             </Text>
@@ -320,11 +320,11 @@ export default function Dashboard() {
                   <Text as="p" variant="bodySm" tone="subdued">
                     {total === 0
                       ? "Starting up…"
-                      : `${percent}% — ${progress} of ${total} products.`}
+                      : `${percent}% - ${progress} of ${total} products.`}
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
                     This runs on our servers. Close the tab, refresh, come back
-                    tomorrow — the progress is saved, not in this window.
+                    tomorrow - the progress is saved, not in this window.
                   </Text>
                 </BlockStack>
               </InlineStack>
@@ -337,18 +337,18 @@ export default function Dashboard() {
           <Metric label="Products" value={String(totalProducts)} hint="in this catalogue" />
           <Metric
             label="Coverage"
-            value={report ? `${coverage}%` : "—"}
+            value={report ? `${coverage}%` : "-"}
             hint={report ? `${covered} produce attributes` : "run a check to find out"}
             tone={report && coverage >= 80 ? "success" : undefined}
           />
           <Metric
             label="Protected"
-            value={report ? String(report.wouldSkip) : "—"}
+            value={report ? String(report.wouldSkip) : "-"}
             hint="written by a person, never overwritten"
           />
           <Metric
             label="Alt text"
-            value={altReport ? String(altReport.written) : "—"}
+            value={altReport ? String(altReport.written) : "-"}
             hint={altReport ? `${altReport.keptHuman} left as written` : "not run yet"}
           />
         </InlineGrid>
@@ -492,7 +492,7 @@ export default function Dashboard() {
                     Describe your images
                   </Text>
                   <Text as="p" tone="subdued">
-                    Short, specific alt text built from the attributes — never a
+                    Short, specific alt text built from the attributes - never a
                     keyword dump, never over a description someone wrote.
                   </Text>
                 </BlockStack>
@@ -591,7 +591,7 @@ export default function Dashboard() {
                     <Badge tone="success">{`${factCount(p)}`}</Badge>
                   ) : (
                     <Text as="span" tone="subdued">
-                      —
+                      -
                     </Text>
                   )}
                 </IndexTable.Cell>

@@ -10,7 +10,7 @@
 // answer is "Model X, 3000 RON". So commercials go in the capsule text.
 
 import type { Fact } from "./extract";
-import { stripTags } from "./normalize";
+import { stripTags, cleanOutput } from "./normalize";
 
 export type CapsuleInput = {
   title: string;
@@ -70,7 +70,7 @@ export function buildSummary(input: CapsuleInput): string {
   const ordered = orderFacts(input.facts).slice(0, 4);
   if (ordered.length > 0) {
     const clauses = ordered.map((f) => `${f.k.toLowerCase()}: ${f.v}`);
-    parts.push(`Key details — ${clauses.join("; ")}.`);
+    parts.push(`Key details: ${clauses.join("; ")}.`);
   }
 
   // Commercials in the sentence, not only in the markup.
@@ -82,9 +82,9 @@ export function buildSummary(input: CapsuleInput): string {
     parts.push(`Priced at ${price}${brand}${availability}.`);
   }
 
-  const text = parts.join(" ").replace(/\s+/g, " ").trim();
+  const text = cleanOutput(parts.join(" "));
   const words = text.split(" ");
-  return words.length <= maxWords ? text : `${words.slice(0, maxWords).join(" ")}…`;
+  return words.length <= maxWords ? text : `${words.slice(0, maxWords).join(" ")}...`;
 }
 
 export type QA = { q: string; a: string };

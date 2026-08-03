@@ -6,6 +6,7 @@
 // this.
 
 import type { Fact } from "../engine";
+import { cleanOutput } from "../engine/normalize";
 
 export type MirrorInput = {
   handle: string;
@@ -26,7 +27,15 @@ function yamlEscape(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
-export function renderMirror(input: MirrorInput): string {
+export function renderMirror(raw: MirrorInput): string {
+  // Published text uses plain characters only: no entities, no em dashes.
+  const input: MirrorInput = {
+    ...raw,
+    title: cleanOutput(raw.title),
+    summary: raw.summary ? cleanOutput(raw.summary) : raw.summary,
+    vendor: raw.vendor ? cleanOutput(raw.vendor) : raw.vendor,
+    facts: raw.facts.map((f) => ({ k: cleanOutput(f.k), v: cleanOutput(f.v) })),
+  };
   const lines: string[] = [];
 
   lines.push("---");
@@ -64,7 +73,7 @@ export function renderMirror(input: MirrorInput): string {
   if (input.description) {
     lines.push("## Description");
     lines.push("");
-    lines.push(input.description.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+    lines.push(cleanOutput(input.description.replace(/<[^>]*>/g, " ")));
     lines.push("");
   }
 

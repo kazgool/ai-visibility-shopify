@@ -39,6 +39,22 @@ export function stripTags(input: string): string {
 }
 
 /**
+ * Output hygiene for every piece of text this app writes (alt text,
+ * summaries, mirrors). Catalogues imported from elsewhere carry HTML
+ * entities and typographic dashes; published output uses plain characters
+ * only: "-" for dashes, "&" for ampersands, straight quotes.
+ */
+export function cleanOutput(input: string): string {
+  return decodeEntities(String(input ?? ""))
+    .replace(/[–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, "...")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Strip diacritics and lowercase, so "croială" matches "croiala".
  * Used for stopword comparison, dedup keys and subsumption — never for
  * display: what we capture is shown as written.
