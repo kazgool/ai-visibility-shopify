@@ -3,6 +3,7 @@ api_version = "2026-07"
 [[extensions]]
 name = "AI Visibility product panel"
 handle = "ai-visibility-product-panel"
+uid = "784b3b80-39fb-0933-6b96-47c3919cd2c06c2df628"
 type = "ui_extension"
 
   [[extensions.targeting]]
