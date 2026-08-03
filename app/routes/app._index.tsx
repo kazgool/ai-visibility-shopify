@@ -238,7 +238,7 @@ export default function Dashboard() {
   const crawlerRunning =
     crawlerJob?.status === "queued" || crawlerJob?.status === "running";
   const anyRunning = running || altRunning || crawlerRunning;
-  const active = running ? lastRun : lastAlt;
+  const active = running ? lastRun : altRunning ? lastAlt : crawlerJob;
 
   const total = active?.total ?? 0;
   const progress = active?.progress ?? 0;
@@ -263,17 +263,21 @@ export default function Dashboard() {
   // and an unbounded poll would hammer the server and lie to the merchant.
   // After five minutes we stop and say so.
   const revalidator = useRevalidator();
-  const [polls, setPolls] = useState(0);
-  const stalled = polls >= 150;
+  const [idlePolls, setIdlePolls] = useState(0);
+
+  // Only a job that is not moving counts as stuck. A bulk alt-text pass over
+  // a large catalogue legitimately takes minutes, and cutting its progress
+  // display off would be worse than useless.
+  useEffect(() => {
+    setIdlePolls(0);
+  }, [progress, active?.status]);
+
+  const stalled = idlePolls >= 90; // three minutes without any movement
 
   useEffect(() => {
-    if (!anyRunning) {
-      setPolls(0);
-      return;
-    }
-    if (stalled) return;
+    if (!anyRunning || stalled) return;
     const id = setInterval(() => {
-      setPolls((n) => n + 1);
+      setIdlePolls((n) => n + 1);
       revalidator.revalidate();
     }, 2000);
     return () => clearInterval(id);
@@ -286,11 +290,11 @@ export default function Dashboard() {
     >
       <BlockStack gap="500">
         {stalled ? (
-          <Banner tone="warning" title="This job has not started">
+          <Banner tone="warning" title="This job has not moved in three minutes">
             <Text as="p">
-              It has been waiting five minutes. The background worker is
-              probably not running — nothing is lost, the job stays queued and
-              will run as soon as the worker is back.
+              The background worker may be down. Nothing is lost — the job
+              stays queued and runs as soon as the worker is back. Refresh to
+              check again.
             </Text>
           </Banner>
         ) : null}
