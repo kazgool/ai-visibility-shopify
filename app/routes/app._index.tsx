@@ -240,11 +240,38 @@ function Metric({
   );
 }
 
-function Step({ done, title, children }: { done: boolean; title: string; children: React.ReactNode }) {
+/**
+ * A step is done, not done, or optional. The third state exists because a
+ * caution icon on something genuinely optional reads as "you did something
+ * wrong" - and a merchant who cannot make a warning go away writes a support
+ * ticket about it. Optional steps get a neutral dot and neutral wording.
+ */
+function Step({
+  done,
+  optional,
+  title,
+  children,
+}: {
+  done: boolean;
+  optional?: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <InlineStack gap="200" blockAlign="start" wrap={false}>
       <Box paddingBlockStart="050">
-        <Icon source={done ? CheckIcon : AlertCircleIcon} tone={done ? "success" : "caution"} />
+        {done ? (
+          <Icon source={CheckIcon} tone="success" />
+        ) : optional ? (
+          <Box
+            background="bg-fill-tertiary"
+            borderRadius="full"
+            minHeight="8px"
+            minWidth="8px"
+          />
+        ) : (
+          <Icon source={AlertCircleIcon} tone="caution" />
+        )}
       </Box>
       <BlockStack gap="050">
         <Text as="p" variant="bodyMd" fontWeight="semibold">
@@ -574,15 +601,23 @@ export default function Dashboard() {
                       ? `Written ${new Date(lastWrite.finishedAt).toLocaleDateString()}. New and edited products are picked up automatically.`
                       : "Run a preview first, then fill the catalogue."}
                   </Step>
-                  <Step done={Boolean(collectionsBuilt)} title="Collection pages built">
+                  <Step
+                    done={Boolean(collectionsBuilt)}
+                    optional
+                    title="Collection pages built"
+                  >
                     {collectionsBuilt
                       ? `${collectionsBuilt.withTable} of ${collectionsBuilt.total} collections carry a comparison table. The rest have nothing that varies enough to compare, which is a fact about the products, not a fault.`
                       : "Collections can carry a summary and a comparison table. Build them from the Collections screen."}
                   </Step>
-                  <Step done={hasBusiness} title="Delivery, returns and warranty">
+                  <Step
+                    done={hasBusiness}
+                    optional
+                    title="Delivery, returns and warranty"
+                  >
                     {hasBusiness
                       ? "Stated once and published as buyer questions on every product."
-                      : "Optional. Fill them in on the Business screen and every product answers them; leave them empty and nothing is published."}
+                      : "Optional. Fill these in on the Business screen and every product answers them; leave them empty and nothing about them is published. Either way is a complete setup."}
                   </Step>
                   <Step done={embed?.active} title="App embed active in your theme">
                     {embed?.active
