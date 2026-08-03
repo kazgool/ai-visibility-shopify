@@ -13,10 +13,11 @@ import {
   Banner,
   Divider,
   Thumbnail,
+  Box,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { cleanOutput, extractProduct, type Fact } from "../engine";
+import { buildAnswerPreview, cleanOutput, extractProduct, type Fact } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 
@@ -32,6 +33,7 @@ const PRODUCT = `#graphql
       title
       descriptionHtml
       productType
+      priceRangeV2 { minVariantPrice { amount currencyCode } }
       featuredMedia { preview { image { url altText } } }
       media(first: 20) {
         nodes {
@@ -140,7 +142,17 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     checkedAt: c.checkedAt.toISOString(),
   }));
 
+  const answer = buildAnswerPreview({
+    title: product.title,
+    facts: storedFacts.length > 0 ? storedFacts : autoFacts,
+    summary: metafields.find((m) => m.key === "summary")?.value ?? null,
+    questions: storedQuestions,
+    price: product.priceRangeV2?.minVariantPrice?.amount ?? null,
+    currency: product.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
+  });
+
   return {
+    answer,
     crawlers,
     product: {
       id: product.id,
@@ -310,8 +322,14 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers } =
+  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers, answer } =
     useLoaderData<typeof loader>() as {
+      answer: {
+        question: string;
+        withApp: string;
+        withoutApp: string;
+        sources: string[];
+      } | null;
       crawlers: { agent: string; ok: boolean; checkedAt: string }[];
       product: { id: string; title: string; image: string | null };
       images: {
@@ -433,6 +451,50 @@ export default function ProductEditor() {
             )}
           </BlockStack>
         </Card>
+
+        {answer ? (
+          <Card>
+            <BlockStack gap="300">
+              <BlockStack gap="100">
+                <Text as="h2" variant="headingMd">
+                  What an assistant can answer about this product
+                </Text>
+                <Text as="p" tone="subdued">
+                  Assembled from what is published right now - not a
+                  simulation, and not a prediction of any assistant's wording.
+                </Text>
+              </BlockStack>
+
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="200">
+                  <Text as="p" fontWeight="semibold">
+                    {`"${answer.question}"`}
+                  </Text>
+                  <InlineStack gap="200" blockAlign="start" wrap={false}>
+                    <Badge tone="success">With this app</Badge>
+                  </InlineStack>
+                  <Text as="p">{answer.withApp}</Text>
+                  <InlineStack gap="150" wrap>
+                    {answer.sources.map((src) => (
+                      <Badge key={src}>{src}</Badge>
+                    ))}
+                  </InlineStack>
+                </BlockStack>
+              </Box>
+
+              <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                <BlockStack gap="200">
+                  <InlineStack gap="200">
+                    <Badge>Without it</Badge>
+                  </InlineStack>
+                  <Text as="p" tone="subdued">
+                    {answer.withoutApp}
+                  </Text>
+                </BlockStack>
+              </Box>
+            </BlockStack>
+          </Card>
+        ) : null}
 
         <Card>
           <Form method="post">

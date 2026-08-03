@@ -30,6 +30,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
+import { businessFor } from "../services/business.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
 // in one glance - how much is covered, what is protected, what is left to do -
@@ -100,6 +101,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
     : null;
 
+  const collectionsJob = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, kind: "collections", status: "done" },
+        orderBy: { finishedAt: "desc" },
+      })
+    : null;
+  const business = shop ? await businessFor(shop.id) : null;
+
   return {
     products: json.data?.products?.nodes ?? [],
     totalProducts: json.data?.productsCount?.count ?? 0,
@@ -109,6 +118,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     crawlers: Array.from(latestByAgent.values()),
     crawlerJob,
     hasDictionary: Boolean(dictionary?.value?.trim()),
+    collectionsBuilt: collectionsJob
+      ? {
+          at: collectionsJob.finishedAt?.toISOString() ?? null,
+          withTable: (collectionsJob.report as any)?.withTable ?? 0,
+          total: (collectionsJob.report as any)?.collections ?? 0,
+        }
+      : null,
+    hasBusiness: Boolean(
+      business &&
+        (business.deliveryTime ||
+          business.deliveryCost ||
+          business.returnDays ||
+          business.warranty ||
+          business.paymentMethods),
+    ),
     domain: session.shop,
     embed,
     embedLink: embedDeepLink(session.shop),
@@ -247,6 +271,8 @@ export default function Dashboard() {
     domain,
     embed,
     embedLink,
+    collectionsBuilt,
+    hasBusiness,
   } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -548,6 +574,16 @@ export default function Dashboard() {
                       ? `Written ${new Date(lastWrite.finishedAt).toLocaleDateString()}. New and edited products are picked up automatically.`
                       : "Run a preview first, then fill the catalogue."}
                   </Step>
+                  <Step done={Boolean(collectionsBuilt)} title="Collection pages built">
+                    {collectionsBuilt
+                      ? `${collectionsBuilt.withTable} of ${collectionsBuilt.total} collections carry a comparison table. The rest have nothing that varies enough to compare, which is a fact about the products, not a fault.`
+                      : "Collections can carry a summary and a comparison table. Build them from the Collections screen."}
+                  </Step>
+                  <Step done={hasBusiness} title="Delivery, returns and warranty">
+                    {hasBusiness
+                      ? "Stated once and published as buyer questions on every product."
+                      : "Optional. Fill them in on the Business screen and every product answers them; leave them empty and nothing is published."}
+                  </Step>
                   <Step done={embed?.active} title="App embed active in your theme">
                     {embed?.active
                       ? `Verified in ${embed.themeName || "your published theme"}. The storefront output is live.`
@@ -572,9 +608,23 @@ export default function Dashboard() {
                     </InlineStack>
                   ) : null}
                 </BlockStack>
+                {report && report.none > 0 ? (
+                  <>
+                    <Divider />
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      {`${report.none} ${
+                        report.none === 1 ? "product states" : "products state"
+                      } nothing an assistant could extract. That is what their descriptions say, not a fault to fix - though adding a material or a size to those descriptions would change it.`}
+                    </Text>
+                  </>
+                ) : null}
+
                 <InlineStack gap="200">
                   <Link to="/app/dictionary">
                     <Button>Open dictionary</Button>
+                  </Link>
+                  <Link to="/app/products?filter=no_attributes">
+                    <Button>See what is missing</Button>
                   </Link>
                   <Link to="/app/diagnostics">
                     <Button>Run diagnostics</Button>

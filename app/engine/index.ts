@@ -44,6 +44,7 @@ export {
   type VariantLike,
   type SplitResult,
 } from "./variants";
+export { buildAnswerPreview, type AnswerInput, type AnswerPreview } from "./answer";
 export { normalize, prepareText, diacriticPattern, cleanOutput } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 
