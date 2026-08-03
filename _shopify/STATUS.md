@@ -5,6 +5,54 @@ Last updated 3 August 2026. Read this first in a new session, then
 
 ---
 
+---
+
+## 0. Addendum, 3 August 2026 (evening) - production day
+
+Everything below section 1 predates today. Today the app went fully live
+on production infrastructure and is feature-complete for v1:
+
+- **Billing works end to end**: annual subscription (test charge verified),
+  entry gate, master key comp (code in fly secrets/.env), FREE_SHOPS
+  allowlist. Public distribution selected (required by the Billing API).
+- **Worker auth survives expiring offline tokens** (mandatory since Apr
+  2026): tokens come per-request via unauthenticated.admin, 401 mid-run
+  refetches. The old read-from-Prisma path died silently after 60 minutes.
+- **Collections (PRD 4.8)**: capsules, choice criteria, Q&A, comparison
+  tables from attributes that actually vary; CollectionPage + FAQPage +
+  ItemList in the embed; zero-JS visible table as a theme app block.
+- **Variant-level attributes (PRD 5.4)**: option pairs become variant
+  facts; product facts the variants contradict are withdrawn.
+- **IndexNow (PRD 4.9)**: pings on real changes, key served via app proxy.
+- **Business info (WP 1.6.7/1.6.9 port)**: delivery/returns/warranty/
+  payment screen, commercial buyer questions, shipping + return schema and
+  review-app ratings in full mode, price span for variable products.
+- **Admin product panel** (ui_extension, admin.product-details.block.render):
+  the WP metabox equivalent - attributes, summary, questions, provenance
+  badges, link to our editor. Merchant pins it once, order is platform-fixed.
+- **Capsule editor**: summary, questions, fit-for editable per field with
+  human/auto provenance; only changed fields become human.
+- **Honesty fixes with tests**: appearance qualifiers both word orders
+  ("aspect de marmura", "marble effect" are not materials); machine alt
+  text (entities/UUIDs/filenames) is replaceable, not protected; stale
+  auto values are withdrawn when recomputation is empty ("Suits: 6 scaune"
+  bug); multiplication sign normalised to x.
+- **CI**: GitHub Actions runs fly deploy on push to main (laptop network
+  out of the release path). Deploy tags deploy-2026-08-03-1..3; push with
+  --follow-tags.
+- **Gotchas that cost hours, do not rediscover**: Prisma migrations must
+  use DIRECT_URL (Neon pooler holds advisory locks); trycloudflare DNS
+  needs 1.1.1.1; the released extension uid (019fc7c8-03b7-7553-a37b-84b873e7cb96)
+  differs from the toml uid AND from dev-preview uids - the embed check
+  compares released uid; gate redirects must preserve the query string;
+  `shopify app dev clean` after dev sessions or the storefront serves a
+  dead dev bundle.
+
+**Remaining to submission** (about a day): publish PRIVACY/SUPPORT pages
+on mrdigital.ro, 6 listing screenshots per LISTING.md, app icon, fresh
+install QA, LCP re-check from Fly, fill the listing form, submit. The LP
+on mrdigital.ro is deliberately post-publish (Marius's call).
+
 ## 1. What exists and works
 
 Built and verified against a real catalogue (355 furniture products
