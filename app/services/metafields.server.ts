@@ -15,6 +15,16 @@ const DEFINITIONS = [
   { key: "state", type: "json", name: "AI Visibility state" },
 ] as const;
 
+// Collections carry the listing-page answer: what kinds exist and how to
+// choose between them (PRD §4.8). Same namespace, same public read access.
+const COLLECTION_DEFINITIONS = [
+  { key: "summary", type: "multi_line_text_field", name: "AI summary" },
+  { key: "criteria", type: "json", name: "How to choose" },
+  { key: "questions", type: "json", name: "Starter questions" },
+  { key: "table", type: "json", name: "Comparison table" },
+  { key: "state", type: "json", name: "AI Visibility state" },
+] as const;
+
 const CREATE = `#graphql
   mutation CreateDefinition($definition: MetafieldDefinitionInput!) {
     metafieldDefinitionCreate(definition: $definition) {
@@ -34,8 +44,8 @@ const UPDATE_ACCESS = `#graphql
 `;
 
 const EXISTING = `#graphql
-  query ExistingDefinitions {
-    metafieldDefinitions(first: 20, ownerType: PRODUCT, namespace: "$app") {
+  query ExistingDefinitions($ownerType: MetafieldOwnerType!) {
+    metafieldDefinitions(first: 20, ownerType: $ownerType, namespace: "$app") {
       nodes {
         key
         access { storefront }
@@ -47,13 +57,22 @@ const EXISTING = `#graphql
 type AdminGraphql = (query: string, options?: { variables?: object }) => Promise<Response>;
 
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
-  const existingRes = await graphql(EXISTING);
+  await ensureFor(graphql, "PRODUCT", DEFINITIONS);
+  await ensureFor(graphql, "COLLECTION", COLLECTION_DEFINITIONS);
+}
+
+async function ensureFor(
+  graphql: AdminGraphql,
+  ownerType: "PRODUCT" | "COLLECTION",
+  definitions: readonly { key: string; type: string; name: string }[],
+) {
+  const existingRes = await graphql(EXISTING, { variables: { ownerType } });
   const existing = await existingRes.json();
   const nodes: { key: string; access?: { storefront?: string } }[] =
     existing.data?.metafieldDefinitions?.nodes ?? [];
   const byKey = new Map(nodes.map((n) => [n.key, n]));
 
-  for (const def of DEFINITIONS) {
+  for (const def of definitions) {
     const found = byKey.get(def.key);
 
     if (!found) {
@@ -64,7 +83,7 @@ export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
             name: def.name,
             type: def.type,
             namespace: "$app",
-            ownerType: "PRODUCT",
+            ownerType,
             access: { storefront: "PUBLIC_READ" },
           },
         },
@@ -86,7 +105,7 @@ export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
           definition: {
             key: def.key,
             namespace: "$app",
-            ownerType: "PRODUCT",
+            ownerType,
             access: { storefront: "PUBLIC_READ" },
           },
         },

@@ -8,6 +8,7 @@ import type { Task } from "graphile-worker";
 import db from "../app/db.server";
 import { extractOneProduct, runBulkExtract } from "../app/services/extract.server";
 import { adminGraphql } from "../app/services/admin.server";
+import { fetchCollections, writeCollections } from "../app/services/collections.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
@@ -342,6 +343,79 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
         report: { error: String(error) } as any,
       },
     });
+    throw error;
+  }
+};
+
+/**
+ * Collection capsules (PRD §4.8). Reads each collection with its members'
+ * already-extracted attributes and publishes the listing-page answer: what
+ * kinds exist, how to choose, and a comparison table.
+ *
+ * Deliberately a separate pass from product extraction: it depends on the
+ * products' `facts` being written first, and re-running it is cheap.
+ */
+export const bulk_collections: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = payload as { shopId: string; jobRunId?: string };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+
+  try {
+    const graphql = await adminGraphql(shop.domain);
+    const collections = await fetchCollections(graphql);
+
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: { status: "running", startedAt: new Date(), total: collections.length },
+      });
+    }
+
+    const outcomes = [];
+    for (let i = 0; i < collections.length; i += 5) {
+      const batch = collections.slice(i, i + 5);
+      outcomes.push(...(await writeCollections(graphql, batch)));
+      if (jobRunId) {
+        await db.jobRun.update({
+          where: { id: jobRunId },
+          data: { progress: Math.min(i + batch.length, collections.length) },
+        });
+      }
+    }
+
+    const withTable = outcomes.filter((o) => !o.empty).length;
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "done",
+          finishedAt: new Date(),
+          progress: collections.length,
+          report: {
+            collections: outcomes.length,
+            withTable,
+            // Named plainly so the dashboard can say why, not just how many.
+            withoutTable: outcomes.length - withTable,
+            items: outcomes.slice(0, 50),
+          } as any,
+        },
+      });
+    }
+    helpers.logger.info(
+      `bulk_collections ${shop.domain}: ${outcomes.length} collections, ${withTable} with a table`,
+    );
+  } catch (error) {
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "failed",
+          finishedAt: new Date(),
+          report: { error: String(error) } as any,
+        },
+      });
+    }
     throw error;
   }
 };

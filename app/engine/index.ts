@@ -24,7 +24,19 @@ export {
   type CapsuleInput,
   type QA,
 } from "./summary";
-export { normalize, prepareText, diacriticPattern } from "./normalize";
+export {
+  buildCollectionCapsule,
+  buildCollectionSummary,
+  buildCollectionCriteria,
+  buildCollectionQuestions,
+  buildComparisonTable,
+  comparableLabels,
+  type CollectionInput,
+  type CollectionMember,
+  type CollectionCapsule,
+  type ComparisonTable,
+} from "./collection";
+export { normalize, prepareText, diacriticPattern, cleanOutput } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 
 import { extractFromText, type ExtractOptions, type Fact } from "./extract";

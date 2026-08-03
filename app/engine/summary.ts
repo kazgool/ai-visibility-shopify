@@ -48,7 +48,9 @@ function firstSentence(text: string, maxWords: number): string {
   if (clean === "") return "";
   const sentence = clean.split(/(?<=[.!?])\s/)[0] ?? clean;
   const words = sentence.split(" ");
-  return words.length <= maxWords ? sentence : `${words.slice(0, maxWords).join(" ")}…`;
+  // Plain characters only, at the source: relying on cleanOutput to repair an
+  // ellipsis character later works until someone uses this helper elsewhere.
+  return words.length <= maxWords ? sentence : `${words.slice(0, maxWords).join(" ")}...`;
 }
 
 /**

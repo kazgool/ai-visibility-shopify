@@ -16,6 +16,7 @@ async function main() {
       poll_changes: tasks.poll_changes,
       sweep_missing: tasks.sweep_missing,
       crawler_check: tasks.crawler_check,
+      bulk_collections: tasks.bulk_collections,
     },
     // Freshness in layers: webhooks fire instantly, the poll closes the gap
     // when one is dropped, the sweep guarantees nothing is missed for long.
