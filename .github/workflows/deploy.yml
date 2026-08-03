@@ -8,7 +8,7 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # PHASE-1-SPEC §7: a single REST Admin API call is a review rejection.
       - name: No REST Admin API calls
         run: |
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: deploy-group
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy to Fly (runs prisma migrate on boot)
         run: flyctl deploy --remote-only
