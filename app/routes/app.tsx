@@ -37,7 +37,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       if (!subscription) {
         await recordPlan(session.shop, "none");
-        throw redirect("/app/plans");
+        // Keep the query string: embedded requests carry shop/host/embedded
+        // there, and dropping them sends the next request to the login page.
+        throw redirect(`/app/plans${url.search}`);
       }
 
       // Keep our copy in step for display; Shopify remains the authority.

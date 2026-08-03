@@ -90,7 +90,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return { codeError: "That code is not valid." };
     }
     await grantComp(shop.id, `code:${new Date().toISOString()}`);
-    throw redirect("/app");
+    // Same rule as the gate: losing the query string logs the merchant out.
+    throw redirect(`/app${new URL(request.url).search}`);
   }
 
   const plan = String(form.get("plan")) as PlanHandle;
