@@ -140,7 +140,10 @@ Three ways to give the app away, in order of preference:
    anywhere in the interface, and is compared in constant time so the field
    cannot be used to guess it. Rotate by changing the secret; existing
    comps survive because they are recorded per shop.
-2. **`FREE_SHOPS` allowlist.** Comma-separated shop domains in the
+2. ~~**`FREE_SHOPS` allowlist.**~~ Removed 3 Aug 2026: a second bypass is a
+   second thing to forget when testing the paid funnel, and forgetting it
+   makes the test meaningless. The master key covers every case. Historic
+   description: comma-separated shop domains in the
    environment, for stores that should be open without anyone typing
    anything. Ours, mainly.
 3. **100% discount through Shopify** (`startSubscription(..., freeYears)`).

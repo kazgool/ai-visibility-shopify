@@ -12,12 +12,13 @@ import { PLANS, type PlanHandle } from "./plans";
 
 /**
  * Comped access, for our own stores, agencies and anyone we choose to give the
- * app to. Two mechanisms, both outside Shopify's billing:
+ * app to. One mechanism: MASTER_KEY, a secret typed once into the plans
+ * screen, which opens the gate for that shop permanently, no deploy needed.
  *
- *  - MASTER_KEY: a secret typed once into the plans screen. Opens the gate for
- *    that shop permanently, no deploy needed.
- *  - FREE_SHOPS: a comma-separated allowlist of shop domains, for shops we
- *    want open without anyone typing anything.
+ * There was also a FREE_SHOPS allowlist; it was removed deliberately. Two
+ * ways to bypass billing means two things to remember when testing the
+ * funnel, and the one nobody remembers is the one that silently makes a
+ * paid-flow QA meaningless.
  *
  * The key is never displayed anywhere in the interface and lives only in
  * `fly secrets`. Comparison is constant time, so the endpoint cannot be used
@@ -32,14 +33,6 @@ export function checkMasterKey(candidate: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-function allowlisted(shopDomain: string): boolean {
-  return (process.env.FREE_SHOPS ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(shopDomain.toLowerCase());
-}
-
 const COMP_KEY = "comped";
 
 export async function grantComp(shopId: string, reason: string) {
@@ -51,8 +44,7 @@ export async function grantComp(shopId: string, reason: string) {
 }
 
 /** Does this shop have access without a Shopify subscription? */
-export async function isComped(shopDomain: string, shopId?: string): Promise<boolean> {
-  if (allowlisted(shopDomain)) return true;
+export async function isComped(_shopDomain: string, shopId?: string): Promise<boolean> {
   if (!shopId) return false;
   const row = await db.setting.findUnique({
     where: { shopId_key: { shopId, key: COMP_KEY } },
