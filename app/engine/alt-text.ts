@@ -90,9 +90,12 @@ export function buildAltText(
   // Rotate which attributes lead, so gallery images do not read identically.
   const rotated = visual.slice(position % visual.length).concat(visual.slice(0, position % visual.length));
   const descriptors = rotated
-    .slice(0, 2)
     .map((f) => f.v.split(",")[0].trim())
-    .filter(Boolean);
+    // A stray SKU or migration UUID in an attribute value must not reach alt
+    // text: a screen reader would read it out character by character. Values
+    // can also be human-written, so this guard cannot live only in extraction.
+    .filter((d) => d !== "" && !d.split(/\s+/).some(looksLikeIdentifier))
+    .slice(0, 2);
 
   const detail = descriptors.join(", ");
   const suffix = position === 0 ? "" : `, view ${position + 1}`;

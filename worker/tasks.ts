@@ -14,6 +14,22 @@ import { extractProduct } from "../app/engine";
 import { runCrawlerCheck } from "../app/services/crawler-check.server";
 import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
 
+/**
+ * A bulk pass updates most of the catalogue, which makes every product look
+ * "recently changed" to the incremental poll — which would then queue a no-op
+ * job per product. Advancing the poll cursor after our own mass writes keeps
+ * layer two focused on what merchants change, not on what we just did.
+ */
+async function advancePollCursor(shopId: string) {
+  const key = "last_polled_at";
+  const value = new Date().toISOString();
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key } },
+    create: { shopId, key, value },
+    update: { value },
+  });
+}
+
 export const bulk_extract: Task = async (payload, helpers) => {
   const { shopId, dryRun = false, jobRunId } = payload as {
     shopId: string;
@@ -36,6 +52,8 @@ export const bulk_extract: Task = async (payload, helpers) => {
         });
       },
     });
+
+    if (!dryRun) await advancePollCursor(shopId);
 
     await db.jobRun.update({
       where: { id: jobRunId },
@@ -298,6 +316,9 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
         });
       }
     }
+
+    // Media updates also mark products as changed; same storm, same cursor fix.
+    if (written > 0) await advancePollCursor(shopId);
 
     await db.jobRun.update({
       where: { id: jobRunId },

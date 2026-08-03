@@ -13,9 +13,9 @@
 {% endcomment %}
 
 {%- if block.settings.enabled -%}
-  {%- assign av_facts = product.metafields.app.facts.value -%}
-  {%- assign av_summary = product.metafields.app.summary.value -%}
-  {%- assign av_fit = product.metafields.app.fit_for.value -%}
+  {%- assign av_facts = product.metafields['$app'].facts.value -%}
+  {%- assign av_summary = product.metafields['$app'].summary.value -%}
+  {%- assign av_fit = product.metafields['$app'].fit_for.value -%}
 
   {%- if template.name == 'product' and product -%}
     {%- if block.settings.mode == 'full' -%}

@@ -14,6 +14,11 @@ import {
 } from "../engine";
 import type { FieldValue } from "./facts.server";
 
+import { adminGraphql } from "./admin.server";
+import { fetchAllProducts, fetchProduct } from "./catalogue.server";
+import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
+import { renderMirror } from "./mirror.server";
+
 /**
  * The three companion fields, built from the same facts. Each is written only
  * if it has something honest to say — an empty capsule is worse than none.
@@ -44,10 +49,7 @@ function capsuleFields(product: ProductInput, facts: Fact[]): FieldValue[] {
   }
   return fields;
 }
-import { adminGraphql } from "./admin.server";
-import { fetchAllProducts, fetchProduct } from "./catalogue.server";
-import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
-import { renderMirror } from "./mirror.server";
+
 
 /**
  * Render and store the plain text mirror so the proxy route never has to call
