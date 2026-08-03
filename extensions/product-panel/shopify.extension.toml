@@ -1,0 +1,10 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "AI Visibility product panel"
+handle = "ai-visibility-product-panel"
+type = "ui_extension"
+
+  [[extensions.targeting]]
+  module = "./src/ProductPanel.jsx"
+  target = "admin.product-details.block.render"

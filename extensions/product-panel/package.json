@@ -1,0 +1,9 @@
+{
+  "name": "product-panel",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "@shopify/ui-extensions": "2026.0.0",
+    "@shopify/ui-extensions-react": "2026.0.0"
+  }
+}
