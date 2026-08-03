@@ -130,16 +130,22 @@ function ProductPanel() {
                 {human("summary") ? "Edited by you" : "Automatic"}
               </Badge>
             </InlineStack>
-            <Text>{summary}</Text>
+            <Text>
+              {/* The admin gives blocks a height budget; the full text lives
+                  one click away in the app. */}
+              {summary.length > 180 ? `${summary.slice(0, 180)}...` : summary}
+            </Text>
           </BlockStack>
         ) : null}
 
         {questions.length > 0 ? (
           <BlockStack gap="small">
-            <Text fontWeight="bold">Buyer questions</Text>
-            {questions.map((qa, i) => (
-              <Text key={i}>{`${qa.q} ${qa.a}`}</Text>
-            ))}
+            <Text fontWeight="bold">
+              {questions.length === 1
+                ? "1 buyer question published"
+                : `${questions.length} buyer questions published`}
+            </Text>
+            <Text>{`${questions[0].q} ${questions[0].a}`}</Text>
           </BlockStack>
         ) : null}
 

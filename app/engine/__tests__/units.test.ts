@@ -146,3 +146,38 @@ describe("assembly", () => {
     expect(extractFromText("", "Material: lace")).toEqual([]);
   });
 });
+
+describe("appearance qualifiers (aspect de / tip / imitatie / efect)", () => {
+  const dict = "Material: marmura, lemn masiv, catifea\nStil: contemporan, modern";
+
+  it("does not claim marble for 'aspect de marmura'", () => {
+    const facts = extractFromText(
+      "Blat spectaculos cu aspect de marmura bogat texturata.",
+      dict,
+    );
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("does not claim marble for 'finisaj lucios tip marmura'", () => {
+    const facts = extractFromText("Blat compozit cu finisaj lucios tip marmura.", dict);
+    expect(facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+
+  it("still claims marble when another occurrence is unqualified", () => {
+    const facts = extractFromText(
+      "Blat cu aspect de marmura. Baza este din marmura veritabila.",
+      dict,
+    );
+    expect(facts.find((f) => f.k === "Material")?.v).toBe("marmura");
+  });
+
+  it("does not break the Stil group ('stil contemporan' still matches)", () => {
+    const facts = extractFromText("Design in stil contemporan pentru living.", dict);
+    expect(facts.find((f) => f.k === "Stil")?.v).toBe("contemporan");
+  });
+
+  it("keeps honest materials untouched", () => {
+    const facts = extractFromText("Cadru din lemn masiv si tapiterie din catifea.", dict);
+    expect(facts.find((f) => f.k === "Material")?.v).toContain("lemn masiv");
+  });
+});

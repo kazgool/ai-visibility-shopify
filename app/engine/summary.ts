@@ -83,6 +83,8 @@ function firstSentence(text: string, maxWords: number): string {
 export function buildSummary(input: CapsuleInput): string {
   const maxWords = input.maxWords ?? 80;
   const parts: string[] = [];
+  // Imported titles carry entities; every sentence we build from one must not.
+  input = { ...input, title: cleanOutput(input.title) };
 
   const opener = firstSentence(input.descriptionHtml ?? "", 40);
   if (opener) {
@@ -119,6 +121,9 @@ export type QA = { q: string; a: string };
  * hold. A question without a real answer is never emitted.
  */
 export function buildQuestions(input: CapsuleInput): QA[] {
+  // "What is Set Masa &amp; 6 Scaune made of?" is the exact failure the
+  // plain-characters rule exists for; clean the title once, at the top.
+  input = { ...input, title: cleanOutput(input.title) };
   const out: QA[] = [];
   const byLabel = new Map(input.facts.map((f) => [f.k.toLowerCase(), f]));
 

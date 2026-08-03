@@ -85,6 +85,17 @@ function prefixCapture(
   return hits;
 }
 
+/**
+ * Words that, immediately before a term, say "looks like" rather than "is":
+ * aspect de marmura, tip marmura, imitatie de lemn, efect de catifea.
+ * Narrow on purpose (DICTIONARY-PORT §10.1): each entry is an explicit
+ * disclaimer written by the merchant, not a guess of ours. "stil" is
+ * deliberately absent - it would reject the Stil group's own matches
+ * ("stil contemporan"), a filter eating value along with noise.
+ */
+const APPEARANCE_QUALIFIER =
+  /(?:aspect(?:\s+de)?|tip|imita[tț]ie(?:\s+de)?|efect(?:\s+de)?|imitation|faux|look(?:\s+of)?|effect)\s*$/iu;
+
 export function extractFromText(
   text: string,
   dictionary: DictionaryGroup[] | string,
@@ -132,9 +143,20 @@ export function extractFromText(
       // Word-boundary match so "tul" does not match "tulpina".
       const exact = new RegExp(
         `(?<![\\p{L}\\p{N}])${diacriticPattern(base)}(?![\\p{L}\\p{N}])`,
-        "u",
+        "ug",
       );
-      if (exact.test(text)) hits.push(term);
+      // "aspect de marmura" is not marble - it says so itself. A term
+      // preceded by an appearance qualifier describes what a thing looks
+      // like, not what it is, and claiming otherwise is exactly the false
+      // fact this engine exists to never write. Only occurrences without
+      // the qualifier count; a text that also says "blat din marmura"
+      // elsewhere still matches there.
+      for (const m of text.matchAll(exact)) {
+        const before = text.slice(Math.max(0, m.index! - 30), m.index!);
+        if (APPEARANCE_QUALIFIER.test(before)) continue;
+        hits.push(term);
+        break;
+      }
     }
 
     // Unique on the normalized form, so "piele ecologica" and "piele
