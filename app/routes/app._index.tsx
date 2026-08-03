@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Form,
@@ -258,12 +258,26 @@ export default function Dashboard() {
   const written = Boolean(lastWrite);
 
   // Keep the numbers moving while a pass runs, or people press the button twice.
+  //
+  // Bounded on purpose: if the worker is down, a job sits in "queued" forever
+  // and an unbounded poll would hammer the server and lie to the merchant.
+  // After five minutes we stop and say so.
   const revalidator = useRevalidator();
+  const [polls, setPolls] = useState(0);
+  const stalled = polls >= 150;
+
   useEffect(() => {
-    if (!anyRunning) return;
-    const id = setInterval(() => revalidator.revalidate(), 2000);
+    if (!anyRunning) {
+      setPolls(0);
+      return;
+    }
+    if (stalled) return;
+    const id = setInterval(() => {
+      setPolls((n) => n + 1);
+      revalidator.revalidate();
+    }, 2000);
     return () => clearInterval(id);
-  }, [anyRunning, revalidator]);
+  }, [anyRunning, stalled, revalidator]);
 
   return (
     <Page
@@ -271,6 +285,16 @@ export default function Dashboard() {
       subtitle="Make this catalogue readable by ChatGPT, Claude, Gemini and Perplexity"
     >
       <BlockStack gap="500">
+        {stalled ? (
+          <Banner tone="warning" title="This job has not started">
+            <Text as="p">
+              It has been waiting five minutes. The background worker is
+              probably not running — nothing is lost, the job stays queued and
+              will run as soon as the worker is back.
+            </Text>
+          </Banner>
+        ) : null}
+
         {running || altRunning ? (
           <Card>
             <BlockStack gap="300">
