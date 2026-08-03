@@ -62,6 +62,7 @@ export default function App() {
         <Link to="/app" rel="home">
           Products
         </Link>
+        <Link to="/app/collections">Collections</Link>
         <Link to="/app/dictionary">Dictionary</Link>
         <Link to="/app/diagnostics">Diagnostics</Link>
         <Link to="/app/plans">Plan</Link>
