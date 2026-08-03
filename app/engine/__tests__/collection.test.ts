@@ -157,7 +157,7 @@ describe("buildCollectionCapsule", () => {
     ];
     const capsule = buildCollectionCapsule({ title: "Canapele", products: composite });
     const materials = capsule.criteria.find((c) => c.startsWith("Material:"))!;
-    expect(materials).toBe("Material: MDF, burete, textil.");
+    expect(materials).toBe("Material: MDF, burete, textil");
   });
 
   it("lists four values and counts the rest rather than running on", () => {
