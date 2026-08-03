@@ -12,10 +12,12 @@ import {
   Badge,
   Banner,
   Divider,
+  Thumbnail,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { extractProduct, type Fact } from "../engine";
+import { buildAltText, looksLikeFilename } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 
 // The editor pattern the WordPress module got right, and the reason human work
@@ -29,7 +31,17 @@ const PRODUCT = `#graphql
       id
       title
       descriptionHtml
+      productType
       featuredMedia { preview { image { url altText } } }
+      media(first: 20) {
+        nodes {
+          ... on MediaImage {
+            id
+            alt
+            image { url(transform: { maxWidth: 200, maxHeight: 200 }) }
+          }
+        }
+      }
       metafields(namespace: "${NAMESPACE}", first: 10) { nodes { key value } }
     }
   }
@@ -38,6 +50,14 @@ const PRODUCT = `#graphql
 const SET = `#graphql
   mutation SetFacts($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) { userErrors { field message } }
+  }
+`;
+
+const SET_ALT = `#graphql
+  mutation SetAlt($productId: ID!, $media: [UpdateMediaInput!]!) {
+    productUpdateMedia(productId: $productId, media: $media) {
+      mediaUserErrors { field message }
+    }
   }
 `;
 
@@ -69,14 +89,39 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     storedFacts = [];
   }
 
+  const autoFacts = extractProduct(product, setting?.value ?? "");
+
+  // Every image with its current description, where that description came
+  // from, and what we would write if it were empty. A merchant should be able
+  // to judge our alt text without digging through the Shopify media library.
+  const images = (product?.media?.nodes ?? [])
+    .filter((m: any) => m?.id)
+    .map((m: any, index: number) => {
+      const alt = (m.alt ?? "").trim();
+      const isFilename = alt !== "" && looksLikeFilename(alt);
+      return {
+        id: m.id,
+        url: m.image?.url ?? "",
+        alt,
+        // "human" is the safe assumption for anything we did not clearly write.
+        source: alt === "" ? "missing" : isFilename ? "filename" : "written",
+        suggestion: buildAltText(
+          { title: product.title, productType: product.productType },
+          autoFacts,
+          index,
+        ),
+      };
+    });
+
   return {
     product: {
       id: product.id,
       title: product.title,
       image: product.featuredMedia?.preview?.image?.url ?? null,
     },
+    images,
     storedFacts,
-    autoFacts: extractProduct(product, setting?.value ?? ""),
+    autoFacts,
     source: state.facts?.source ?? null,
     updatedAt: state.facts?.at ?? null,
   };
@@ -87,6 +132,25 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   const form = await request.formData();
   const intent = String(form.get("intent"));
   const id = gid(params.id!);
+
+  // Alt text is media, not metafields, so it takes its own path.
+  if (intent === "alt") {
+    const mediaIds = form.getAll("mediaId").map(String);
+    const alts = form.getAll("alt").map(String);
+    const media = mediaIds
+      .map((mid, i) => ({ id: mid, alt: (alts[i] ?? "").trim() }))
+      .filter((m) => m.id);
+
+    if (media.length > 0) {
+      const altRes = await admin.graphql(SET_ALT, {
+        variables: { productId: id, media },
+      });
+      const altJson = await altRes.json();
+      const errors = altJson.data?.productUpdateMedia?.mediaUserErrors ?? [];
+      if (errors.length) return { error: JSON.stringify(errors) };
+    }
+    return { altSaved: true };
+  }
 
   // Read current state so we only change the facts entry.
   const res = await admin.graphql(PRODUCT, { variables: { id } });
@@ -150,14 +214,17 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, storedFacts, autoFacts, source, updatedAt } =
-    useLoaderData<typeof loader>();
+  const { product, images, storedFacts, autoFacts, source, updatedAt } =
+    useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
   const initial = storedFacts.length > 0 ? storedFacts : autoFacts;
   const [rows, setRows] = useState<Fact[]>(
     initial.length > 0 ? initial : [{ k: "", v: "" }],
+  );
+  const [altValues, setAltValues] = useState<string[]>(
+    (images ?? []).map((img: any) => img.alt ?? ""),
   );
 
   function update(i: number, field: "k" | "v", value: string) {
@@ -240,6 +307,92 @@ export default function ProductEditor() {
                   Save
                 </Button>
               </InlineStack>
+            </BlockStack>
+          </Form>
+        </Card>
+
+        <Card>
+          <Form method="post">
+            <input type="hidden" name="intent" value="alt" />
+            <BlockStack gap="400">
+              <BlockStack gap="100">
+                <Text as="h2" variant="headingMd">
+                  Images
+                </Text>
+                <Text as="p" tone="subdued">
+                  Alt text is what a screen reader announces and what a
+                  multimodal crawler reads. Short and specific beats a keyword
+                  list, and anything a person wrote is left alone.
+                </Text>
+              </BlockStack>
+
+              {images.length === 0 ? (
+                <Text as="p" tone="subdued">
+                  This product has no images.
+                </Text>
+              ) : (
+                <BlockStack gap="300">
+                  {images.map((img: any, i: number) => (
+                    <InlineStack key={img.id} gap="300" blockAlign="start" wrap={false}>
+                      <Thumbnail source={img.url} alt={img.alt} size="large" />
+                      <div style={{ flexGrow: 1, minWidth: 260 }}>
+                        <BlockStack gap="150">
+                          <InlineStack gap="200" blockAlign="center">
+                            {img.source === "missing" ? (
+                              <Badge tone="critical">No description</Badge>
+                            ) : img.source === "filename" ? (
+                              <Badge tone="warning">Camera filename</Badge>
+                            ) : (
+                              <Badge tone="success">Described</Badge>
+                            )}
+                            <Text as="span" variant="bodySm" tone="subdued">
+                              {(altValues[i] ?? "").length}/125
+                            </Text>
+                          </InlineStack>
+                          <input type="hidden" name="mediaId" value={img.id} />
+                          <TextField
+                            label={`Alt text for image ${i + 1}`}
+                            labelHidden
+                            name="alt"
+                            value={altValues[i] ?? ""}
+                            onChange={(v) =>
+                              setAltValues((prev) =>
+                                prev.map((a, j) => (j === i ? v : a)),
+                              )
+                            }
+                            autoComplete="off"
+                            maxLength={125}
+                            placeholder={img.suggestion}
+                            multiline={2}
+                          />
+                          {img.source !== "written" && img.suggestion ? (
+                            <InlineStack gap="200" blockAlign="center" wrap>
+                              <Text as="span" variant="bodySm" tone="subdued">
+                                We would write: “{img.suggestion}”
+                              </Text>
+                              <Button
+                                size="micro"
+                                onClick={() =>
+                                  setAltValues((prev) =>
+                                    prev.map((a, j) => (j === i ? img.suggestion : a)),
+                                  )
+                                }
+                              >
+                                Use this
+                              </Button>
+                            </InlineStack>
+                          ) : null}
+                        </BlockStack>
+                      </div>
+                    </InlineStack>
+                  ))}
+                  <InlineStack>
+                    <Button submit variant="primary" loading={busy}>
+                      Save image descriptions
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              )}
             </BlockStack>
           </Form>
         </Card>
