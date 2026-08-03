@@ -116,6 +116,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { ok: false };
 
+  // A merchant who thinks nothing is happening presses the button again.
+  // Progress itself is safe — it lives in the database, so refreshing or
+  // closing the tab loses nothing — but a second job would double the API
+  // calls and muddle the report. One at a time.
+  const active = await db.jobRun.findFirst({
+    where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+  });
+  if (active) return { ok: false, alreadyRunning: true };
+
   if (mode === "alt") {
     const jobRun = await db.jobRun.create({
       data: { shopId: shop.id, kind: "alt_text" },
@@ -311,7 +320,11 @@ export default function Dashboard() {
                   <Text as="p" variant="bodySm" tone="subdued">
                     {total === 0
                       ? "Starting up…"
-                      : `${percent}% — ${progress} of ${total} products. You can close this tab; it keeps running.`}
+                      : `${percent}% — ${progress} of ${total} products.`}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    This runs on our servers. Close the tab, refresh, come back
+                    tomorrow — the progress is saved, not in this window.
                   </Text>
                 </BlockStack>
               </InlineStack>
