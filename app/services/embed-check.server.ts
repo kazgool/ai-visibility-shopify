@@ -28,9 +28,16 @@ export type EmbedCheckResult = {
 };
 
 // The block type in settings_data.json contains the extension uid
-// (shopify://apps/<app>/blocks/<handle>/<uid>). The uid is stable across
-// deploys; the app name in the path is not, so we match on uid + handle.
-const EXTENSION_UID = "1fba957a-2c9f-f8b0-6c55-1e0680f3865ef9012d7f";
+// (shopify://apps/<app>/blocks/<handle>/<uid>).
+//
+// Two different uids exist and confusing them cost an afternoon: the local
+// toml uid (1fba957a...) is only a workspace identifier; Shopify assigns the
+// released extension its own uid at first deploy, and THAT is what themes
+// reference. A dev preview references a third, temporary uid - which is how
+// "enabled" can still render nothing. Verified against the published theme
+// on 3 Aug 2026; if this ever goes stale, read the current value from
+// settings_data.json of a working install.
+const EXTENSION_UID = "019fc7c8-03b7-7553-a37b-84b873e7cb96";
 const EXTENSION_HANDLE = "ai-visibility";
 
 const MAIN_THEME_SETTINGS = `#graphql
