@@ -230,6 +230,25 @@ theme-node merge in PRD §4.2).
 
 ---
 
+## 10.1 Rule for every new filter (added 3 Aug 2026)
+
+Before adding a rule that rejects something, write down what else it
+rejects. Not what it was written for — what it *also* catches.
+
+The case that produced this rule: a heuristic meant to strip migration
+UUIDs out of captured phrases ("B6ADC692-C01B-4229-8956-100A9AFB8C46")
+used "mixed letters and digits, no pronounceable vowel pattern". It would
+also have discarded `160x80`, `M8x40`, `IP65` and `DDR4` — real
+specifications a buyer compares, in exactly the trades (industrial,
+electronics) where attributes matter most. The fix was to narrow it to
+signals that cannot be anything else: hex blocks of eight or more
+characters, and alphanumeric runs of sixteen or more.
+
+A filter that removes noise and value together is worse than the noise,
+because the loss is silent. When in doubt, let the stray value through and
+let the merchant delete it — they can see it; they cannot see what never
+appeared.
+
 ## 11. Stopwords, verbatim
 
 Merchant-extensible per shop (the WordPress filter becomes a settings

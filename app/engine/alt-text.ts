@@ -11,6 +11,8 @@
 //  - Gallery images get distinct text, so image three does not repeat image one.
 
 import type { Fact } from "./extract";
+import { decodeEntities } from "./normalize";
+import { looksLikeIdentifier } from "./phrase";
 
 export const ALT_MAX_CHARS = 125;
 
@@ -35,11 +37,24 @@ const FILENAME_PATTERNS = [
   /^(screenshot|whatsapp|untitled)/i,
 ];
 
-/** Is this "alt text" actually a camera filename nobody wrote? */
+/**
+ * Is this "alt text" actually a filename nobody wrote?
+ *
+ * Merchants rarely name their images, so what arrives is DSC_4471,
+ * image_123650291, or a UUID from a migration. Publishing that as a
+ * description is worse than leaving the field empty: a screen reader reads it
+ * aloud, character by character.
+ */
 export function looksLikeFilename(value: string): boolean {
   const clean = value.trim().replace(/\.(jpe?g|png|webp|gif|avif)$/i, "");
   if (clean === "") return true;
-  return FILENAME_PATTERNS.some((re) => re.test(clean));
+  if (FILENAME_PATTERNS.some((re) => re.test(clean))) return true;
+
+  // A single token that reads as an identifier rather than a description.
+  const words = clean.split(/\s+/);
+  if (words.length === 1 && looksLikeIdentifier(words[0])) return true;
+
+  return false;
 }
 
 function visualFacts(facts: Fact[]): Fact[] {
@@ -66,7 +81,7 @@ export function buildAltText(
   position = 0,
 ): string {
   const visual = visualFacts(facts);
-  const base = product.title.trim();
+  const base = decodeEntities(product.title).replace(/\s+/g, " ").trim();
 
   if (visual.length === 0) {
     return truncate(position === 0 ? base : `${base}, view ${position + 1}`);

@@ -16,8 +16,32 @@ describe("looksLikeFilename", () => {
     expect(looksLikeFilename("")).toBe(true);
   });
 
+  it("recognises UUIDs and migration identifiers", () => {
+    expect(looksLikeFilename("B6ADC692-C01B-4229-8956-100A9AFB8C46")).toBe(true);
+    expect(looksLikeFilename("3ba7dee8f7bd4e1496cf6e31548bbe11")).toBe(true);
+  });
+
   it("leaves real descriptions alone", () => {
     expect(looksLikeFilename("Coltar Chesterfield negru din catifea")).toBe(false);
+    expect(looksLikeFilename("Masa extensibila 160 cm")).toBe(false);
+  });
+});
+
+describe("imported catalogues", () => {
+  it("decodes HTML entities in the title", () => {
+    const alt = buildAltText(
+      { title: "Set Masa &#038; 6 Scaune &#8211; Beige", productType: null },
+      [],
+      0,
+    );
+    expect(alt).toBe("Set Masa & 6 Scaune – Beige");
+    expect(alt).not.toContain("&#");
+  });
+
+  it("never puts an identifier in the description", () => {
+    const polluted = [{ k: "Material", v: "B6ADC692-C01B-4229-8956-100A9AFB8C46" }];
+    const alt = buildAltText({ title: "Set Masa", productType: null }, polluted, 0);
+    expect(alt).not.toContain("B6ADC692");
   });
 });
 

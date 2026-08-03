@@ -16,8 +16,26 @@ const EQUIVALENCE: Record<string, string> = {
   t: "tțţ", ț: "tțţ", ţ: "tțţ",
 };
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  ndash: "–", mdash: "—", hellip: "…", rsquo: "’", lsquo: "‘",
+  ldquo: "“", rdquo: "”", eacute: "é", agrave: "à", uuml: "ü",
+};
+
+/**
+ * Catalogues imported from other platforms carry HTML entities in plain text
+ * fields: "Set Masa &#038; 6 Scaune &#8211; Beige". Left alone they end up in
+ * alt text and structured data, where they read as gibberish.
+ */
+export function decodeEntities(input: string): string {
+  return String(input ?? "")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&([a-z]+);/gi, (whole, name) => NAMED_ENTITIES[name.toLowerCase()] ?? whole);
+}
+
 export function stripTags(input: string): string {
-  return String(input ?? "").replace(/<[^>]*>/g, " ");
+  return decodeEntities(String(input ?? "").replace(/<[^>]*>/g, " "));
 }
 
 /**
@@ -61,6 +79,6 @@ export function diacriticPattern(term: string): string {
  * tags stripped, whitespace collapsed, lowercased, diacritics kept.
  */
 export function prepareText(title: string, body: string): string {
-  const raw = `${title ?? ""}. ${stripTags(body ?? "")}`;
+  const raw = `${decodeEntities(title ?? "")}. ${stripTags(body ?? "")}`;
   return raw.replace(/\s+/gu, " ").trim().toLowerCase();
 }

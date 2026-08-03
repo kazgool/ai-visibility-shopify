@@ -5,7 +5,7 @@ import { parseDictionary } from "../dictionary";
 import { normalize, prepareText, diacriticPattern } from "../normalize";
 import { measurements } from "../measurements";
 import { counted } from "../counts";
-import { trimPhrase, isUsablePhrase } from "../phrase";
+import { trimPhrase, isUsablePhrase, looksLikeIdentifier } from "../phrase";
 import { stopwordSet } from "../stopwords";
 import { extractFromText } from "../extract";
 
@@ -80,6 +80,20 @@ describe("counted", () => {
   });
   it("ignores a number inside a longer word", () => {
     expect(counted("6 scaunelor", "scaune")).toEqual([]);
+  });
+});
+
+describe("identifier detection", () => {
+  it("catches UUIDs and hex blocks from migrations", () => {
+    expect(looksLikeIdentifier("B6ADC692-C01B-4229-8956-100A9AFB8C46")).toBe(true);
+    expect(looksLikeIdentifier("3ba7dee8f7bd4e14")).toBe(true);
+    expect(looksLikeIdentifier("a1b2c3d4e5f60718aa")).toBe(true);
+  });
+
+  it("leaves real specifications alone", () => {
+    for (const spec of ["160x80", "M8x40", "IP65", "DDR4", "USB-C", "18k", "5G", "OLED"]) {
+      expect(looksLikeIdentifier(spec)).toBe(false);
+    }
   });
 });
 
