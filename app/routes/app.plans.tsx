@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
@@ -18,15 +18,14 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { redirect } from "@remix-run/node";
+import { PLANS, type PlanHandle } from "../services/plans";
 import {
-  PLANS,
   activeSubscription,
   checkMasterKey,
   grantComp,
   isComped,
   planFromName,
   startSubscription,
-  type PlanHandle,
 } from "../services/billing.server";
 import { extractProduct } from "../engine";
 
@@ -135,10 +134,21 @@ export default function Plans() {
     currentPlan: PlanHandle | null;
     renewsAt: string | null;
   };
-  const result = useActionData<typeof action>() as { codeError?: string } | undefined;
+  const result = useActionData<typeof action>() as
+    | { codeError?: string; confirmationUrl?: string }
+    | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [showCode, setShowCode] = useState(Boolean(result?.codeError));
+
+  // Shopify's confirmation page refuses to render inside the admin iframe, so
+  // the whole browser window has to go there. Without this the merchant sees
+  // a blank frame and assumes the app is broken.
+  useEffect(() => {
+    if (result?.confirmationUrl) {
+      window.top!.location.href = result.confirmationUrl;
+    }
+  }, [result?.confirmationUrl]);
 
   const suggested: PlanHandle = count > 20000 ? "high_volume" : "standard";
 

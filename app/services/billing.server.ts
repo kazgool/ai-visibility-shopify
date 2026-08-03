@@ -7,25 +7,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import db from "../db.server";
 
-export type PlanHandle = "standard" | "high_volume";
-
-export const PLANS: Record<
-  PlanHandle,
-  { name: string; amount: number; limit: number | null; blurb: string }
-> = {
-  standard: {
-    name: "Standard",
-    amount: 99,
-    limit: 20000,
-    blurb: "Everything the app does, for catalogues up to 20,000 products.",
-  },
-  high_volume: {
-    name: "High volume",
-    amount: 149,
-    limit: null,
-    blurb: "The same features for larger catalogues, with priority support.",
-  },
-};
+export { PLANS, type PlanHandle } from "./plans";
+import { PLANS, type PlanHandle } from "./plans";
 
 /**
  * Comped access, for our own stores, agencies and anyone we choose to give the
