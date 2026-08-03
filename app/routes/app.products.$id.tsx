@@ -121,7 +121,27 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     storedQuestions = [];
   }
 
+  // Crawler access is a property of the store, not of one product: the same
+  // verdict holds for all 355. Stating it per product without saying so
+  // would be fake granularity - the exact dishonesty this app exists to
+  // avoid - so the label says "this store", with the date of the check.
+  const checks = shop
+    ? await db.crawlerCheck.findMany({
+        where: { shopId: shop.id },
+        orderBy: { checkedAt: "desc" },
+        take: 25,
+      })
+    : [];
+  const latest = new Map<string, (typeof checks)[number]>();
+  for (const c of checks) if (!latest.has(c.agent)) latest.set(c.agent, c);
+  const crawlers = Array.from(latest.values()).map((c) => ({
+    agent: c.agent,
+    ok: c.cause === "ok",
+    checkedAt: c.checkedAt.toISOString(),
+  }));
+
   return {
+    crawlers,
     product: {
       id: product.id,
       // The page header is ours; imported titles carry entities.
@@ -290,8 +310,9 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule } =
+  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers } =
     useLoaderData<typeof loader>() as {
+      crawlers: { agent: string; ok: boolean; checkedAt: string }[];
       product: { id: string; title: string; image: string | null };
       images: {
         id: string;
@@ -368,6 +389,50 @@ export default function ProductEditor() {
             alone. Reset to automatic to let extraction fill them again.
           </Banner>
         ) : null}
+
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              Readable by assistants
+            </Text>
+            <InlineStack gap="150" wrap blockAlign="center">
+              <Badge tone={storedFacts.length > 0 ? "success" : undefined}>
+                {storedFacts.length > 0
+                  ? `${storedFacts.length} attributes published`
+                  : "No attributes yet"}
+              </Badge>
+              <Badge tone={capsule.summary ? "success" : undefined}>
+                {capsule.summary ? "Summary published" : "No summary"}
+              </Badge>
+              <Badge tone={capsule.questions.length > 0 ? "success" : undefined}>
+                {capsule.questions.length > 0
+                  ? `${capsule.questions.length} questions`
+                  : "No questions"}
+              </Badge>
+            </InlineStack>
+            {crawlers.length > 0 ? (
+              <>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  {`Crawler access, checked for the whole store on ${new Date(
+                    crawlers[0].checkedAt,
+                  ).toLocaleDateString()}:`}
+                </Text>
+                <InlineStack gap="150" wrap>
+                  {crawlers.map((c) => (
+                    <Badge key={c.agent} tone={c.ok ? "success" : "critical"}>
+                      {c.agent}
+                    </Badge>
+                  ))}
+                </InlineStack>
+              </>
+            ) : (
+              <Text as="p" tone="subdued" variant="bodySm">
+                Crawler access has not been checked yet. Run it from
+                Diagnostics; the verdict covers the whole store.
+              </Text>
+            )}
+          </BlockStack>
+        </Card>
 
         <Card>
           <Form method="post">
