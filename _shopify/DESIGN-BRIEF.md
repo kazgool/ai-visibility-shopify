@@ -122,8 +122,8 @@ a permanent comparison card showing what the dictionary reads today.
 app does anything. This is the first screen after install, and for a
 non-paying shop it is the only screen.
 
-- **Standard — $29 / month**, up to 20,000 products. Everything the app does.
-- **High volume — $49 / month**, above 20,000 products. Same features,
+- **Standard — $99 / year**, up to 20,000 products. Everything the app does.
+- **High volume — $149 / year**, above 20,000 products. Same features,
   priority support.
 
 Not "Pro" and not "Enterprise". The second plan is for bigger catalogues,

@@ -8,29 +8,47 @@ Build brief. Written 2 August 2026. Companion to `PRD.md` §6.
 
 | Handle | Name | Price | Limit | Trial |
 |---|---|---|---|---|
-| `standard` | Standard | $29.00 USD / month | up to 20,000 products | none — see §4 |
-| `high_volume` | High volume | $49.00 USD / month | above 20,000 products | none — see §4 |
+| `standard` | Standard | $99.00 USD / year | up to 20,000 products | none — see §4 |
+| `high_volume` | High volume | $149.00 USD / year | above 20,000 products | none — see §4 |
 
 Same features on both. The second plan exists as a fair-use valve for the
 rare large catalogue, not as a feature gate. Never describe it as "Pro" or
 "Enterprise": it is not better, it is for bigger catalogues.
 
+**Why annual, not monthly (decided 2 Aug 2026).** Three reasons, in order
+of weight:
+
+1. **It matches how the value arrives.** Most of the work lands in the
+   first fifteen minutes, then the app maintains the catalogue quietly for
+   a year. A monthly plan invites paying once, running the pass and
+   cancelling — annual makes the commitment match the shape of the value.
+2. **It reads cheaper while earning more.** A merchant mentally divides:
+   $99 a year is about $8 a month, against Mento at $19 and Attributify at
+   $49 *per month*. We look like the sensible choice and still collect more
+   than a $29 monthly plan that churns after one cycle.
+3. **It is the model the WordPress product already proves**, at €99/€199/€499
+   a year. Same customer expectation, same renewal rhythm, one fewer thing
+   to invent.
+
 No free plan at launch. Free installs are the main source of one-star
-reviews, and we have no review history to absorb them. Revisit once the
-paid funnel converts.
+reviews, and we have no review history to absorb them.
 
 ## 2. Shopify Billing API
 
-- `appSubscriptionCreate` with a recurring `appRecurringPricingDetails`,
-  interval `EVERY_30_DAYS`, `trialDays: 7`, `test: true` on development
-  stores.
+- `appSubscriptionCreate` with `appRecurringPricingDetails`, **interval
+  `ANNUAL`**, `test: true` on development stores. No `trialDays`.
 - `returnUrl` comes back into the embedded app, never to an external page.
 - Read the current subscription with `currentAppInstallation {
   activeSubscriptions { name status lineItems } }` — never trust a locally
   cached plan for access decisions.
 - Store the plan handle on `Shop.plan` for display and for the limit check;
   treat Shopify as the source of truth on every load of the billing screen.
-- Cancellation, refunds and dunning are Shopify's job. Do not build them.
+- Cancellation, refunds, renewal reminders and dunning are Shopify's job.
+  Do not build them. In particular, do not email merchants about renewals:
+  Shopify bills them and tells them.
+- An annual charge appears on the merchant's Shopify invoice like any other
+  app charge; there is nothing special to handle at renewal time. A renewed
+  subscription keeps the same `id`.
 
 ## 3. Enforcement — deliberately gentle
 
@@ -43,6 +61,10 @@ count > 20,000 and plan standard    → run, show the upgrade banner,
                                       start a 14-day grace period
 grace expired and still standard    → refuse new full passes only
 ```
+
+An upgrade mid-year uses `appSubscriptionCreate` for the new plan; Shopify
+prorates the remainder of the old one. Never cancel first and re-charge —
+that bills the merchant twice for the same year.
 
 What we never do:
 
@@ -86,7 +108,7 @@ try it first. That is accepted deliberately: fewer, better-qualified
 customers, and no free-riders on a product whose value arrives in the first
 ten minutes.
 
-**Churn after one month** remains possible and cannot be engineered away —
+**Churn at renewal** remains possible and cannot be engineered away —
 the data stays with the merchant by design (PRD §4.1). What is recurring
 should be said on the listing rather than hidden: new products processed
 automatically, alt text for new images, crawler access re-checked after
@@ -103,7 +125,9 @@ Shopify metafields and keep working, with or without this app.* That
 sentence is a selling point, not a disclaimer.
 
 **Dashboard** — no pricing noise. At most one banner, and only when the
-limit is genuinely crossed or the trial has three days left.
+product limit is genuinely crossed. Nothing about renewal: Shopify handles
+that, and a countdown on our screen would only create anxiety we cannot
+resolve.
 
 ## 6. Data model
 
@@ -115,6 +139,6 @@ limit is genuinely crossed or the trial has three days left.
 - Usage metering or per-product charges. Our marginal cost is near zero
   because the engine calls no model; metering would add complexity that
   buys nothing.
-- Annual plans at launch. Shopify supports them; revisit when monthly
-  churn is understood.
+- Monthly plans. The value is front-loaded and maintenance is the
+  recurring part; a monthly option would only invite one-cycle churn.
 - Coupons and partner discounts. Shopify's own mechanisms cover this.

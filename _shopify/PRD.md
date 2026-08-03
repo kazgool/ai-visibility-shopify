@@ -367,8 +367,20 @@ and how merchants compare.
 
 | Plan | Price | Products | Notes |
 |---|---|---|---|
-| Standard | $29 / month | up to 20,000 | Everything the app does |
-| High volume | $49 / month | above 20,000 | Same features, priority support |
+| Standard | $99 / year | up to 20,000 | Everything the app does |
+| High volume | $149 / year | above 20,000 | Same features, priority support |
+
+**Annual, not monthly, and no trial (decided 2 Aug 2026).** The value is
+front-loaded: one pass does most of the work a catalogue will ever need,
+and the app then maintains it quietly. A monthly plan invites paying once
+and cancelling; a trial invites extracting everything and cancelling on day
+two, since the metafields are genuinely the merchant's to keep. Annual
+matches the shape of the value, mirrors the WordPress product merchants
+already understand, and reads cheap while earning more — $99 a year is
+about $8 a month against Mento at $19 and Attributify at $49 per month.
+
+The cost is honest and accepted: nothing is visible before paying, so the
+App Store listing must do the demonstrating. See `BILLING-SPEC.md`.
 
 **Why two plans and not three (decided 2 Aug 2026).** Over 99% of Shopify
 stores hold fewer than 20,000 products, so in practice every customer sees
@@ -404,12 +416,9 @@ match.
 A free tier is worth considering only after the paid funnel works, because free
 installs are the main source of one star reviews.
 
-*Pricing history: $29/$79/$299 and $19/$39/$79 were both considered and
-rejected in favour of the two-plan structure above. Against the scanned
-field — AIO at $4.49–12.49, Mento at $19–67, Attributify at $49–149 —
-$29 sits above the thin AI-wrapper noise and below the serious PIM
-competitor, while covering small catalogues that $39+ would scare off.
-Revisit after the first 50 installs with real conversion data.*
+*Pricing history: $29/$79/$299, $19/$39/$79 and a two-plan monthly
+structure were all considered before settling on annual billing at
+$99/$149. Revisit after the first 50 installs with real renewal data.*
 
 ### 6.1 Platform terms, obligations and exit (researched 2 Aug 2026)
 
