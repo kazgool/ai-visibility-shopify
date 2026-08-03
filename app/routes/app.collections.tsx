@@ -172,11 +172,20 @@ export default function Collections() {
 
         {done > 0 ? (
           <Card>
-            <InlineStack gap="600" wrap>
-              <Metric label="Collections" value={String(rows.length)} />
-              <Metric label="Described" value={String(done)} />
-              <Metric label="With a comparison table" value={String(withTable)} />
-            </InlineStack>
+            <BlockStack gap="200">
+              <InlineStack gap="600" wrap>
+                <Metric label="Collections" value={String(rows.length)} />
+                <Metric label="Described" value={String(done)} />
+                <Metric label="With a comparison table" value={String(withTable)} />
+              </InlineStack>
+              {job?.status === "done" && job.finishedAt ? (
+                <Text as="p" tone="subdued" variant="bodySm">
+                  {`Last built ${new Date(job.finishedAt).toLocaleString()}: ${
+                    job.report?.collections ?? "?"
+                  } collections read, ${job.report?.withTable ?? 0} with a comparison table.`}
+                </Text>
+              ) : null}
+            </BlockStack>
           </Card>
         ) : null}
 

@@ -41,7 +41,15 @@ export type CollectionCapsule = {
   table: ComparisonTable;
 };
 
-/** Label -> distinct values, in order of first appearance. */
+/**
+ * Label -> distinct values for prose, in order of first appearance.
+ *
+ * Values are split on commas first: one product says "burete", another says
+ * "textil, burete", and joining those unsplit into a comma-separated sentence
+ * reads as "burete, textil, burete" - a duplicate that is really a composite.
+ * The comparison table keeps composite values whole; this list is for
+ * sentences, where the components are what a person would name.
+ */
 function valuesByLabel(products: CollectionMember[]): Map<string, string[]> {
   const seen = new Map<string, Set<string>>();
   const order = new Map<string, string[]>();
@@ -53,15 +61,18 @@ function valuesByLabel(products: CollectionMember[]): Map<string, string[]> {
         seen.set(label, new Set());
         order.set(label, []);
       }
-      // Values are compared case-insensitively, with whitespace and trailing
-      // punctuation normalised, but kept as written: the merchant's own
-      // casing is what buyers recognise. Without the normalisation "burete"
-      // and "burete " list as two different materials.
-      const key = fact.v.toLowerCase().replace(/\s+/g, " ").replace(/[.,;:]+$/, "").trim();
-      const set = seen.get(label)!;
-      if (!set.has(key)) {
-        set.add(key);
-        order.get(label)!.push(fact.v);
+      for (const part of fact.v.split(",")) {
+        // Compared case-insensitively with whitespace and trailing
+        // punctuation normalised, kept as written: the merchant's casing is
+        // what buyers recognise.
+        const shown = part.replace(/\s+/g, " ").trim();
+        if (shown === "") continue;
+        const key = shown.toLowerCase().replace(/[.;:]+$/, "");
+        const set = seen.get(label)!;
+        if (!set.has(key)) {
+          set.add(key);
+          order.get(label)!.push(shown);
+        }
       }
     }
   }

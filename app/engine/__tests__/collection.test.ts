@@ -149,6 +149,17 @@ describe("buildCollectionCapsule", () => {
     expect(materials).toBe("Material: burete, textil.");
   });
 
+  it("splits composite values so 'textil, burete' does not re-list burete", () => {
+    const composite = [
+      member("a", "Canapea A", [["Material", "MDF"], ["Culoare", "gri"]]),
+      member("b", "Canapea B", [["Material", "burete"], ["Culoare", "bej"]]),
+      member("c", "Canapea C", [["Material", "textil, burete"], ["Culoare", "verde"]]),
+    ];
+    const capsule = buildCollectionCapsule({ title: "Canapele", products: composite });
+    const materials = capsule.criteria.find((c) => c.startsWith("Material:"))!;
+    expect(materials).toBe("Material: MDF, burete, textil.");
+  });
+
   it("lists four values and counts the rest rather than running on", () => {
     const varied = Array.from({ length: 12 }, (_, i) =>
       member(`p${i}`, `Canapea ${i}`, [
