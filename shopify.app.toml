@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "4261bcd7389bbd477f25254bd79d6298"
-name = "AI Visibility All-in-One"
+name = "MRDigital AI Visibility AiO"
 application_url = "https://ai-visibility-all-in-one.fly.dev"
 embedded = true
 handle = "ai-visibility-all-in-one"
