@@ -10,6 +10,7 @@ import {
   buildSummary,
   buildQuestions,
   buildFitFor,
+  splitFactsByLevel,
   type Fact,
 } from "../engine";
 import type { FieldValue } from "./facts.server";
@@ -17,7 +18,7 @@ import type { FieldValue } from "./facts.server";
 import { adminGraphql } from "./admin.server";
 import { pingProducts } from "./indexnow.server";
 import { fetchAllProducts, fetchProduct } from "./catalogue.server";
-import { mayWrite, writeFacts, type ProductInput } from "./facts.server";
+import { mayWrite, writeFacts, writeVariantFacts, type ProductInput } from "./facts.server";
 import { renderMirror } from "./mirror.server";
 
 /**
@@ -168,10 +169,29 @@ export async function runBulkExtract(
     }
 
     if (!options.dryRun && facts.length > 0) {
+      // Facts the variants contradict move to the variants (PRD §5.4): a
+      // description's "culoare: gri" is false for the beige variant.
+      const split = splitFactsByLevel(facts, product.variants ?? []);
       if (product.handle) handleById.set(product.id, product.handle);
-      batch.push({ product, facts, fields: capsuleFields(product, facts) });
-      if (batch.length >= 8) await flush();
-      await cacheMirror(shopId, shop.domain, product, facts);
+      if (split.productFacts.length > 0) {
+        batch.push({
+          product,
+          facts: split.productFacts,
+          fields: capsuleFields(product, split.productFacts),
+        });
+        if (batch.length >= 8) await flush();
+      }
+      if (split.perVariant.size > 0) {
+        const variantById = new Map((product.variants ?? []).map((v) => [v.id, v]));
+        await writeVariantFacts(
+          graphql,
+          [...split.perVariant.entries()].map(([id, vFacts]) => ({
+            variant: variantById.get(id)!,
+            facts: vFacts,
+          })),
+        );
+      }
+      await cacheMirror(shopId, shop.domain, product, split.productFacts);
     }
 
     done += 1;
@@ -203,10 +223,23 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const facts = extractProduct(product, dictionary, { extraStopwords });
   if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
+  const split = splitFactsByLevel(facts, product.variants ?? []);
+  if (split.perVariant.size > 0) {
+    const variantById = new Map((product.variants ?? []).map((v) => [v.id, v]));
+    await writeVariantFacts(
+      graphql,
+      [...split.perVariant.entries()].map(([id, vFacts]) => ({
+        variant: variantById.get(id)!,
+        facts: vFacts,
+      })),
+    );
+  }
+  if (split.productFacts.length === 0) return { written: [], skipped: [], unchanged: [] };
+
   const [outcome] = await writeFacts(graphql, [
-    { product, facts, fields: capsuleFields(product, facts) },
+    { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts) },
   ]);
-  await cacheMirror(shopId, shop.domain, product, facts);
+  await cacheMirror(shopId, shop.domain, product, split.productFacts);
   if (outcome.written.length > 0 && product.handle) {
     await pingProducts(shopId, shop.domain, [product.handle]);
   }

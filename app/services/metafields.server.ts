@@ -56,14 +56,22 @@ const EXISTING = `#graphql
 
 type AdminGraphql = (query: string, options?: { variables?: object }) => Promise<Response>;
 
+// Variants hold only what distinguishes them from their siblings (PRD §5.4):
+// the option pairs as facts, plus provenance.
+const VARIANT_DEFINITIONS = [
+  { key: "facts", type: "json", name: "Comparable attributes" },
+  { key: "state", type: "json", name: "AI Visibility state" },
+] as const;
+
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {
   await ensureFor(graphql, "PRODUCT", DEFINITIONS);
   await ensureFor(graphql, "COLLECTION", COLLECTION_DEFINITIONS);
+  await ensureFor(graphql, "PRODUCTVARIANT", VARIANT_DEFINITIONS);
 }
 
 async function ensureFor(
   graphql: AdminGraphql,
-  ownerType: "PRODUCT" | "COLLECTION",
+  ownerType: "PRODUCT" | "COLLECTION" | "PRODUCTVARIANT",
   definitions: readonly { key: string; type: string; name: string }[],
 ) {
   const existingRes = await graphql(EXISTING, { variables: { ownerType } });

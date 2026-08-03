@@ -44,6 +44,18 @@ const PRODUCTS_QUERY = `
           metafields(namespace: "${NAMESPACE}", first: 10) {
             edges { node { key value } }
           }
+          variants {
+            edges {
+              node {
+                id
+                title
+                selectedOptions { name value }
+                metafields(namespace: "${NAMESPACE}", first: 3) {
+                  edges { node { key value } }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -64,6 +76,16 @@ const SINGLE_PRODUCT = `#graphql
       totalInventory
       metafields(namespace: "${NAMESPACE}", first: 10) {
         nodes { key value }
+      }
+      variants(first: 100) {
+        nodes {
+          id
+          title
+          selectedOptions { name value }
+          metafields(namespace: "${NAMESPACE}", first: 3) {
+            nodes { key value }
+          }
+        }
       }
     }
   }
@@ -88,6 +110,12 @@ export async function fetchProduct(
     currency: p.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
     available: typeof p.totalInventory === "number" ? p.totalInventory > 0 : undefined,
     metafields: (p.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
+    variants: (p.variants?.nodes ?? []).map((v: any) => ({
+      id: v.id,
+      title: v.title,
+      selectedOptions: v.selectedOptions ?? [],
+      metafields: (v.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
+    })),
   };
 }
 
@@ -121,6 +149,10 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
   const body = await res.text();
 
   const products = new Map<string, ProductInput>();
+  const variants = new Map<
+    string,
+    { id: string; title: string | null; selectedOptions: { name: string; value: string }[]; metafields: { key: string; value: string }[] }
+  >();
   for (const line of body.split("\n")) {
     if (!line.trim()) continue;
     const row = JSON.parse(line);
@@ -138,14 +170,35 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         currency: row.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
         available: typeof row.totalInventory === "number" ? row.totalInventory > 0 : undefined,
         metafields: [],
+        variants: [],
       });
       continue;
     }
 
-    // Metafield child row.
+    // Variant child row. Registered in its own map so its metafield children
+    // (whose __parentId is the variant, not the product) find their way home.
+    if (row.id?.includes("/ProductVariant/") && row.__parentId) {
+      const parent = products.get(row.__parentId);
+      const variant = {
+        id: row.id,
+        title: row.title ?? null,
+        selectedOptions: row.selectedOptions ?? [],
+        metafields: [] as { key: string; value: string }[],
+      };
+      if (parent) parent.variants!.push(variant);
+      variants.set(row.id, variant);
+      continue;
+    }
+
+    // Metafield child row - of a product or of a variant.
     if (row.__parentId && row.key !== undefined) {
       const parent = products.get(row.__parentId);
-      if (parent) parent.metafields!.push({ key: row.key, value: row.value });
+      if (parent) {
+        parent.metafields!.push({ key: row.key, value: row.value });
+        continue;
+      }
+      const variant = variants.get(row.__parentId);
+      if (variant) variant.metafields.push({ key: row.key, value: row.value });
     }
   }
 

@@ -36,6 +36,13 @@ export {
   type CollectionCapsule,
   type ComparisonTable,
 } from "./collection";
+export {
+  splitFactsByLevel,
+  variantFacts,
+  varyingOptionNames,
+  type VariantLike,
+  type SplitResult,
+} from "./variants";
 export { normalize, prepareText, diacriticPattern, cleanOutput } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 

@@ -14,6 +14,13 @@ export const ENGINE_VERSION = "1.0.0";
 export type FieldState = { source: "auto" | "human"; at: string; engine?: string };
 export type ProductState = Record<string, FieldState>;
 
+export type VariantInput = {
+  id: string;
+  title?: string | null;
+  selectedOptions: { name: string; value: string }[];
+  metafields?: { key: string; value: string }[];
+};
+
 export type ProductInput = {
   id: string;
   title: string;
@@ -26,6 +33,7 @@ export type ProductInput = {
   currency?: string | null;
   available?: boolean;
   metafields?: { key: string; value: string }[];
+  variants?: VariantInput[];
 };
 
 export function parseState(product: ProductInput): ProductState {
@@ -148,4 +156,55 @@ export async function writeFacts(
   }
 
   return outcomes;
+}
+
+/**
+ * Write option-derived facts on variants (PRD §5.4). Same three guards as
+ * products, per variant: a human-written value is never touched, a value we
+ * cannot account for is treated as human, and an identical value is never
+ * rewritten - a variant write marks the product updated, so without that
+ * last check every pass would feed the products/update webhook.
+ */
+export async function writeVariantFacts(
+  graphql: GraphqlFn,
+  variants: { variant: VariantInput; facts: Fact[] }[],
+): Promise<void> {
+  const metafields: Record<string, unknown>[] = [];
+  const now = new Date().toISOString();
+
+  for (const { variant, facts } of variants) {
+    if (facts.length === 0) continue;
+
+    const rawState = variant.metafields?.find((m) => m.key === "state")?.value;
+    let state: ProductState = {};
+    if (rawState) {
+      try {
+        state = JSON.parse(rawState) as ProductState;
+      } catch {
+        state = {};
+      }
+    }
+
+    if (state["facts"]?.source === "human") continue;
+    const existing = variant.metafields?.find((m) => m.key === "facts")?.value;
+    if (existing && existing !== "" && !state["facts"]) continue;
+
+    const value = JSON.stringify(facts);
+    if (existing === value) continue;
+
+    state["facts"] = { source: "auto", at: now, engine: ENGINE_VERSION };
+    metafields.push(
+      { ownerId: variant.id, namespace: NAMESPACE, key: "facts", type: "json", value },
+      { ownerId: variant.id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) },
+    );
+  }
+
+  for (let i = 0; i < metafields.length; i += 24) {
+    const slice = metafields.slice(i, i + 24);
+    const data = await graphql<any>(METAFIELDS_SET, { metafields: slice });
+    const errors = data?.metafieldsSet?.userErrors ?? [];
+    if (errors.length) {
+      throw new Error(`metafieldsSet (variants): ${JSON.stringify(errors)}`);
+    }
+  }
 }
