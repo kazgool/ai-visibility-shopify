@@ -115,10 +115,30 @@ export function buildQuestions(input: CapsuleInput): QA[] {
     });
   }
 
-  const capacity = byLabel.get("capacity") ?? byLabel.get("capacitate");
-  if (capacity) {
+  // Seats (people/places) and set contents (6 chairs) are different facts.
+  // The presets keep them under separate labels; each gets its own question.
+  const seats = byLabel.get("seats") ?? byLabel.get("locuri");
+  if (seats) {
     out.push({
       q: `How many people does ${input.title} seat?`,
+      a: `${seats.v}.`,
+    });
+  }
+
+  const includes = byLabel.get("includes") ?? byLabel.get("continut") ?? byLabel.get("set");
+  if (includes) {
+    out.push({
+      q: `What does ${input.title} include?`,
+      a: `${includes.v}.`,
+    });
+  }
+
+  // A merchant's own dictionary may still use one combined "Capacity" label;
+  // stay neutral there rather than guess which meaning they intended.
+  const capacity = byLabel.get("capacity") ?? byLabel.get("capacitate");
+  if (capacity && !seats && !includes) {
+    out.push({
+      q: `What does ${input.title} include or seat?`,
       a: `${capacity.v}.`,
     });
   }
@@ -151,14 +171,14 @@ export function buildFitFor(input: CapsuleInput): string {
   const byLabel = new Map(input.facts.map((f) => [f.k.toLowerCase(), f]));
   const bits: string[] = [];
 
+  // Only facts that genuinely describe who or where it suits. Capacity is
+  // deliberately excluded: "6 scaune" is package contents, not an audience,
+  // and audienceType: "6 chairs" in structured data reads as nonsense.
   const room = byLabel.get("room") ?? byLabel.get("camera");
   if (room) bits.push(room.v);
 
   const occasion = byLabel.get("occasion") ?? byLabel.get("use") ?? byLabel.get("suited to");
   if (occasion) bits.push(occasion.v);
-
-  const capacity = byLabel.get("capacity") ?? byLabel.get("capacitate");
-  if (capacity) bits.push(capacity.v);
 
   return bits.join("; ");
 }
