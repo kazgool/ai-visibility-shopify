@@ -1,10 +1,17 @@
 // A GraphQL Admin client usable from the worker process, where there is no
-// Remix request to authenticate against. Reads the offline access token from
-// the session table (ARCHITECTURE §4).
+// Remix request to authenticate against.
 //
-// GraphQL only — a single REST call is grounds for App Store rejection.
+// Offline tokens expire after 60 minutes (mandatory for public apps since
+// April 2026), so reading `accessToken` straight out of the session table is
+// a time bomb: every background job dies with a 401 an hour after the
+// merchant last opened the app. Instead the token comes from
+// `unauthenticated.admin()`, which refreshes it through the library when it
+// has expired. We ask for it on every request, not once per job - a bulk
+// pass can easily outlive a 60-minute token.
+//
+// GraphQL only - a single REST call is grounds for App Store rejection.
 
-import db from "../db.server";
+import { unauthenticated } from "../shopify.server";
 
 const API_VERSION = "2026-07";
 
@@ -15,11 +22,9 @@ export type GraphqlFn = <T = any>(
 
 export class ThrottledError extends Error {}
 
+/** A token that is valid right now, refreshed by the library if needed. */
 async function tokenFor(shopDomain: string): Promise<string> {
-  const session = await db.session.findFirst({
-    where: { shop: shopDomain, isOnline: false },
-    orderBy: { expires: "desc" },
-  });
+  const { session } = await unauthenticated.admin(shopDomain);
   if (!session?.accessToken) {
     throw new Error(`No offline session for ${shopDomain}`);
   }
@@ -32,14 +37,22 @@ async function tokenFor(shopDomain: string): Promise<string> {
  * runs low it waits for it to refill rather than eating a 429.
  */
 export async function adminGraphql(shopDomain: string): Promise<GraphqlFn> {
-  const token = await tokenFor(shopDomain);
   const endpoint = `https://${shopDomain}/admin/api/${API_VERSION}/graphql.json`;
+
+  // Fail fast if the shop has no session at all, so callers get the clear
+  // error at job start rather than a confusing one mid-run.
+  await tokenFor(shopDomain);
 
   return async function graphql<T = any>(
     query: string,
     variables: Record<string, unknown> = {},
   ): Promise<T> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
+      // Fetched per request, not captured at job start: long jobs outlive
+      // the 60-minute token, and this call is a cheap session-storage read
+      // unless a refresh is actually due.
+      const token = await tokenFor(shopDomain);
+
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -49,6 +62,12 @@ export async function adminGraphql(shopDomain: string): Promise<GraphqlFn> {
         body: JSON.stringify({ query, variables }),
       });
 
+      if (res.status === 401) {
+        // The token died between the refresh check and the request landing.
+        // The next tokenFor() call refreshes it; back off a moment first.
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
       if (res.status === 429) {
         await sleep(2000 * (attempt + 1));
         continue;

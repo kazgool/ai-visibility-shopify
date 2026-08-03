@@ -11,7 +11,7 @@
     "env": "shopify app env",
     "start": "remix-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "worker": "tsx worker/index.ts",
+    "worker": "tsx --env-file=.env worker/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "setup": "prisma generate && prisma migrate deploy",
