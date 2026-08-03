@@ -31,6 +31,14 @@ one step closer to it.
 - **Nothing heavier than it needs to be.** The storefront output is static
   markup; the admin should feel equally light. No animation for its own sake.
 - English throughout the product.
+- **The sidebar is navigation, not location.** It holds only destinations a
+  merchant can reach at any time: Dashboard, Dictionary, Diagnostics, Plan, and
+  whatever new top-level screens get built. A single product, a single
+  collection, or any other one-off record never appears there. Depth is shown
+  where Polaris already shows it - the page title with `backAction`, the
+  "left arrow Back" control next to it. A record in the sidebar is both wrong
+  and misleading: it implies the item is permanent when it is one row out of
+  hundreds.
 
 ## 4. Layout direction
 
