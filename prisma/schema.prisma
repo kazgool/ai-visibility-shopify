@@ -8,6 +8,11 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Migrations must bypass the Neon pooler: prisma migrate takes a Postgres
+  // advisory lock, and through PgBouncer that lock lands on a pooled backend
+  // that outlives the process - the next migrate then times out with P1002.
+  // Queries stay on the pooler; only migrate/db push use this.
+  directUrl = env("DIRECT_URL")
 }
 
 // Shopify session storage (PrismaSessionStorage adapter).
