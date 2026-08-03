@@ -16,7 +16,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { extractProduct, type Fact } from "../engine";
+import { cleanOutput, extractProduct, type Fact } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 
@@ -113,10 +113,19 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       };
     });
 
+  let storedQuestions: { q: string; a: string }[] = [];
+  try {
+    const rawQ = metafields.find((m) => m.key === "questions")?.value;
+    storedQuestions = rawQ ? JSON.parse(rawQ) : [];
+  } catch {
+    storedQuestions = [];
+  }
+
   return {
     product: {
       id: product.id,
-      title: product.title,
+      // The page header is ours; imported titles carry entities.
+      title: cleanOutput(product.title),
       image: product.featuredMedia?.preview?.image?.url ?? null,
     },
     images,
@@ -124,6 +133,14 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     autoFacts,
     source: state.facts?.source ?? null,
     updatedAt: state.facts?.at ?? null,
+    capsule: {
+      summary: metafields.find((m) => m.key === "summary")?.value ?? "",
+      questions: storedQuestions,
+      fitFor: metafields.find((m) => m.key === "fit_for")?.value ?? "",
+      summarySource: state.summary?.source ?? null,
+      questionsSource: state.questions?.source ?? null,
+      fitForSource: state.fit_for?.source ?? null,
+    },
   };
 };
 
@@ -160,6 +177,65 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
     value: string;
   }[];
   const state = parseState({ id, title: "", metafields });
+
+  if (intent === "capsule") {
+    // Whatever is in the boxes becomes the truth for the fields that
+    // changed; untouched fields keep their current provenance.
+    const summary = String(form.get("summary") ?? "").trim();
+    const fitFor = String(form.get("fitFor") ?? "").trim();
+    const qs = form.getAll("qq").map(String);
+    const as_ = form.getAll("qa").map(String);
+    const questions = qs
+      .map((q, i) => ({ q: q.trim(), a: (as_[i] ?? "").trim() }))
+      .filter((qa) => qa.q !== "" && qa.a !== "");
+
+    const origSummary = String(form.get("origSummary") ?? "");
+    const origFitFor = String(form.get("origFitFor") ?? "");
+    const origQuestions = String(form.get("origQuestions") ?? "");
+
+    const now = new Date().toISOString();
+    const writes: Record<string, unknown>[] = [];
+    const push = (key: string, type: string, value: string) => {
+      writes.push({ ownerId: id, namespace: NAMESPACE, key, type, value });
+    };
+
+    if (summary !== origSummary.trim()) {
+      state.summary = { source: "human", at: now, engine: ENGINE_VERSION };
+      push("summary", "multi_line_text_field", summary);
+    }
+    if (fitFor !== origFitFor.trim()) {
+      state.fit_for = { source: "human", at: now, engine: ENGINE_VERSION };
+      push("fit_for", "single_line_text_field", fitFor);
+    }
+    const questionsJson = JSON.stringify(questions);
+    if (questionsJson !== origQuestions) {
+      state.questions = { source: "human", at: now, engine: ENGINE_VERSION };
+      push("questions", "json", questionsJson);
+    }
+
+    if (writes.length > 0) {
+      push("state", "json", JSON.stringify(state));
+      const wRes = await admin.graphql(SET, { variables: { metafields: writes } });
+      const wJson = await wRes.json();
+      const errors = wJson.data?.metafieldsSet?.userErrors ?? [];
+      if (errors.length) return { error: JSON.stringify(errors) };
+    }
+    return { capsuleSaved: true };
+  }
+
+  if (intent === "capsule_reset") {
+    delete state.summary;
+    delete state.questions;
+    delete state.fit_for;
+    await admin.graphql(SET, {
+      variables: {
+        metafields: [
+          { ownerId: id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) },
+        ],
+      },
+    });
+    return { capsuleReset: true };
+  }
 
   if (intent === "reset") {
     // Back to automatic: drop the human flag, let the next pass refill it.
@@ -214,7 +290,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, images, storedFacts, autoFacts, source, updatedAt } =
+  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule } =
     useLoaderData<typeof loader>() as {
       product: { id: string; title: string; image: string | null };
       images: {
@@ -228,6 +304,14 @@ export default function ProductEditor() {
       autoFacts: Fact[];
       source: string | null;
       updatedAt: string | null;
+      capsule: {
+        summary: string;
+        questions: { q: string; a: string }[];
+        fitFor: string;
+        summarySource: string | null;
+        questionsSource: string | null;
+        fitForSource: string | null;
+      };
     };
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -239,6 +323,25 @@ export default function ProductEditor() {
   const [altValues, setAltValues] = useState<string[]>(
     (images ?? []).map((img: any) => img.alt ?? ""),
   );
+  const [summary, setSummary] = useState(capsule.summary);
+  const [fitFor, setFitFor] = useState(capsule.fitFor);
+  const [qas, setQas] = useState<{ q: string; a: string }[]>(
+    capsule.questions.length > 0 ? capsule.questions : [],
+  );
+
+  function updateQa(i: number, field: "q" | "a", value: string) {
+    setQas((prev) => prev.map((r, j) => (j === i ? { ...r, [field]: value } : r)));
+  }
+
+  function SourceBadge({ src }: { src: string | null }) {
+    return src === "human" ? (
+      <Badge tone="attention">Edited by you</Badge>
+    ) : src === "auto" ? (
+      <Badge tone="success">Automatic</Badge>
+    ) : (
+      <Badge>Not written</Badge>
+    );
+  }
 
   function update(i: number, field: "k" | "v", value: string) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, [field]: value } : r)));
@@ -406,6 +509,106 @@ export default function ProductEditor() {
                   </InlineStack>
                 </BlockStack>
               )}
+            </BlockStack>
+          </Form>
+        </Card>
+
+        <Card>
+          <Form method="post">
+            <input type="hidden" name="intent" value="capsule" />
+            <input type="hidden" name="origSummary" value={capsule.summary} />
+            <input type="hidden" name="origFitFor" value={capsule.fitFor} />
+            <input
+              type="hidden"
+              name="origQuestions"
+              value={JSON.stringify(capsule.questions)}
+            />
+            <BlockStack gap="300">
+              <Text as="h2" variant="headingMd">
+                Summary and buyer questions
+              </Text>
+              <Text as="p" tone="subdued">
+                What an assistant quotes about this product. Edit any field and
+                it becomes yours: bulk passes will never touch it again.
+              </Text>
+
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h3" variant="headingSm">
+                  Summary
+                </Text>
+                <SourceBadge src={capsule.summarySource} />
+              </InlineStack>
+              <TextField
+                label="Summary"
+                labelHidden
+                name="summary"
+                value={summary}
+                onChange={setSummary}
+                multiline={4}
+                autoComplete="off"
+              />
+
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h3" variant="headingSm">
+                  Buyer questions
+                </Text>
+                <SourceBadge src={capsule.questionsSource} />
+              </InlineStack>
+              {qas.map((qa, i) => (
+                <InlineStack key={i} gap="200" align="start" blockAlign="end">
+                  <div style={{ flexGrow: 1, minWidth: 260 }}>
+                    <TextField
+                      label={i === 0 ? "Question" : ""}
+                      labelHidden={i !== 0}
+                      name="qq"
+                      value={qa.q}
+                      onChange={(v) => updateQa(i, "q", v)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div style={{ flexGrow: 1, minWidth: 260 }}>
+                    <TextField
+                      label={i === 0 ? "Answer" : ""}
+                      labelHidden={i !== 0}
+                      name="qa"
+                      value={qa.a}
+                      onChange={(v) => updateQa(i, "a", v)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => setQas((prev) => prev.filter((_, j) => j !== i))}
+                    accessibilityLabel="Remove question"
+                  >
+                    Remove
+                  </Button>
+                </InlineStack>
+              ))}
+
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h3" variant="headingSm">
+                  Who it suits
+                </Text>
+                <SourceBadge src={capsule.fitForSource} />
+              </InlineStack>
+              <TextField
+                label="Who it suits"
+                labelHidden
+                name="fitFor"
+                value={fitFor}
+                onChange={setFitFor}
+                autoComplete="off"
+                helpText="Audience, not contents: 'living rooms, small flats' - never '6 chairs'."
+              />
+
+              <InlineStack gap="200">
+                <Button onClick={() => setQas((prev) => [...prev, { q: "", a: "" }])}>
+                  Add question
+                </Button>
+                <Button submit variant="primary" loading={busy}>
+                  Save summary and questions
+                </Button>
+              </InlineStack>
             </BlockStack>
           </Form>
         </Card>
