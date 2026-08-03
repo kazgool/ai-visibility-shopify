@@ -13,6 +13,14 @@ export type EmbedCheckResult = {
   active: boolean;
   /** Present but switched off - the merchant got halfway. */
   presentButDisabled: boolean;
+  /**
+   * Enabled, but pointing at an extension uid that is not the released one -
+   * typically saved while a dev preview was active. The theme then logs
+   * "app block path does not exist" and renders nothing, while the settings
+   * file still says enabled. Verification must compare uids, not handles,
+   * or it certifies a corpse.
+   */
+  staleReference: boolean;
   themeId: string | null;
   themeName: string | null;
   /** The settings file could not be read; unknown is not "off". */
@@ -56,6 +64,7 @@ export async function checkAppEmbed(
     return {
       active: false,
       presentButDisabled: false,
+      staleReference: false,
       themeId: null,
       themeName: null,
       unreadable: true,
@@ -69,7 +78,7 @@ export async function checkAppEmbed(
   };
   if (!content) {
     // A theme with no settings_data.json has no embeds enabled at all.
-    return { active: false, presentButDisabled: false, ...base };
+    return { active: false, presentButDisabled: false, staleReference: false, ...base };
   }
 
   let settings: any;
@@ -77,7 +86,13 @@ export async function checkAppEmbed(
     // Shopify allows comments in this file; strip the /* */ header if any.
     settings = JSON.parse(content.replace(/^\s*\/\*[\s\S]*?\*\//, ""));
   } catch {
-    return { active: false, presentButDisabled: false, ...base, unreadable: true };
+    return {
+      active: false,
+      presentButDisabled: false,
+      staleReference: false,
+      ...base,
+      unreadable: true,
+    };
   }
 
   // App embeds live under current.blocks, keyed by random ids, each with a
@@ -89,17 +104,26 @@ export async function checkAppEmbed(
 
   let present = false;
   let enabled = false;
+  let stale = false;
   for (const block of Object.values<any>(blocks)) {
     const type = String(block?.type ?? "");
-    if (type.includes(EXTENSION_UID) || type.includes(`/blocks/${EXTENSION_HANDLE}/`)) {
-      present = true;
-      if (block?.disabled !== true) enabled = true;
+    const ours = type.includes(`/blocks/${EXTENSION_HANDLE}/`) || type.includes(EXTENSION_UID);
+    if (!ours) continue;
+    present = true;
+    if (block?.disabled === true) continue;
+    if (type.includes(EXTENSION_UID)) {
+      enabled = true;
+    } else {
+      // Right handle, wrong uid: a reference saved against a dev preview.
+      // The theme logs "app block path does not exist" and renders nothing.
+      stale = true;
     }
   }
 
   return {
     active: enabled,
-    presentButDisabled: present && !enabled,
+    presentButDisabled: present && !enabled && !stale,
+    staleReference: stale && !enabled,
     ...base,
   };
 }

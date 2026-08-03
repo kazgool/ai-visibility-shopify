@@ -551,9 +551,11 @@ export default function Dashboard() {
                   <Step done={embed?.active} title="App embed active in your theme">
                     {embed?.active
                       ? `Verified in ${embed.themeName || "your published theme"}. The storefront output is live.`
-                      : embed?.presentButDisabled
-                        ? 'Added but switched off. Open the theme editor, turn on "AI Visibility" and save.'
-                        : 'Turn on "AI Visibility" under App embeds so the data reaches the storefront. Nothing is published until you do.'}
+                      : embed?.staleReference
+                        ? "Enabled, but pointing at an old development version, so it renders nothing. Open the theme editor, switch AI Visibility off and on again, and save."
+                        : embed?.presentButDisabled
+                          ? 'Added but switched off. Open the theme editor, turn on "AI Visibility" and save.'
+                          : 'Turn on "AI Visibility" under App embeds so the data reaches the storefront. Nothing is published until you do.'}
                   </Step>
                   {!embed?.active ? (
                     <InlineStack gap="200">
