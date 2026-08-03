@@ -120,9 +120,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     isTest,
   );
 
-  // Temporary while debugging the payment flow; visible in the dev terminal.
-  console.log("[plans] subscription result", { plan, isTest, confirmationUrl, error });
-
   if (error || !confirmationUrl) return { error: error ?? "Could not start the plan" };
 
   // App Bridge cannot render Shopify's confirmation page inside the iframe,
@@ -146,6 +143,8 @@ export default function Plans() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [showCode, setShowCode] = useState(Boolean(result?.codeError));
+  // Polaris TextField is controlled; without state it cannot be typed into.
+  const [code, setCode] = useState("");
 
   // Shopify's confirmation page refuses to render inside the admin iframe, so
   // the whole browser window has to go there. Without this the merchant sees
@@ -319,6 +318,8 @@ export default function Plans() {
                     <TextField
                       label="Access code"
                       name="code"
+                      value={code}
+                      onChange={setCode}
                       autoComplete="off"
                       error={result?.codeError}
                       helpText="If you were given a code, enter it here."

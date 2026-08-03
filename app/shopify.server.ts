@@ -2,7 +2,6 @@ import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
-  LogSeverity,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
@@ -13,8 +12,6 @@ import { ensureMetafieldDefinitions } from "./services/metafields.server";
 const API_VERSION = "2026-07" as ApiVersion;
 
 const shopify = shopifyApp({
-  // Debug logging while we chase the auth loop; drop back to Info after.
-  logger: { level: LogSeverity.Debug },
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
   apiVersion: API_VERSION,
