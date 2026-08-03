@@ -29,6 +29,7 @@ import { CheckIcon, AlertCircleIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
+import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
 // in one glance - how much is covered, what is protected, what is left to do -
@@ -53,6 +54,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const res = await admin.graphql(PRODUCTS);
   const json = await res.json();
+
+  // Verified against the published theme on every load, never assumed: an
+  // installed but disabled embed renders nothing and nobody notices.
+  const embed = await checkAppEmbed(admin.graphql);
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const [lastRun, lastAlt, dictionary, lastWrite] = shop
@@ -105,6 +110,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     crawlerJob,
     hasDictionary: Boolean(dictionary?.value?.trim()),
     domain: session.shop,
+    embed,
+    embedLink: embedDeepLink(session.shop),
   };
 };
 
@@ -238,6 +245,8 @@ export default function Dashboard() {
     crawlerJob,
     hasDictionary,
     domain,
+    embed,
+    embedLink,
   } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -530,10 +539,27 @@ export default function Dashboard() {
                       ? `Written ${new Date(lastWrite.finishedAt).toLocaleDateString()}. New and edited products are picked up automatically.`
                       : "Run a preview first, then fill the catalogue."}
                   </Step>
-                  <Step done={false} title="App embed active in your theme">
-                    Turn on “AI Visibility” under App embeds so the data reaches
-                    the storefront. Nothing is published until you do.
+                  <Step done={embed?.active} title="App embed active in your theme">
+                    {embed?.active
+                      ? `Verified in ${embed.themeName || "your published theme"}. The storefront output is live.`
+                      : embed?.presentButDisabled
+                        ? 'Added but switched off. Open the theme editor, turn on "AI Visibility" and save.'
+                        : 'Turn on "AI Visibility" under App embeds so the data reaches the storefront. Nothing is published until you do.'}
                   </Step>
+                  {!embed?.active ? (
+                    <InlineStack gap="200">
+                      <Button url={embedLink} target="_top">
+                        Open theme editor
+                      </Button>
+                      <Button
+                        variant="plain"
+                        onClick={() => revalidator.revalidate()}
+                        loading={revalidator.state === "loading"}
+                      >
+                        Check again
+                      </Button>
+                    </InlineStack>
+                  ) : null}
                 </BlockStack>
                 <InlineStack gap="200">
                   <Link to="/app/dictionary">
