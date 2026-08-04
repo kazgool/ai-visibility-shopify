@@ -108,6 +108,18 @@ over memory — APIs moved fast in 2025–2026.
   serving requires `fly deploy` + `npx shopify app deploy` with dev OFF
   (dev rewrites URLs back to the tunnel while running).
 - Commit early with meaningful messages. Marius pushes.
+- **While a submission is under review, do not run `npx shopify app deploy`.**
+  It releases a new version and activates it, so the reviewer may test
+  something other than what was submitted, and the change can be treated as
+  an amendment that sends the app back down the queue. Server changes (CI on
+  push to main) are safe and do not create versions. Pending extension work
+  waits for the verdict and then ships in one deploy together with whatever
+  the reviewer asked for. Submitted 3 Aug 2026 as version 4; pending since
+  then: the product panel listing every buyer question, and the app name
+  change in `shopify.app.toml`.
+- **Keep `_shopify/CHANGELOG.md` current with every change.** New work goes
+  under "Unreleased"; when a deploy happens, that section becomes the new
+  version number. It is what Marius sends the reviewer if asked what changed.
 - **Tag every deploy** (`deploy-YYYY-MM-DD-N`, annotated, message says what
   shipped) and push with `git push --tags`. Reverting is then one line per
   layer: code `git revert` or redeploy from the tag; Fly
