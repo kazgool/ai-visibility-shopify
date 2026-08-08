@@ -1,21 +1,29 @@
 # Changelog - AI Visibility All-in-One for Shopify
 
-App version 4 (`ai-visibility-all-in-one-4`) is the build submitted for App
-Store review on 3 August 2026.
+The app was approved and published on the Shopify App Store on 7 August 2026,
+listed as MRDigital AI Visibility AiO.
 
-Entries under "Unreleased" are already running on the production server, but
-are not part of any extension release, so a reviewer testing the app will see
-them. Server changes go live through CI on push to main; extension changes
-require `shopify app deploy` and create a new version number.
+Server changes go live through CI on push to main. Extension changes require
+`shopify app deploy` and create a new version number.
 
 ---
 
-## Unreleased (server, live since 3 August 2026)
+## Version 5 - 8 August 2026
 
-Admin screens and server logic only. No change to access scopes, billing,
-webhooks, or anything published to the storefront.
+The first release after approval. It carries the admin work built between
+submission and approval (already live on the server since 3 August) plus the
+extension changes that were held back so as not to disturb the review.
 
-### Added
+### Added (extension)
+
+- The product panel lists every published buyer question rather than the
+  first one with a count.
+
+### Changed (extension)
+
+- App name is now MRDigital AI Visibility AiO.
+
+### Added (server, live since 3 August 2026)
 
 - **Products screen.** One row per product showing what the app has published
   for it: number of attributes, number of buyer questions, whether a summary
@@ -38,7 +46,7 @@ webhooks, or anything published to the storefront.
   business info) and an informational line reporting how many products state
   nothing extractable, with a link to that filtered list.
 
-### Changed
+### Changed (server, live since 3 August 2026)
 
 - Setup steps that are genuinely optional show a neutral dot instead of a
   caution icon, and state that leaving them empty is a complete setup.
@@ -49,7 +57,7 @@ webhooks, or anything published to the storefront.
 
 ---
 
-## Version 4 - 3 August 2026 (submitted for review)
+## Version 4 - 3 August 2026 (submitted for review, approved 7 August)
 
 Extension release containing the theme app extension and the admin product
 panel.

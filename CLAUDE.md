@@ -113,10 +113,9 @@ over memory — APIs moved fast in 2025–2026.
   something other than what was submitted, and the change can be treated as
   an amendment that sends the app back down the queue. Server changes (CI on
   push to main) are safe and do not create versions. Pending extension work
-  waits for the verdict and then ships in one deploy together with whatever
-  the reviewer asked for. Submitted 3 Aug 2026 as version 4; pending since
-  then: the product panel listing every buyer question, and the app name
-  change in `shopify.app.toml`.
+  waits for the verdict and then ships in one deploy. The app was approved on
+  7 Aug 2026 and is published as MRDigital AI Visibility AiO; the rule
+  applies again to any future resubmission.
 - **Keep `_shopify/CHANGELOG.md` current with every change.** New work goes
   under "Unreleased"; when a deploy happens, that section becomes the new
   version number. It is what Marius sends the reviewer if asked what changed.
