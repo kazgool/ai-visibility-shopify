@@ -55,8 +55,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     status: 200,
     headers: {
       ...headers,
-      // Point crawlers back at the canonical product page.
-      Link: `<https://${session.shop}/products/${handle}>; rel="canonical"`,
+      // Point crawlers back at the canonical product page, and at the store's
+      // llms.txt. The llms.txt proposal names the Link header as the way to
+      // do this for non-HTML resources, which is what this response is.
+      Link:
+        `<https://${session.shop}/products/${handle}>; rel="canonical", ` +
+        `<https://${session.shop}/llms.txt>; rel="describedby"`,
       "Last-Modified": cached.updatedAt.toUTCString(),
     },
   });

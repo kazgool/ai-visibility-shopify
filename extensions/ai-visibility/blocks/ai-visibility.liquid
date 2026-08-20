@@ -137,6 +137,16 @@
             href="{{ shop.url }}/apps/ai-visibility/{{ product.handle }}"
             title="Plain text version">
     {%- endif -%}
+
+    {%- comment -%}
+      The llms.txt proposal names rel="describedby" as the way a page points at
+      the llms.txt covering it. Shopify serves /llms.txt for the store, so this
+      links the page to a file the platform already publishes rather than
+      competing with it for the route (PRD §5.1).
+    {%- endcomment -%}
+    {%- if block.settings.llms_link -%}
+      <link rel="describedby" href="{{ shop.url }}/llms.txt">
+    {%- endif -%}
   {%- endif -%}
 
   {%- comment -%}
@@ -236,6 +246,13 @@
       "type": "checkbox",
       "id": "mirror",
       "label": "Link to the plain text version",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "llms_link",
+      "label": "Point crawlers at your llms.txt",
+      "info": "Adds a standard describedby link to the llms.txt Shopify publishes for your store.",
       "default": true
     },
     {

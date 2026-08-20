@@ -8,6 +8,24 @@ Server changes go live through CI on push to main. Extension changes require
 
 ---
 
+## Unreleased
+
+### Added (extension)
+
+- **A `describedby` link to the store's llms.txt** on product pages, behind a
+  new "Point crawlers at your llms.txt" setting, on by default. The llms.txt
+  proposal (v2, revised 10 August 2026) names `rel="describedby"` as the way a
+  page points at the llms.txt covering it. Shopify owns the `/llms.txt` route
+  for the store, so this links to the file the platform already publishes
+  rather than competing for the route.
+
+### Added (server)
+
+- The plain text mirror now answers with a `describedby` Link header to the
+  store's llms.txt alongside the existing canonical one. The same proposal
+  names the Link header as the mechanism for non-HTML resources, which is what
+  the mirror is.
+
 ## Version 5 - 8 August 2026
 
 The first release after approval. It carries the admin work built between
