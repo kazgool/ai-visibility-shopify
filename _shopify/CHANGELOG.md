@@ -8,7 +8,10 @@ Server changes go live through CI on push to main. Extension changes require
 
 ---
 
-## Unreleased
+## Version 6 - 20 August 2026
+
+Points every product page and the plain text mirror at the llms.txt Shopify
+publishes for the store, using the link relation the proposal names for it.
 
 ### Added (extension)
 
@@ -19,7 +22,7 @@ Server changes go live through CI on push to main. Extension changes require
   for the store, so this links to the file the platform already publishes
   rather than competing for the route.
 
-### Added (server)
+### Added (server, live since 20 August 2026, ahead of the extension)
 
 - The plain text mirror now answers with a `describedby` Link header to the
   store's llms.txt alongside the existing canonical one. The same proposal
