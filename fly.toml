@@ -36,6 +36,14 @@ primary_region = "ams"
   size = "shared-cpu-1x"
   memory = "1gb"
 
+# The worker has no health check and no request path, so nothing notices when
+# it dies. It died during a database outage on 20 Aug 2026, Fly exhausted its
+# retries, and jobs sat queued until someone started the machine by hand.
+# "always" keeps flyd restarting it instead of giving up.
+[[restart]]
+  policy = "always"
+  processes = ["worker"]
+
 # Region placement (run once at first deploy):
 #   fly scale count web=2 --region ams,iad
 #   fly scale count worker=1 --region ams

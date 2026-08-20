@@ -69,6 +69,11 @@ model JobRun {
   shopId     String
   kind       String // bulk_extract | dry_run | alt_text | crawler_check
   status     String    @default("queued") // queued | running | done | failed
+  // A queued job carried no time at all, so nothing on the server could tell
+  // how long it had been waiting, and the dashboard had to count in the
+  // browser - which restarts on every refresh and therefore never fired.
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   startedAt  DateTime?
   finishedAt DateTime?
   progress   Int       @default(0)

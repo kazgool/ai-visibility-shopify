@@ -14,6 +14,29 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ---
 
+## Unreleased
+
+### Fixed (server)
+
+- **A stuck job now says so, on the first load.** Whether a job is stalled is
+  decided on the server from the row's own timestamp instead of a counter in
+  the browser. The counter restarted on every page refresh, so the warning
+  needed three uninterrupted minutes on one tab and in practice never
+  appeared - including during the outage of 20 August, which is how it was
+  found. The banner also states how many minutes it has been stuck.
+- **The Fly worker restarts itself.** It has no health check and no request
+  path, so nothing noticed when it died during that outage; Fly exhausted its
+  retries and jobs sat queued until the machine was started by hand. The
+  worker process now carries a restart policy of `always`.
+
+### Changed (database)
+
+- `JobRun` gains `createdAt` and `updatedAt`. A queued job previously carried
+  no timestamp at all, which is why staleness could not be computed on the
+  server. Additive migration; the way back is
+  `ALTER TABLE "JobRun" DROP COLUMN "createdAt", DROP COLUMN "updatedAt";`
+  together with reverting the code that reads them.
+
 ## Version 9 - 20 August 2026
 
 Points every product page and the plain text mirror at the llms.txt Shopify

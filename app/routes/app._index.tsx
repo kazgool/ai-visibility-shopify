@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Form,
@@ -109,7 +109,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
   const business = shop ? await businessFor(shop.id) : null;
 
+  // Is a job stuck? Answered from the row, not from a counter in the browser
+  // that resets on every refresh. `updatedAt` moves on every progress write,
+  // so a job that is genuinely working never looks stalled however long the
+  // catalogue is; one that nothing is consuming does, and says so on the
+  // first load rather than only to whoever leaves the tab open.
+  const STALL_MS = 3 * 60 * 1000;
+  const stalledJob = [lastRun, lastAlt, crawlerJob].find(
+    (j) =>
+      j &&
+      (j.status === "queued" || j.status === "running") &&
+      Date.now() - j.updatedAt.getTime() > STALL_MS,
+  );
+  const stalledFor = stalledJob
+    ? Math.floor((Date.now() - stalledJob.updatedAt.getTime()) / 60000)
+    : null;
+
   return {
+    stalledFor,
     products: json.data?.products?.nodes ?? [],
     totalProducts: json.data?.productsCount?.count ?? 0,
     lastRun,
@@ -300,6 +317,7 @@ export default function Dashboard() {
     embedLink,
     collectionsBuilt,
     hasBusiness,
+    stalledFor,
   } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -330,27 +348,16 @@ export default function Dashboard() {
 
   // Keep the numbers moving while a pass runs, or people press the button twice.
   //
-  // Bounded on purpose: if the worker is down, a job sits in "queued" forever
-  // and an unbounded poll would hammer the server and lie to the merchant.
-  // After five minutes we stop and say so.
+  // Whether the job is stuck is decided on the server, from the row's own
+  // timestamp, so the answer survives a refresh and is the same for everyone
+  // looking. Polling stops once it is, rather than hammering a server that
+  // has already said nothing is consuming the queue.
   const revalidator = useRevalidator();
-  const [idlePolls, setIdlePolls] = useState(0);
-
-  // Only a job that is not moving counts as stuck. A bulk alt-text pass over
-  // a large catalogue legitimately takes minutes, and cutting its progress
-  // display off would be worse than useless.
-  useEffect(() => {
-    setIdlePolls(0);
-  }, [progress, active?.status]);
-
-  const stalled = idlePolls >= 90; // three minutes without any movement
+  const stalled = typeof stalledFor === "number";
 
   useEffect(() => {
     if (!anyRunning || stalled) return;
-    const id = setInterval(() => {
-      setIdlePolls((n) => n + 1);
-      revalidator.revalidate();
-    }, 2000);
+    const id = setInterval(() => revalidator.revalidate(), 2000);
     return () => clearInterval(id);
   }, [anyRunning, stalled, revalidator]);
 
@@ -361,11 +368,15 @@ export default function Dashboard() {
     >
       <BlockStack gap="500">
         {stalled ? (
-          <Banner tone="warning" title="This job has not moved in three minutes">
+          <Banner
+            tone="warning"
+            title={`This job has not moved in ${stalledFor} minute${stalledFor === 1 ? "" : "s"}`}
+          >
             <Text as="p">
-              The background worker may be down. Nothing is lost - the job
-              stays queued and runs as soon as the worker is back. Refresh to
-              check again.
+              The background worker is not picking work up. Nothing is lost -
+              the job stays queued and runs from where it stopped as soon as
+              the worker is back. If this does not clear on its own, write to
+              us and we will look at it.
             </Text>
           </Banner>
         ) : null}
