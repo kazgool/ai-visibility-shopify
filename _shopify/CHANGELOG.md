@@ -6,9 +6,15 @@ listed as MRDigital AI Visibility AiO.
 Server changes go live through CI on push to main. Extension changes require
 `shopify app deploy` and create a new version number.
 
+Headings follow the app version numbers Shopify lists in the Developer
+Dashboard. Entries dated before 20 August 2026 use an earlier local numbering
+that grouped several same-day deploys under one heading, so they do not match
+Shopify one for one: the heading below called Version 5 is Shopify's version
+8, and Version 4 covers Shopify's versions 3 to 7.
+
 ---
 
-## Version 6 - 20 August 2026
+## Version 9 - 20 August 2026
 
 Points every product page and the plain text mirror at the llms.txt Shopify
 publishes for the store, using the link relation the proposal names for it.
