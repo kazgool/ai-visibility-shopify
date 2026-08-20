@@ -29,6 +29,19 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
   retries and jobs sat queued until the machine was started by hand. The
   worker process now carries a restart policy of `always`.
 
+### Fixed (worker)
+
+- **A shop with no obtainable session is marked uninstalled** instead of
+  being polled forever. The review store from the August approval had
+  uninstalled without the webhook reaching us and was retried every 15
+  minutes, waking the database each time - paid compute on the new Neon plan.
+  Only the two definitive signals trigger this (the Shopify library throwing
+  a bare Response, or our "No offline session" error); transient failures
+  never unregister a shop, and reauthentication revives one in any case.
+- **Worker errors name the failure.** A thrown `Response` was logged as
+  "[object Response]"; it now logs the status. The same applied to any future
+  real failure at a paying shop, which would have been just as unreadable.
+
 ### Changed (database)
 
 - `JobRun` gains `createdAt` and `updatedAt`. A queued job previously carried

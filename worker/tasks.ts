@@ -170,6 +170,47 @@ const PRODUCTS_SINCE = `#graphql
  * deploy. Processing something twice is harmless: extraction is idempotent and
  * the state metafield protects human values.
  */
+/**
+ * A shop we cannot get a session for is a shop that uninstalled without the
+ * webhook reaching us - Shopify retries deliveries, but a review store that
+ * gets deleted outright, or an endpoint that was down, still loses one. The
+ * review store from the August approval sat like that for weeks: polled every
+ * 15 minutes, failing every time, and each attempt woke the database and
+ * burned paid compute.
+ *
+ * Only the two definitive signals mark the shop uninstalled - the Shopify
+ * library throwing a bare `Response` from `unauthenticated.admin()` (no
+ * session it can use) and our own "No offline session" error. Network
+ * failures, 429s and GraphQL errors are transient and must never unregister
+ * a paying shop. Wrongly marking one is still recoverable: authentication
+ * sets `uninstalledAt` back to null, so a reinstall or a merchant opening
+ * the app revives it.
+ */
+async function markGoneIfSessionless(
+  shop: { id: string; domain: string },
+  error: unknown,
+  logger: { info: (msg: string) => void },
+): Promise<boolean> {
+  const sessionless =
+    error instanceof Response ||
+    (error instanceof Error && error.message.includes("No offline session"));
+  if (!sessionless) return false;
+  await db.shop.update({
+    where: { id: shop.id },
+    data: { uninstalledAt: new Date() },
+  });
+  logger.info(
+    `${shop.domain}: no session obtainable, marking uninstalled so it is no longer polled; reauth revives it`,
+  );
+  return true;
+}
+
+/** `String(new Response())` is "[object Response]" - name the status instead. */
+function describeError(error: unknown): string {
+  if (error instanceof Response) return `Response ${error.status} ${error.statusText}`;
+  return String(error);
+}
+
 export const poll_changes: Task = async (_payload, helpers) => {
   const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
 
@@ -219,7 +260,8 @@ export const poll_changes: Task = async (_payload, helpers) => {
       }
     } catch (error) {
       // Do not advance the cursor on failure: the next run retries the window.
-      helpers.logger.error(`poll_changes failed for ${shop.domain}: ${String(error)}`);
+      if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
+      helpers.logger.error(`poll_changes failed for ${shop.domain}: ${describeError(error)}`);
     }
   }
 };
@@ -265,7 +307,8 @@ export const sweep_missing: Task = async (_payload, helpers) => {
         `sweep_missing ${shop.domain}: ${missing.length} without attributes, ${queued} queued`,
       );
     } catch (error) {
-      helpers.logger.error(`sweep_missing failed for ${shop.domain}: ${String(error)}`);
+      if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
+      helpers.logger.error(`sweep_missing failed for ${shop.domain}: ${describeError(error)}`);
     }
   }
 };
