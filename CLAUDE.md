@@ -118,7 +118,8 @@ over memory — APIs moved fast in 2025–2026.
   applies again to any future resubmission.
 - **Keep `_shopify/CHANGELOG.md` current with every change.** New work goes
   under "Unreleased"; when a deploy happens, that section becomes the new
-  version number. It is what Marius sends the reviewer if asked what changed.
+  version number, matching the app version Shopify shows in the Developer
+  Dashboard. It is what Marius sends the reviewer if asked what changed.
 - **Tag every deploy** (`deploy-YYYY-MM-DD-N`, annotated, message says what
   shipped) and push with `git push --tags`. Reverting is then one line per
   layer: code `git revert` or redeploy from the tag; Fly
@@ -142,6 +143,16 @@ on dev stores — the crawler check correctly reports it). App id
 405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams+iad
 web, ams worker). Neon `ai-visibility-shopify`, Frankfurt. Repo
 `github.com/kazgool/ai-visibility-shopify`, branch `main`.
+
+Neon is on the paid Launch plan since 20 Aug 2026, after the free plan's
+compute quota ran out and took the whole app down: `prisma migrate deploy`
+failed on boot with "exceeded the compute time quota", the container exited
+with code 1, and Fly restarted it in a loop, so every screen was blank while
+`fly status` showed the machines started with the health check on warning.
+Launch has no quota to hit, only a bill, so the free plan's cap is no longer
+acting as a brake. The 15-minute poll is what keeps the database awake and is
+the main driver of compute cost. If a blank app ever returns, read the boot
+logs before anything else: `fly logs -a ai-visibility-all-in-one --no-tail`.
 
 Known accepted imperfections (do not "fix" without asking): mirror cache
 rewrites on every pass; alt-text editor state does not resync after save
