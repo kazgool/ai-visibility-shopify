@@ -10,6 +10,8 @@ import db from "../db.server";
 import type { BusinessInfo } from "../engine";
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE } from "./facts.server";
+import { SOCIAL_PLATFORMS } from "./social-profiles";
+import type { SocialPlatform, SocialProfiles } from "./social-profiles";
 
 const SETTING_KEY = "business";
 
@@ -18,20 +20,13 @@ const SETTING_KEY = "business";
  * the engine's BusinessInfo (the engine never reads or generates these); it
  * is a separate, purely publishing concern kept in the same metafield so it
  * survives uninstall like the rest of the business answers.
+ *
+ * The platform list itself lives in social-profiles.ts, because the settings
+ * screen renders a field per platform and a component may not import from a
+ * .server module.
  */
-export type SocialProfiles = Partial<Record<SocialPlatform, string>>;
-
-export const SOCIAL_PLATFORMS = [
-  "facebook",
-  "instagram",
-  "tiktok",
-  "youtube",
-  "linkedin",
-  "x",
-  "pinterest",
-] as const;
-
-export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+export { SOCIAL_PLATFORMS } from "./social-profiles";
+export type { SocialPlatform, SocialProfiles } from "./social-profiles";
 
 /** Business info plus the optional social profile URLs, stored together. */
 export type BusinessRecord = BusinessInfo & { socialProfiles?: SocialProfiles };

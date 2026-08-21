@@ -19,9 +19,13 @@ import {
   businessFor,
   saveBusiness,
   sanitizeSocialProfiles,
-  SOCIAL_PLATFORMS,
   type BusinessRecord,
 } from "../services/business.server";
+// The platform list is imported from a plain module, not the .server one:
+// the component below renders a field per platform, and importing a server
+// module outside a loader or action pulls it into the client bundle and
+// breaks the build.
+import { SOCIAL_PLATFORMS } from "../services/social-profiles";
 
 // The commercial answers a shop gives once (WP 1.6.7 port): delivery,
 // returns, warranty, payment. Published as shipping and return-policy

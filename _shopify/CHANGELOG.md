@@ -14,7 +14,22 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ---
 
-## Unreleased
+## Version 10 - 21 August 2026
+
+### Fixed (engine)
+
+- **Length is no longer published as width.** `prepareText` lowercases the
+  text every pattern runs against, and `measurements()` was reading that copy.
+  Its pattern distinguishes L from l on purpose - Romanian furniture copy
+  writes "L 130, l 80" and means length 130, width 80 - but after lowercasing
+  there was nothing left to distinguish, so a table 130 cm long was published
+  as 130 cm wide. Wrong data stated as fact, which is worse than a missing
+  value. `measurements()` now receives a copy that kept its capitals, through
+  a new `casedText` option that defaults to the old behaviour so nothing else
+  changed. The move to cased text would have silently lost "130 X 80 CM" and
+  "Lungime 130", which matched only because everything had been lowercased
+  first; the patterns are now case-insensitive except for the single letters,
+  where the case carries the meaning. Same defect fixed in WordPress 1.7.0.
 
 ### Added
 
