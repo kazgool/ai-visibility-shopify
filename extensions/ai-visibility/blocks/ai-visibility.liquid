@@ -17,6 +17,7 @@
   {%- assign av_summary = product.metafields['$app'].summary.value -%}
   {%- assign av_fit = product.metafields['$app'].fit_for.value -%}
   {%- assign av_business = shop.metafields['$app'].business.value -%}
+  {%- assign av_org_id = shop.metafields['$app'].theme_scan.value.organizationId -%}
   {%- comment -%}
     Ratings come from review apps' semi-standard metafields (Judge.me and
     others write reviews.rating / reviews.rating_count). Published only when
@@ -24,6 +25,50 @@
   {%- endcomment -%}
   {%- assign av_rating = product.metafields.reviews.rating.value -%}
   {%- assign av_rating_count = product.metafields.reviews.rating_count.value | default: 0 -%}
+
+  {%- comment -%}
+    Official store profiles (sameAs), site-wide. No spec for social networks
+    existed until this feature; the merchant states them once on the
+    Business info screen, we never verify a profile exists, and we publish
+    nothing at all when none are filled in - an empty sameAs is worse than
+    no node.
+
+    We extend the theme's own Organization node only when the scan found a
+    real @id to reference. An identifier we invented, or a node the theme
+    has but that carries no @id of its own, is an orphan fragment - worse
+    than no node - so every other case gets our own complete minimal node
+    instead.
+  {%- endcomment -%}
+  {%- assign av_social = av_business.socialProfiles -%}
+  {%- assign av_same_as = "" -%}
+  {%- if av_social.facebook != blank -%}{% assign av_same_as = av_same_as | append: av_social.facebook | append: "|" %}{%- endif -%}
+  {%- if av_social.instagram != blank -%}{% assign av_same_as = av_same_as | append: av_social.instagram | append: "|" %}{%- endif -%}
+  {%- if av_social.tiktok != blank -%}{% assign av_same_as = av_same_as | append: av_social.tiktok | append: "|" %}{%- endif -%}
+  {%- if av_social.youtube != blank -%}{% assign av_same_as = av_same_as | append: av_social.youtube | append: "|" %}{%- endif -%}
+  {%- if av_social.linkedin != blank -%}{% assign av_same_as = av_same_as | append: av_social.linkedin | append: "|" %}{%- endif -%}
+  {%- if av_social.x != blank -%}{% assign av_same_as = av_same_as | append: av_social.x | append: "|" %}{%- endif -%}
+  {%- if av_social.pinterest != blank -%}{% assign av_same_as = av_same_as | append: av_social.pinterest | append: "|" %}{%- endif -%}
+  {%- assign av_same_as_list = av_same_as | split: "|" -%}
+
+  {%- if av_same_as_list.size > 0 -%}
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        {%- if av_org_id != blank -%}
+        "@id": {{ av_org_id | json }},
+        {%- else -%}
+        "name": {{ shop.name | json }},
+        "url": {{ shop.url | json }},
+        {%- endif -%}
+        "sameAs": [
+          {%- for url in av_same_as_list -%}
+            {{ url | json }}{% unless forloop.last %},{% endunless %}
+          {%- endfor -%}
+        ]
+      }
+    </script>
+  {%- endif -%}
 
   {%- if template.name == 'product' and product -%}
     {%- if block.settings.mode == 'full' -%}

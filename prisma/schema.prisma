@@ -123,6 +123,22 @@ model CrawlerCheck {
   @@index([shopId, checkedAt])
 }
 
+// Phase 0 raw logging only (CRAWLER-HITS-SPEC §3). Answers whether the app
+// proxy forwards the original user agent and a usable IP, and whether
+// Shopify's edge caches the response. No aggregation, no UI reads this yet.
+model CrawlerHit {
+  id     BigInt   @id @default(autoincrement())
+  shopId String
+  agent  String // as sent, untrimmed
+  ip     String?
+  handle String? // product handle, null for key files
+  path   String
+  status Int
+  at     DateTime @default(now())
+
+  @@index([shopId, at])
+}
+
 // Self-measured latency, so Built for Shopify numbers are known before Shopify's email.
 model RequestMetric {
   id       BigInt   @id @default(autoincrement())

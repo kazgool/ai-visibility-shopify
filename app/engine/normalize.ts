@@ -92,10 +92,22 @@ export function diacriticPattern(term: string): string {
 }
 
 /**
+ * The same preparation as prepareText, minus the lowercasing.
+ *
+ * Only measurements() needs this. Romanian furniture copy writes "L 130, l 80"
+ * and means length 130, width 80; lowercased, both read as l and the length
+ * gets published as a width. Every other pattern still runs against the
+ * lowercased text, because that is what the WordPress port matched.
+ */
+export function prepareTextCased(title: string, body: string): string {
+  const raw = `${decodeEntities(title ?? "")}. ${stripTags(body ?? "")}`;
+  return raw.replace(/\s+/gu, " ").trim();
+}
+
+/**
  * Prepared text every pattern runs against (DICTIONARY-PORT §8):
  * tags stripped, whitespace collapsed, lowercased, diacritics kept.
  */
 export function prepareText(title: string, body: string): string {
-  const raw = `${decodeEntities(title ?? "")}. ${stripTags(body ?? "")}`;
-  return raw.replace(/\s+/gu, " ").trim().toLowerCase();
+  return prepareTextCased(title, body).toLowerCase();
 }

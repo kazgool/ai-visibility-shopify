@@ -8,6 +8,7 @@ import { counted } from "../counts";
 import { trimPhrase, isUsablePhrase, looksLikeIdentifier } from "../phrase";
 import { stopwordSet } from "../stopwords";
 import { extractFromText } from "../extract";
+import { extractProduct } from "../index";
 
 const stops = stopwordSet();
 
@@ -72,6 +73,20 @@ describe("measurements", () => {
     expect(measurements("sticla de 4 mm")).toEqual(["4 mm"]);
     expect(measurements("80x200 cm si 4 mm")).not.toContain("4 mm");
   });
+
+  it("keeps L and l distinct so length is never labelled as width", () => {
+    const hits = measurements("Masa L 130, l 80, H 79 cm");
+    expect(hits).toContain("L 130");
+    expect(hits).toContain("l 80");
+  });
+
+  it("matches named and chained dimensions in uppercase text", () => {
+    expect(measurements("130 X 80 CM")).toContain("130 X 80 CM");
+  });
+
+  it("lowercases a multi-letter label the same way prepareText used to", () => {
+    expect(measurements("Lungime 130 cm")).toContain("lungime 130 cm");
+  });
 });
 
 describe("counted", () => {
@@ -80,6 +95,17 @@ describe("counted", () => {
   });
   it("ignores a number inside a longer word", () => {
     expect(counted("6 scaunelor", "scaune")).toEqual([]);
+  });
+});
+
+describe("extractProduct measurements case preservation", () => {
+  it("publishes L with its capital intact instead of collapsing it into width", () => {
+    const facts = extractProduct(
+      { title: "Masa L 130, l 80", descriptionHtml: "<p>L 130, l 80, H 79 cm</p>" },
+      "Dimensiuni: #size",
+    );
+    const dimensions = facts.find((f) => f.k === "Dimensiuni");
+    expect(dimensions?.v).toContain("L 130");
   });
 });
 

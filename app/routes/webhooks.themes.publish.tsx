@@ -31,7 +31,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     const result = await scanThemeForProductLd(url, password?.value);
-    await recordThemeScan(shopRow.id, themeId, result);
+    await recordThemeScan(shopRow.id, themeId, result, admin.graphql);
   } catch (error) {
     console.warn(`theme scan failed for ${shop}: ${String(error)}`);
   }

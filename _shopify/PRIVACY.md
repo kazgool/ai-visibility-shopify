@@ -38,6 +38,11 @@ in your store if you uninstall.
   what was written. This is what the progress screens show you.
 - Your dictionary and settings.
 - A cache of the plain text mirror pages.
+- Raw request records for the plain text mirror: the requesting user agent,
+  the client IP address if the request supplied one, the path and product
+  handle requested, the response status, and the timestamp. This lets us
+  confirm that AI crawlers are reading the mirror we publish. Raw records
+  are kept for 30 days.
 
 We store no customer personal data, because we never receive any.
 

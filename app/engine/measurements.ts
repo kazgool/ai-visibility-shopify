@@ -5,16 +5,16 @@
 // "l 80, L 130, h 79 cm" or "80x200 cm", where the meaning sits in the numbers
 // and the unit, not in the surrounding words.
 
-const CHAIN = /\b\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?){1,2}\s*(?:cm|mm|m|inch|in|")\b/gu;
+const CHAIN = /\b\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?){1,2}\s*(?:cm|mm|m|inch|in|")\b/giu;
 
 const NAMES =
-  'l|L|h|H|w|W|d|D|lungime|latime|lățime|inaltime|înălțime|adancime|adâncime|diametru|length|width|height|depth|diameter';
+  'l|h|w|d|lungime|latime|lățime|inaltime|înălțime|adancime|adâncime|diametru|length|width|height|depth|diameter';
 const NAMED = new RegExp(
   `\\b(${NAMES})\\s*[:=]?\\s*(\\d+(?:[.,]\\d+)?)\\s*(cm|mm|m|inch|in|")?`,
-  "gu",
+  "giu",
 );
 
-const BARE = /\b\d+(?:[.,]\d+)?\s*(?:cm|mm|kg|g|ml|l)\b/gu;
+const BARE = /\b\d+(?:[.,]\d+)?\s*(?:cm|mm|kg|g|ml|l)\b/giu;
 
 export function measurements(text: string): string[] {
   const hits: string[] = [];
@@ -22,8 +22,9 @@ export function measurements(text: string): string[] {
   for (const m of text.matchAll(CHAIN)) hits.push(m[0]);
 
   for (const m of text.matchAll(NAMED)) {
+    const label = m[1].length === 1 ? m[1] : m[1].toLowerCase();
     const unit = m[3] ? ` ${m[3]}` : "";
-    hits.push(`${m[1]} ${m[2]}${unit}`.trim());
+    hits.push(`${label} ${m[2]}${unit}`.trim());
   }
 
   // Fallback only when neither shape above matched.

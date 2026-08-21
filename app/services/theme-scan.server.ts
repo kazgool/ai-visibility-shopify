@@ -8,11 +8,15 @@
 // Runs server side, never on a page view.
 
 import db from "../db.server";
+import { NAMESPACE } from "./facts.server";
 
 export type ThemeScanResult = {
   hasProductLd: boolean;
   nodeCount: number;
   emitters: string[];
+  /** Same detection, for the store-wide Organization node (sameAs). */
+  hasOrganizationLd: boolean;
+  organizationEmitters: string[];
   checkedUrl: string;
   /** The storefront answered with the password page: nothing can be read. */
   passwordProtected?: boolean;
@@ -84,11 +88,14 @@ export async function scanThemeForProductLd(
       hasProductLd: false,
       nodeCount: 0,
       emitters: [],
+      hasOrganizationLd: false,
+      organizationEmitters: [],
       checkedUrl: productUrl,
       passwordProtected: true,
     };
   }
   const emitters: string[] = [];
+  const organizationEmitters: string[] = [];
   let nodeCount = 0;
 
   for (const match of html.matchAll(LD_BLOCK)) {
@@ -100,10 +107,15 @@ export async function scanThemeForProductLd(
     }
 
     for (const node of collectNodes(parsed)) {
-      if (typesOf(node).includes("Product")) {
+      const types = typesOf(node);
+      const id = String(node["@id"] ?? "");
+      if (types.includes("Product")) {
         nodeCount += 1;
-        const id = String(node["@id"] ?? "");
         if (id) emitters.push(id);
+      }
+      if (types.includes("Organization")) {
+        if (id) organizationEmitters.push(id);
+        else organizationEmitters.push("");
       }
     }
   }
@@ -112,14 +124,71 @@ export async function scanThemeForProductLd(
     hasProductLd: nodeCount > 0,
     nodeCount,
     emitters,
+    hasOrganizationLd: organizationEmitters.length > 0,
+    organizationEmitters,
     checkedUrl: productUrl,
   };
+}
+
+const SHOP_ID = `#graphql
+  query ShopId { shop { id } }
+`;
+
+const SET_METAFIELD = `#graphql
+  mutation SetShopThemeScan($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      userErrors { field message }
+    }
+  }
+`;
+
+/**
+ * Mirror the Organization detection to a shop metafield, so the storefront
+ * block can decide extend-or-emit at render time without a fetch. The block
+ * needs the actual identifier, not just a boolean: a theme Organization node
+ * with no @id of its own gives us nothing to reference, so organizationId
+ * stays empty and the block falls back to emitting its own node.
+ */
+async function mirrorThemeScanMetafield(
+  shopId: string,
+  graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
+  result: ThemeScanResult,
+): Promise<void> {
+  const idRes = await graphql(SHOP_ID);
+  const idJson = await idRes.json();
+  const shopGid = idJson.data?.shop?.id;
+  if (!shopGid) return;
+
+  const organizationId = result.organizationEmitters.find((id) => id !== "") ?? "";
+
+  const res = await graphql(SET_METAFIELD, {
+    variables: {
+      metafields: [
+        {
+          ownerId: shopGid,
+          namespace: NAMESPACE,
+          key: "theme_scan",
+          type: "json",
+          value: JSON.stringify({
+            hasOrganizationLd: result.hasOrganizationLd,
+            organizationId,
+          }),
+        },
+      ],
+    },
+  });
+  const json = await res.json();
+  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(`metafieldsSet (shop theme_scan): ${JSON.stringify(errors)}`);
+  }
 }
 
 export async function recordThemeScan(
   shopId: string,
   themeId: string,
   result: ThemeScanResult,
+  graphql?: (query: string, options?: { variables?: object }) => Promise<Response>,
 ) {
   await db.themeScan.upsert({
     where: { shopId_themeId: { shopId, themeId } },
@@ -135,4 +204,8 @@ export async function recordThemeScan(
       scannedAt: new Date(),
     },
   });
+
+  if (graphql) {
+    await mirrorThemeScanMetafield(shopId, graphql, result);
+  }
 }

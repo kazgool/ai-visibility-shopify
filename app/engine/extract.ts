@@ -14,6 +14,8 @@ export type ExtractOptions = {
   extraStopwords?: string[];
   /** Max values joined per label. WordPress used 4. */
   maxValues?: number;
+  /** Same text with its original capitals, used only by measurements. */
+  casedText?: string;
 };
 
 /**
@@ -122,7 +124,7 @@ export function extractFromText(
 
     for (const term of group.terms) {
       if (term.trim().toLowerCase() === "#size") {
-        hits = hits.concat(measurements(text));
+        hits = hits.concat(measurements(options.casedText ?? text));
         continue;
       }
 

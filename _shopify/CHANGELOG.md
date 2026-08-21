@@ -16,6 +16,43 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Added
+
+- **Official store profiles, published as schema.org `sameAs`.** The
+  Business info screen gains an optional Facebook / Instagram / TikTok /
+  YouTube / LinkedIn / X / Pinterest URL list, stored in the same shop
+  metafield as the rest of business info. Only absolute `https` URLs are
+  accepted; anything else is dropped silently, and no profile is ever
+  verified to exist. The theme scan (`app/services/theme-scan.server.ts`)
+  now also detects an existing `Organization` node the same way it already
+  detects `Product`, including the real `@id` it uses if any, and mirrors
+  both to a new `theme_scan` shop metafield (public read, like `business`)
+  so the storefront block can decide without a fetch. The app embed block
+  extends the theme's own `Organization` node by that exact `@id` only
+  when one was actually found - never an invented identifier - and
+  otherwise emits a complete minimal node of its own (`@type`, `name`,
+  `url`, `sameAs`); nothing is emitted when the merchant has filled in no
+  profiles. See PRD §4.2 for the full rule. Way back: revert
+  `app/services/business.server.ts`, `app/routes/app.business.tsx`,
+  `app/services/theme-scan.server.ts`, `app/routes/webhooks.themes.publish.tsx`,
+  `app/routes/app.diagnostics.tsx` and the block; drop the `theme_scan`
+  shop metafield if it was already written.
+
+### Added (server)
+
+- **Phase 0 of crawler-hit logging** (`CRAWLER-HITS-SPEC.md`). The app proxy
+  route (`app/routes/proxy.$.tsx`) now writes one raw row per request - shop
+  domain, user agent as sent, client IP if present, path, product handle,
+  response status, timestamp - to the new `CrawlerHit` table. The insert is
+  fire-and-forget and swallows its own errors, so a database problem can
+  never fail or slow down the mirror response; no second read was added.
+  Purpose: confirm with real traffic whether Shopify's proxy forwards the
+  original user agent and a usable IP, and whether the edge caches the
+  response (`Cache-Control` on this route is unchanged pending that answer).
+  No dashboard, no aggregation, no merchant-facing wording - by design, per
+  spec §3. Way back: drop the `CrawlerHit` table and revert the route change;
+  nothing else in the app reads this table yet.
+
 ### Fixed (server)
 
 - **A stuck job now says so, on the first load.** Whether a job is stalled is

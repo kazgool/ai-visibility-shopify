@@ -13,13 +13,67 @@ import { NAMESPACE } from "./facts.server";
 
 const SETTING_KEY = "business";
 
-export async function businessFor(shopId: string): Promise<BusinessInfo | null> {
+/**
+ * Official store profile URLs, published as schema.org sameAs. Not part of
+ * the engine's BusinessInfo (the engine never reads or generates these); it
+ * is a separate, purely publishing concern kept in the same metafield so it
+ * survives uninstall like the rest of the business answers.
+ */
+export type SocialProfiles = Partial<Record<SocialPlatform, string>>;
+
+export const SOCIAL_PLATFORMS = [
+  "facebook",
+  "instagram",
+  "tiktok",
+  "youtube",
+  "linkedin",
+  "x",
+  "pinterest",
+] as const;
+
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+/** Business info plus the optional social profile URLs, stored together. */
+export type BusinessRecord = BusinessInfo & { socialProfiles?: SocialProfiles };
+
+/**
+ * Accept only absolute https URLs. We never verify the profile exists - that
+ * would be a network call and a claim the app cannot back - so a malformed
+ * or non-https value is dropped rather than published.
+ */
+export function isValidProfileUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "https:" && parsed.hostname.length > 0;
+}
+
+/**
+ * Drop anything that is not a valid https URL, silently. Publishing junk is
+ * worse than publishing nothing; there is no error to show the merchant for
+ * a field that simply gets left out.
+ */
+export function sanitizeSocialProfiles(
+  input: Partial<Record<SocialPlatform, string>>,
+): SocialProfiles {
+  const out: SocialProfiles = {};
+  for (const platform of SOCIAL_PLATFORMS) {
+    const raw = input[platform]?.trim();
+    if (raw && isValidProfileUrl(raw)) out[platform] = raw;
+  }
+  return out;
+}
+
+export async function businessFor(shopId: string): Promise<BusinessRecord | null> {
   const row = await db.setting.findUnique({
     where: { shopId_key: { shopId, key: SETTING_KEY } },
   });
   if (!row?.value) return null;
   try {
-    return JSON.parse(row.value) as BusinessInfo;
+    return JSON.parse(row.value) as BusinessRecord;
   } catch {
     return null;
   }
@@ -45,7 +99,7 @@ const SET_METAFIELD = `#graphql
 export async function saveBusiness(
   shopId: string,
   graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
-  info: BusinessInfo,
+  info: BusinessRecord,
 ): Promise<void> {
   await db.setting.upsert({
     where: { shopId_key: { shopId, key: SETTING_KEY } },

@@ -15,7 +15,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
-import { scanThemeForProductLd } from "../services/theme-scan.server";
+import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
 
 // What a merchant actually wants to know: can assistants read my store, and if
 // not, why. Status codes alone are useless to a non-technical reader, so every
@@ -25,6 +25,14 @@ const FIRST_PRODUCT = `#graphql
   query FirstOnlineProduct {
     products(first: 1, query: "published_status:published") {
       nodes { onlineStoreUrl title }
+    }
+  }
+`;
+
+const MAIN_THEME_ID = `#graphql
+  query MainThemeId {
+    themes(first: 1, roles: [MAIN]) {
+      nodes { id }
     }
   }
 `;
@@ -68,6 +76,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let theme = null;
   try {
     theme = await scanThemeForProductLd(url, password?.value);
+    // Persist and mirror to the shop metafield here too, not only on the
+    // themes/publish webhook: a merchant who fills in profile URLs without
+    // ever republishing a theme should not wait indefinitely for the
+    // Organization detection to reach the storefront block.
+    const themeRes = await admin.graphql(MAIN_THEME_ID);
+    const themeJson = await themeRes.json();
+    const themeId = themeJson.data?.themes?.nodes?.[0]?.id;
+    if (themeId) {
+      await recordThemeScan(shop.id, String(themeId), theme, admin.graphql);
+    }
   } catch {
     theme = null;
   }

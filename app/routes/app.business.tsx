@@ -15,8 +15,13 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { businessFor, saveBusiness } from "../services/business.server";
-import type { BusinessInfo } from "../engine";
+import {
+  businessFor,
+  saveBusiness,
+  sanitizeSocialProfiles,
+  SOCIAL_PLATFORMS,
+  type BusinessRecord,
+} from "../services/business.server";
 
 // The commercial answers a shop gives once (WP 1.6.7 port): delivery,
 // returns, warranty, payment. Published as shipping and return-policy
@@ -44,7 +49,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { error: "Return window must be a number of days." };
   }
 
-  const info: BusinessInfo = {
+  const socialProfiles = sanitizeSocialProfiles(
+    Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p, text(p)])),
+  );
+
+  const info: BusinessRecord = {
     deliveryTime: text("deliveryTime") || undefined,
     deliveryCost: text("deliveryCost") || undefined,
     deliveryCostIsFrom: form.get("deliveryCostIsFrom") === "on",
@@ -52,15 +61,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     returnDays,
     warranty: text("warranty") || undefined,
     paymentMethods: text("paymentMethods") || undefined,
+    socialProfiles:
+      Object.keys(socialProfiles).length > 0 ? socialProfiles : undefined,
   };
 
   await saveBusiness(shop.id, admin.graphql, info);
   return { saved: true };
 };
 
+const SOCIAL_LABELS: Record<(typeof SOCIAL_PLATFORMS)[number], string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  x: "X",
+  pinterest: "Pinterest",
+};
+
 export default function Business() {
   const { business } = useLoaderData<typeof loader>() as {
-    business: BusinessInfo | null;
+    business: BusinessRecord | null;
   };
   const result = useActionData<typeof action>() as
     | { saved?: boolean; error?: string }
@@ -79,6 +100,11 @@ export default function Business() {
   );
   const [warranty, setWarranty] = useState(business?.warranty ?? "");
   const [paymentMethods, setPaymentMethods] = useState(business?.paymentMethods ?? "");
+  const [socialProfiles, setSocialProfiles] = useState<Record<string, string>>(
+    Object.fromEntries(
+      SOCIAL_PLATFORMS.map((p) => [p, business?.socialProfiles?.[p] ?? ""]),
+    ),
+  );
 
   return (
     <Page
@@ -184,6 +210,34 @@ export default function Business() {
               </BlockStack>
             </Card>
 
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Official store profiles
+                </Text>
+                <Text as="p" tone="subdued">
+                  Published as sameAs on your store's structured data, so
+                  assistants can confirm this is your real shop. All
+                  optional; leave any blank you do not run. Only https links
+                  are accepted - anything else is dropped rather than
+                  published.
+                </Text>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <TextField
+                    key={platform}
+                    label={SOCIAL_LABELS[platform]}
+                    name={platform}
+                    value={socialProfiles[platform]}
+                    onChange={(value) =>
+                      setSocialProfiles((prev) => ({ ...prev, [platform]: value }))
+                    }
+                    autoComplete="off"
+                    placeholder={`https://www.${platform}.com/yourstore`}
+                  />
+                ))}
+              </BlockStack>
+            </Card>
+
             <Divider />
             <InlineStack>
               <Button submit variant="primary" loading={busy}>
@@ -202,7 +256,9 @@ export default function Business() {
               As buyer questions on every product ("Can I return it?", "How
               long does delivery take?"), in the plain text mirror, and as
               shipping and return-policy structured data when the app embed
-              runs in Full mode. A field left empty publishes nothing.
+              runs in Full mode. Store profile URLs publish as sameAs on
+              your store's Organization data. A field left empty publishes
+              nothing.
             </Text>
           </BlockStack>
         </Card>

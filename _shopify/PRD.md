@@ -148,6 +148,43 @@ Approach, in order of preference:
 This detection runs server side on install and on theme change, not on every
 page view.
 
+**Official store profiles (sameAs).** No spec existed for this until it was
+built (21 Aug 2026); documented here after the fact, per the working rule
+that reality wins.
+
+The merchant can enter official profile URLs (Facebook, Instagram, TikTok,
+YouTube, LinkedIn, X, Pinterest) on the Business info screen, alongside
+delivery and returns. All optional. Only absolute `https` URLs are accepted;
+anything else is dropped silently at write time - we never verify a profile
+exists, since that would be a network call and a claim we cannot back. The
+URLs are stored in the same shop metafield as the rest of business info, so
+they survive uninstall.
+
+Publishing follows the same extend-or-emit rule as the Product node, decided
+automatically rather than by merchant toggle:
+
+- The theme scan (above) is extended to also detect an `Organization` node
+  and, when found, the `@id` it uses. The result is mirrored to a small
+  shop metafield (`theme_scan`, `{ hasOrganizationLd, organizationId }`) so
+  the storefront block can read it at render time with no fetch.
+- The block decides on the identifier, not the boolean: it extends the
+  theme's node - adding nothing but `sameAs`, referenced by that exact
+  `@id` - only when `organizationId` is present and non-blank. A theme
+  node with no `@id` of its own gives us nothing to reference, so this
+  case falls through to the next rule rather than inventing one; an
+  invented `@id` would point at nothing.
+- In every other case - no theme Organization, one with no usable `@id`,
+  or no scan recorded yet - we emit our own complete minimal node:
+  `@type`, `name`, `url`, `sameAs`. Complete means it stands on its own
+  without referencing anything else; minimal means no address, logo or
+  contact point is invented.
+- If the merchant has filled in no profiles, nothing is emitted at all - an
+  empty `sameAs` array is worse than no node.
+
+Unlike the Product node, this is store-wide, not per-product: the block
+emits it on every page once the app embed is active, since sameAs describes
+the business, not one product.
+
 ### 4.3 Image descriptions
 
 Finds product media without alt text and writes short, specific descriptions,

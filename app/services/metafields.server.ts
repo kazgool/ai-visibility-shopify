@@ -68,6 +68,7 @@ const VARIANT_DEFINITIONS = [
 // and return schema without our app in the request path.
 const SHOP_DEFINITIONS = [
   { key: "business", type: "json", name: "Business info" },
+  { key: "theme_scan", type: "json", name: "Theme scan" },
 ] as const;
 
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {

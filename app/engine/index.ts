@@ -45,12 +45,12 @@ export {
   type SplitResult,
 } from "./variants";
 export { buildAnswerPreview, type AnswerInput, type AnswerPreview } from "./answer";
-export { normalize, prepareText, diacriticPattern, cleanOutput } from "./normalize";
+export { normalize, prepareText, prepareTextCased, diacriticPattern, cleanOutput } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
 
 import { extractFromText, type ExtractOptions, type Fact } from "./extract";
 import { DEFAULT_DICTIONARY } from "./dictionary";
-import { prepareText } from "./normalize";
+import { prepareText, prepareTextCased } from "./normalize";
 
 /**
  * Extract comparable attributes from a Shopify product.
@@ -63,9 +63,10 @@ export function extractProduct(
   options: ExtractOptions = {},
 ): Fact[] {
   const text = prepareText(product.title ?? "", product.descriptionHtml ?? "");
+  const casedText = prepareTextCased(product.title ?? "", product.descriptionHtml ?? "");
   const dictionary =
     dictionaryText && dictionaryText.trim() !== "" ? dictionaryText : DEFAULT_DICTIONARY;
-  return extractFromText(text, dictionary, options);
+  return extractFromText(text, dictionary, { ...options, casedText });
 }
 
 /** Coverage report for the dry run (DICTIONARY-PORT §9). */

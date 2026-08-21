@@ -154,6 +154,13 @@ acting as a brake. The 15-minute poll is what keeps the database awake and is
 the main driver of compute cost. If a blank app ever returns, read the boot
 logs before anything else: `fly logs -a ai-visibility-all-in-one --no-tail`.
 
+fit_for is by design broader than people: rooms and spaces ("kitchen",
+"dining room", "small apartments") are valid values, because "suits a small
+kitchen" is exactly what a furniture seller states about a piece. It is
+published as audienceType, which reads oddly against schema.org's own
+definition, but the value semantics are Marius's call (20 Aug 2026) - do
+not "fix" room values out of fit_for.
+
 Known accepted imperfections (do not "fix" without asking): mirror cache
 rewrites on every pass; alt-text editor state does not resync after save
 without refresh; poll iterates shops sequentially (fine at this scale).
