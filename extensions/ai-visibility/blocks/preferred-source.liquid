@@ -44,9 +44,17 @@
         rel="noopener"
         style="display: inline-block; text-decoration: none;"
       >
+        {%- comment -%}
+          Theme check requires width and height on every img. The rendered
+          asset is 300 wide, so the height is that ratio applied to the
+          uploaded file, which keeps the box from jumping while it loads.
+        {%- endcomment -%}
+        {%- assign av_ps_h = av_ps_image.height | times: 300 | divided_by: av_ps_image.width -%}
         <img
           src="{{ av_ps_image | image_url: width: 300 }}"
           alt="{{ av_ps_label | escape }}"
+          width="300"
+          height="{{ av_ps_h }}"
           style="max-width: 100%; height: auto; border: 0;"
         >
       </a>
@@ -71,7 +79,7 @@
 
 {% schema %}
 {
-  "name": "AI Visibility preferred source",
+  "name": "AI Visibility preferred",
   "target": "section",
   "settings": [
     {
