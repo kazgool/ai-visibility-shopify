@@ -14,6 +14,29 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ---
 
+## Unreleased
+
+### Added
+- Diagnostic-only `CrawlerHit.forwarding` column: records the raw values of
+  candidate client-address headers (`x-forwarded-for`, `fly-client-ip`,
+  `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`) as a JSON
+  object, to determine whether a real client IP is available behind Fly and
+  Shopify's edge (CRAWLER-HITS-SPEC §2, §10.2). The existing `ip` column and
+  its derivation are unchanged. Same 30-day retention as the rest of
+  `CrawlerHit`; noted in `PRIVACY.md`.
+- Way back: drop the `forwarding` column (migration
+  `20260822090000_crawler_hit_forwarding`) and revert the
+  `forwardingHeaders()` addition in `app/routes/proxy.$.tsx`.
+- Plain text mirror link on the Products list and the product editor: a
+  "Plain text" column on `app/routes/app.products._index.tsx` links to
+  `https://<shop-domain>/apps/ai-visibility/<handle>` for any product with a
+  `MirrorCache` row, and shows "Not readable yet" otherwise so the link never
+  404s. The Readability card on `app/routes/app.products.$id.tsx` links to
+  the same address for that product, or states plainly that nothing is
+  published yet. One extra `mirrorCache.findMany` query per Products page
+  load (batched over the page's handles); one extra `mirrorCache.findUnique`
+  on the product editor. No change to what is published or how.
+
 ## Version 10 - 21 August 2026
 
 ### Fixed (engine)

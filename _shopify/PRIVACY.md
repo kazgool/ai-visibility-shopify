@@ -41,8 +41,11 @@ in your store if you uninstall.
 - Raw request records for the plain text mirror: the requesting user agent,
   the client IP address if the request supplied one, the path and product
   handle requested, the response status, and the timestamp. This lets us
-  confirm that AI crawlers are reading the mirror we publish. Raw records
-  are kept for 30 days.
+  confirm that AI crawlers are reading the mirror we publish. We also record,
+  for the same diagnostic purpose, the raw values of the request forwarding
+  headers present on the request (such as x-forwarded-for and
+  cf-connecting-ip); this is temporary instrumentation to determine whether a
+  real client address is available at all. Raw records are kept for 30 days.
 
 We store no customer personal data, because we never receive any.
 

@@ -136,6 +136,11 @@ model CrawlerHit {
   status Int
   at     DateTime @default(now())
 
+  // Diagnostic only, temporary (see clientIp() in proxy.$.tsx): compact JSON
+  // of the candidate forwarding headers as received, to determine whether a
+  // real client address is ever available behind Fly and Shopify's edge.
+  forwarding String?
+
   @@index([shopId, at])
 }
 

@@ -19,6 +19,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
+import db from "../db.server";
 
 // Results nobody can see do not exist (Marius, 3 Aug 2026). The dashboard
 // says how much of the catalogue is covered; this screen says which products
@@ -64,6 +65,7 @@ type Row = {
   images: number;
   edited: boolean;
   readable: boolean;
+  mirrored: boolean;
 };
 
 function parseCount(value: string | undefined): number {
@@ -77,7 +79,7 @@ function parseCount(value: string | undefined): number {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const cursor = url.searchParams.get("after");
   const before = url.searchParams.get("before");
@@ -109,6 +111,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     count: c.productsCount?.count ?? 0,
   }));
 
+  const handles: string[] = (page?.nodes ?? []).map((p: any) => p.handle);
+  const shop = handles.length > 0 ? await db.shop.findUnique({ where: { domain: session.shop } }) : null;
+  const mirrored = shop
+    ? await db.mirrorCache.findMany({
+        where: { shopId: shop.id, handle: { in: handles } },
+        select: { handle: true },
+      })
+    : [];
+  const mirroredHandles = new Set(mirrored.map((m) => m.handle));
+
   const rows: Row[] = (page?.nodes ?? []).map((p: any) => {
     const mf = new Map<string, string>(
       (p.metafields?.nodes ?? []).map((m: any) => [m.key, m.value]),
@@ -137,6 +149,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       edited: Object.values(state).some((s) => s?.source === "human"),
       // Published means an assistant has something to read on this product.
       readable: attributes > 0 && Boolean(mf.get("summary")),
+      // Whether the plain text mirror exists for this handle, so the link
+      // never points to a 404.
+      mirrored: mirroredHandles.has(p.handle),
     };
   });
 
@@ -155,6 +170,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     collection,
     collections,
     pageInfo: page?.pageInfo ?? null,
+    domain: session.shop,
   };
 };
 
@@ -166,7 +182,7 @@ const FILTERS = [
 ];
 
 export default function ProductsOverview() {
-  const { rows, total, filter, search, collection, collections, pageInfo } =
+  const { rows, total, filter, search, collection, collections, pageInfo, domain } =
     useLoaderData<typeof loader>() as {
       rows: Row[];
       total: number;
@@ -175,6 +191,7 @@ export default function ProductsOverview() {
       collection: string;
       collections: { id: string; title: string; count: number }[];
       pageInfo: any;
+      domain: string;
     };
   const [term, setTerm] = useState(search);
   const [params, setParams] = useSearchParams();
@@ -292,6 +309,7 @@ export default function ProductsOverview() {
                 { title: "Summary" },
                 { title: "Image text" },
                 { title: "State" },
+                { title: "Plain text" },
               ]}
             >
               {rows.map((row, i) => (
@@ -347,6 +365,22 @@ export default function ProductsOverview() {
                         <Badge>Nothing published</Badge>
                       )}
                     </InlineStack>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    {row.mirrored ? (
+                      <a
+                        href={`https://${domain}/apps/ai-visibility/${row.handle}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View
+                      </a>
+                    ) : (
+                      <Text as="span" tone="subdued">
+                        Not readable yet
+                      </Text>
+                    )}
                   </IndexTable.Cell>
                 </IndexTable.Row>
               ))}

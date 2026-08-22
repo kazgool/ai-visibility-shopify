@@ -20,6 +20,7 @@ function logCrawlerHit(row: {
   shopId: string;
   agent: string;
   ip: string | null;
+  forwarding: string | null;
   handle: string | null;
   path: string;
   status: number;
@@ -33,6 +34,32 @@ function clientIp(request: Request): string | null {
   return forwarded.split(",")[0]?.trim() || null;
 }
 
+// Diagnostic only, temporary (CRAWLER-HITS-SPEC §2, §10.2): `fly-client-ip`
+// is by definition whoever connected to Fly, which the real four hits so far
+// confirm is Cloudflare's edge, not the browser or bot. This records every
+// candidate forwarding header as received so we can tell, from real traffic,
+// whether any of them ever carries the actual client address. Once that is
+// known, this column either becomes the basis of bot verification (§5
+// Option B) or gets dropped along with the idea of displaying a verified
+// count.
+const FORWARDING_HEADERS = [
+  "x-forwarded-for",
+  "fly-client-ip",
+  "cf-connecting-ip",
+  "true-client-ip",
+  "x-real-ip",
+  "forwarded",
+] as const;
+
+function forwardingHeaders(request: Request): string | null {
+  const found: Record<string, string> = {};
+  for (const name of FORWARDING_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) found[name] = value;
+  }
+  return Object.keys(found).length ? JSON.stringify(found) : null;
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Verifies the proxy signature; an unsigned request is not from Shopify.
   const { session } = await authenticate.public.appProxy(request);
@@ -40,6 +67,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const path = new URL(request.url).pathname;
   const agent = request.headers.get("user-agent") ?? "";
   const ip = clientIp(request);
+  const forwarding = forwardingHeaders(request);
 
   const headers = {
     "Content-Type": "text/plain; charset=utf-8",
@@ -48,7 +76,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
 
   const log = (shopId: string, status: number, loggedHandle: string | null = handle || null) =>
-    logCrawlerHit({ shopId, agent, ip, handle: loggedHandle, path, status });
+    logCrawlerHit({ shopId, agent, ip, forwarding, handle: loggedHandle, path, status });
 
   if (!session?.shop || handle === "") {
     log(session?.shop ?? "", 404);

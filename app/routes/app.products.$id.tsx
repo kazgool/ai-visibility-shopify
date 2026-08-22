@@ -31,6 +31,7 @@ const PRODUCT = `#graphql
     product(id: $id) {
       id
       title
+      handle
       descriptionHtml
       productType
       priceRangeV2 { minVariantPrice { amount currencyCode } }
@@ -74,6 +75,11 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const product = json.data?.product;
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  const mirror = shop
+    ? await db.mirrorCache.findUnique({
+        where: { shopId_handle: { shopId: shop.id, handle: product.handle } },
+      })
+    : null;
   const setting = shop
     ? await db.setting.findUnique({
         where: { shopId_key: { shopId: shop.id, key: "dictionary" } },
@@ -160,6 +166,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       title: cleanOutput(product.title),
       image: product.featuredMedia?.preview?.image?.url ?? null,
     },
+    mirrorUrl: mirror ? `https://${session.shop}/apps/ai-visibility/${product.handle}` : null,
     images,
     storedFacts,
     autoFacts,
@@ -322,7 +329,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers, answer } =
+  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers, answer, mirrorUrl } =
     useLoaderData<typeof loader>() as {
       answer: {
         question: string;
@@ -332,6 +339,7 @@ export default function ProductEditor() {
       } | null;
       crawlers: { agent: string; ok: boolean; checkedAt: string }[];
       product: { id: string; title: string; image: string | null };
+      mirrorUrl: string | null;
       images: {
         id: string;
         url: string;
@@ -428,6 +436,18 @@ export default function ProductEditor() {
                   : "No questions"}
               </Badge>
             </InlineStack>
+            {mirrorUrl ? (
+              <Text as="p" variant="bodySm">
+                <a href={mirrorUrl} target="_blank" rel="noreferrer">
+                  Open the plain text page an assistant reads for this product
+                </a>
+              </Text>
+            ) : (
+              <Text as="p" tone="subdued" variant="bodySm">
+                No plain text page yet - nothing has been published for this
+                product.
+              </Text>
+            )}
             {crawlers.length > 0 ? (
               <>
                 <Text as="p" tone="subdued" variant="bodySm">
