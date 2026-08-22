@@ -1,0 +1,113 @@
+{% comment %}
+  AI Visibility - preferred source deeplink (PREFERRED-SOURCES-SPEC §5, §7).
+
+  A single anchor that lets a visitor add this storefront as a preferred
+  source in Google Search, AI Mode and AI Overviews. Off by default, placed
+  wherever the merchant drops the block. Deeplink only, per the spec's
+  choice at §4: Google's own script/SDK route is rejected because it loads
+  third-party JavaScript on every page, which the storefront block never
+  does.
+
+  shop.domain is the shop's primary storefront domain (the custom domain
+  when one is connected); shop.permanent_domain is always the
+  *.myshopify.com address. Linking with permanent_domain would ask the
+  shopper to add the wrong site as their preferred source, so this block
+  reads shop.domain and only shop.domain.
+
+  Renders nothing when there is nothing to show: no label and no image
+  means no anchor, no wrapper, nothing.
+{% endcomment %}
+
+{%- assign av_ps_label = block.settings.label | strip -%}
+{%- assign av_ps_image = block.settings.image -%}
+{%- assign av_ps_theme = block.settings.theme | default: 'light' -%}
+
+{%- if av_ps_label != blank or av_ps_image != blank -%}
+  {%- assign av_ps_align = block.settings.align | default: 'left' -%}
+  {%- assign av_ps_href = 'https://www.google.com/preferences/source?q=' | append: shop.domain -%}
+
+  {%- if av_ps_theme == 'dark' -%}
+    {%- assign av_ps_bg = '#111111' -%}
+    {%- assign av_ps_fg = '#ffffff' -%}
+    {%- assign av_ps_border = '#3d3d3d' -%}
+  {%- else -%}
+    {%- assign av_ps_bg = '#ffffff' -%}
+    {%- assign av_ps_fg = '#1a1a1a' -%}
+    {%- assign av_ps_border = '#d0d0d0' -%}
+  {%- endif -%}
+
+  <div class="ai-visibility-preferred-source" style="text-align: {{ av_ps_align }};">
+    {%- if av_ps_image != blank -%}
+      <a
+        href="{{ av_ps_href }}"
+        target="_blank"
+        rel="noopener"
+        style="display: inline-block; text-decoration: none;"
+      >
+        <img
+          src="{{ av_ps_image | image_url: width: 300 }}"
+          alt="{{ av_ps_label | escape }}"
+          style="max-width: 100%; height: auto; border: 0;"
+        >
+      </a>
+    {%- else -%}
+      <a
+        href="{{ av_ps_href }}"
+        target="_blank"
+        rel="noopener"
+        style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; background-color: {{ av_ps_bg }}; color: {{ av_ps_fg }}; border: 1px solid {{ av_ps_border }}; text-decoration: none; font-size: 14px; line-height: 1;"
+      >
+        {%- comment -%}
+          A neutral blue on purpose. Google's own brand blue is #4285f4, and
+          using it here would be the same trademark question that shipping
+          their badge raises, only quieter.
+        {%- endcomment -%}
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #2563eb;"></span>
+        {{ av_ps_label | escape }}
+      </a>
+    {%- endif -%}
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "AI Visibility preferred source",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Label",
+      "default": "Add as Preferred Source"
+    },
+    {
+      "type": "select",
+      "id": "align",
+      "label": "Alignment",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "left"
+    },
+    {
+      "type": "select",
+      "id": "theme",
+      "label": "Theme",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ],
+      "default": "light",
+      "info": "Only applies to the styled button. Has no effect when a badge image is uploaded."
+    },
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Badge image",
+      "info": "Optional. If left empty, the label renders as a styled button instead."
+    }
+  ]
+}
+{% endschema %}

@@ -37,6 +37,57 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
   load (batched over the page's handles); one extra `mirrorCache.findUnique`
   on the product editor. No change to what is published or how.
 
+### Added (extension)
+- **Preferred source deeplink block** (`PREFERRED-SOURCES-SPEC.md`). A new
+  optional theme app block, `preferred-source.liquid`, renders a single
+  anchor that lets a shopper add this storefront as a preferred source in
+  Google Search, AI Mode and AI Overviews. Off by default; the merchant
+  places it wherever they choose and sets a label, alignment, and
+  optionally an uploaded badge image in place of the text label. Ships no
+  JavaScript: Google's own recommended implementation loads a third-party
+  script and SDK on every page, which the spec rejects (§4) as
+  incompatible with the storefront block's zero-JavaScript rule, so this
+  uses the plain deeplink instead, at the cost of the shopper landing on
+  Google's tool rather than being returned automatically to the page. The
+  href uses `shop.domain`, the shop's primary storefront domain, never
+  `shop.permanent_domain` (the `*.myshopify.com` address), which would
+  point the shopper at the wrong site. `app/routes/app.diagnostics.tsx`
+  gains an informational card linking to
+  `https://www.google.com/preferences/source` so the merchant can check
+  by hand whether their domain is eligible; no automated check exists, and
+  none was added, because there is no API for it. When no image is
+  uploaded, the block now renders a styled button (a new `theme` setting,
+  light or dark) rather than bare text - modest padding, rounded corners,
+  a small coloured dot before the label - and ships no Google logo or
+  Google-styled asset of any kind, matching the call the WordPress plugin
+  reached the same day: shipping or imitating Google's badge raises a
+  trademark question neither product is answering. Diagnostics now also
+  records the manual eligibility check as a fact with a date rather than
+  only linking to Google's tool (`app/services/preferred-source.server.ts`,
+  a `Setting` row keyed `preferred_source_eligibility` per shop, following
+  the same table `business.server.ts` uses): two buttons let the merchant
+  record what they saw ("It appears" / "It does not appear"), and the
+  screen then states "Recorded on DD Month YYYY: the domain appears/does
+  not appear in Google's source preferences tool," or says plainly that
+  nothing is recorded yet and why it cannot be checked automatically. No
+  automated fetch of Google's tool, and no count of people who added the
+  site, per spec §6. The diagnostics card (renamed "Preferred source", was
+  "Preferred source eligibility") now also gives the merchant the deeplink
+  itself rather than relying on a shopper to browse past the storefront
+  block: a line telling them to tap it once with their own Google account
+  first, a readOnly `TextField` with the same prefilled URL the card
+  already builds from the primary domain, and a second readOnly multiline
+  `TextField` holding a prewritten message with the URL in it, for the
+  merchant to send by WhatsApp, email, or newsletter. Admin-only, no
+  extension release needed. States only the per-person effect Google
+  documents (the person who taps it sees this store favoured in their own
+  Search, AI Mode and AI Overviews results, and may click through) - no
+  claim of a ranking or aggregate signal, no count. Way back: delete
+  `extensions/ai-visibility/blocks/preferred-source.liquid`,
+  `app/services/preferred-source.server.ts`, revert the diagnostics card
+  in `app.diagnostics.tsx`, and drop the `Setting` rows keyed
+  `preferred_source_eligibility`.
+
 ## Version 10 - 21 August 2026
 
 ### Fixed (engine)

@@ -11,11 +11,17 @@ import {
   Banner,
   List,
   Divider,
+  TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
 import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
+import {
+  preferredSourceEligibilityFor,
+  recordPreferredSourceEligibility,
+  type PreferredSourceStatus,
+} from "../services/preferred-source.server";
 
 // What a merchant actually wants to know: can assistants read my store, and if
 // not, why. Status codes alone are useless to a non-technical reader, so every
@@ -37,8 +43,31 @@ const MAIN_THEME_ID = `#graphql
   }
 `;
 
+// The eligibility link has to carry the same domain the storefront block puts
+// in its href, which is the primary domain, not the *.myshopify.com one that
+// session.shop always holds. Checking the wrong domain at Google's tool
+// answers a question nobody asked.
+const PRIMARY_DOMAIN = `#graphql
+  query PrimaryDomain {
+    shop { primaryDomain { host } }
+  }
+`;
+
+async function primaryDomainFor(
+  graphql: (query: string) => Promise<Response>,
+  fallback: string,
+): Promise<string> {
+  try {
+    const response = await graphql(PRIMARY_DOMAIN);
+    const body = await response.json();
+    return body?.data?.shop?.primaryDomain?.host || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const recent = shop
     ? await db.crawlerCheck.findMany({
@@ -53,14 +82,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         orderBy: { scannedAt: "desc" },
       })
     : null;
+  const preferredSource = shop ? await preferredSourceEligibilityFor(shop.id) : null;
+  const domain = await primaryDomainFor(admin.graphql, session.shop);
 
-  return { recent, themeScan, domain: session.shop };
+  return { recent, themeScan, domain, preferredSource };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { error: "Shop not found" };
+
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "record_preferred_source") {
+    const status = formData.get("status");
+    if (status !== "listed" && status !== "not_listed") {
+      return { error: "Invalid status" };
+    }
+    const preferredSource = await recordPreferredSourceEligibility(
+      shop.id,
+      status as PreferredSourceStatus,
+    );
+    return { preferredSource };
+  }
 
   const res = await admin.graphql(FIRST_PRODUCT);
   const json = await res.json();
@@ -99,14 +145,24 @@ function toneFor(cause: string): "success" | "critical" | "warning" | "info" {
   return "critical";
 }
 
+function formatRecordedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default function Diagnostics() {
-  const { themeScan, domain } = useLoaderData<typeof loader>();
+  const { themeScan, domain, preferredSource } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
   const crawler = result?.crawler;
   const theme = result?.theme ?? (themeScan?.detail as any);
+  const preferredSourceRecord = result?.preferredSource ?? preferredSource;
+  const preferredSourceUrl = `https://www.google.com/preferences/source?q=${domain}`;
 
   return (
     <Page
@@ -215,6 +271,86 @@ export default function Diagnostics() {
               <code>https://{domain}/apps/ai-visibility/&lt;handle&gt;</code> - a
               version a crawler can read without executing anything.
             </Text>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              Preferred source
+            </Text>
+            <Text as="p">
+              Google's source preferences tool lets a shopper mark a site as a
+              preferred source in Search, AI Mode and AI Overviews. Only
+              domain-level and subdomain-level sites are eligible - appearing
+              there is a precondition, not something this app can check for
+              you. There is no API for this check, so it cannot be automated;
+              enter your storefront domain at{" "}
+              <a href={preferredSourceUrl} target="_blank" rel="noopener noreferrer">
+                google.com/preferences/source
+              </a>{" "}
+              to see whether it appears, then record what you saw below.
+            </Text>
+
+            {preferredSourceRecord ? (
+              <Text as="p">
+                Recorded on {formatRecordedDate(preferredSourceRecord.recordedAt)}:
+                the domain{" "}
+                {preferredSourceRecord.status === "listed"
+                  ? "appears in Google's source preferences tool."
+                  : "does not appear yet in Google's source preferences tool."}
+              </Text>
+            ) : (
+              <Text as="p" tone="subdued">
+                Nothing recorded yet. This cannot be checked automatically -
+                there is no API for it - so record what you see at the link
+                above.
+              </Text>
+            )}
+
+            <InlineStack gap="200">
+              <Form method="post">
+                <input type="hidden" name="intent" value="record_preferred_source" />
+                <input type="hidden" name="status" value="listed" />
+                <Button submit loading={busy}>
+                  It appears
+                </Button>
+              </Form>
+              <Form method="post">
+                <input type="hidden" name="intent" value="record_preferred_source" />
+                <input type="hidden" name="status" value="not_listed" />
+                <Button submit loading={busy}>
+                  It does not appear
+                </Button>
+              </Form>
+            </InlineStack>
+
+            <Divider />
+
+            <Text as="p">
+              Start with yourself: tap the link below once, signed in with
+              your own Google account, so you see the confirmation screen
+              your customers will see, then look for the preferred badge in
+              your own AI Mode results.
+            </Text>
+
+            <TextField
+              label="Deeplink"
+              value={preferredSourceUrl}
+              readOnly
+              autoComplete="off"
+              onChange={() => {}}
+              helpText="Send this anywhere - WhatsApp, email, a newsletter. Each person who taps it and confirms sees this store favoured in their own Search, AI Mode and AI Overviews results, and may click through from there. It only affects that one person's results."
+            />
+
+            <TextField
+              label="Prewritten message"
+              value={`If you shop with us and use Google, you can tell it to show our store first when you ask about products like ours. It takes one tap: ${preferredSourceUrl}`}
+              readOnly
+              autoComplete="off"
+              multiline={3}
+              onChange={() => {}}
+            />
           </BlockStack>
         </Card>
       </BlockStack>
