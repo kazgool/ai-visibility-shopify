@@ -17,6 +17,21 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ## Unreleased
 
 ### Added
+- Free tier (`FREE-TIER-SPEC.md`, decided 28 Aug 2026): before subscribing, a
+  merchant gets the crawler check and the coverage score unlimited, plus
+  three products of their choosing fully processed. `Shop.freeProductsUsed`
+  (migration `20260829120000_free_products_used`) counts only successful
+  writes and lives on the `Shop` row so it survives uninstall and reinstall.
+  The dashboard (`app._index`), diagnostics, and the products list now load
+  without a subscription - an explicit allowlist in `app/routes/app.tsx`
+  names the three routes and points at this spec. The products list gained a
+  per-row "Process this product" action, reusing `extractOneProduct`, shown
+  only to shops without a subscription and only while fewer than three free
+  products have been used; once used up the action is replaced by a line
+  pointing at the plans screen. Both screens state plainly what is free, what
+  is not, and that anything written stays written and in the merchant's own
+  metafields whether they subscribe or not. Not a trial: no time limit, no
+  second free quantity, no discount.
 - Readability check (`app/engine/citation.ts`, ported from the WordPress
   plugin): a word overlap ratio, not a similarity model. It compares the
   product title, and as a fallback the opening sentence of the summary,

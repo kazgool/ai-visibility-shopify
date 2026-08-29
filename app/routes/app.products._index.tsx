@@ -1,6 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useState } from "react";
-import { Link, useLoaderData, useSearchParams, useNavigation } from "@remix-run/react";
+import { Link, useLoaderData, useSearchParams, useNavigation, useFetcher } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -20,6 +20,8 @@ import {
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
 import db from "../db.server";
+import { hasPaidAccess } from "../services/billing.server";
+import { extractOneProduct } from "../services/extract.server";
 
 // Results nobody can see do not exist (Marius, 3 Aug 2026). The dashboard
 // says how much of the catalogue is covered; this screen says which products
@@ -162,6 +164,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return true;
   });
 
+  // FREE-TIER-SPEC §2, §4: three merchant-chosen products are free without a
+  // subscription. A subscribed shop sees none of this.
+  const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
+  const freeProductsUsed = shop?.freeProductsUsed ?? 0;
+  const freeProductsRemaining = Math.max(0, 3 - freeProductsUsed);
+
   return {
     rows: filtered,
     total: rows.length,
@@ -171,7 +179,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     collections,
     pageInfo: page?.pageInfo ?? null,
     domain: session.shop,
+    hasAccess,
+    freeProductsRemaining,
   };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+  const form = await request.formData();
+  const productId = String(form.get("productId") ?? "");
+  if (!productId) return { ok: false };
+
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  if (!shop) return { ok: false };
+
+  const hasAccess = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+  if (!hasAccess && shop.freeProductsUsed >= 3) {
+    return { ok: false, limitReached: true };
+  }
+
+  const outcome = await extractOneProduct(shop.id, productId);
+  const succeeded = outcome.written.length > 0;
+
+  // Count only writes that succeeded, and only for shops without a
+  // subscription (FREE-TIER-SPEC §4). Increment after the write, never
+  // before.
+  if (!hasAccess && succeeded) {
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { freeProductsUsed: { increment: 1 } },
+    });
+  }
+
+  return { ok: true, succeeded };
 };
 
 const FILTERS = [
@@ -181,18 +221,59 @@ const FILTERS = [
   { key: "missing_alt", label: "Missing image descriptions" },
 ];
 
+function ProcessProductAction({
+  productId,
+  attributes,
+}: {
+  productId: string;
+  attributes: number;
+}) {
+  const fetcher = useFetcher<{ ok: boolean; succeeded?: boolean }>();
+  const busy = fetcher.state !== "idle";
+  const done = fetcher.data?.succeeded;
+
+  if (done) {
+    return (
+      <Text as="span" tone="success">
+        Processed
+      </Text>
+    );
+  }
+
+  return (
+    <fetcher.Form method="post">
+      <input type="hidden" name="productId" value={productId} />
+      <Button size="slim" submit loading={busy}>
+        {attributes > 0 ? "Process again" : "Process this product"}
+      </Button>
+    </fetcher.Form>
+  );
+}
+
 export default function ProductsOverview() {
-  const { rows, total, filter, search, collection, collections, pageInfo, domain } =
-    useLoaderData<typeof loader>() as {
-      rows: Row[];
-      total: number;
-      filter: string;
-      search: string;
-      collection: string;
-      collections: { id: string; title: string; count: number }[];
-      pageInfo: any;
-      domain: string;
-    };
+  const {
+    rows,
+    total,
+    filter,
+    search,
+    collection,
+    collections,
+    pageInfo,
+    domain,
+    hasAccess,
+    freeProductsRemaining,
+  } = useLoaderData<typeof loader>() as {
+    rows: Row[];
+    total: number;
+    filter: string;
+    search: string;
+    collection: string;
+    collections: { id: string; title: string; count: number }[];
+    pageInfo: any;
+    domain: string;
+    hasAccess: boolean;
+    freeProductsRemaining: number;
+  };
   const [term, setTerm] = useState(search);
   const [params, setParams] = useSearchParams();
   const nav = useNavigation();
@@ -235,6 +316,21 @@ export default function ProductsOverview() {
       subtitle="What the app has published for each product, and what it has not."
     >
       <BlockStack gap="400">
+        {!hasAccess ? (
+          <Banner tone="info" title="Before you subscribe">
+            <BlockStack gap="100">
+              <Text as="p">
+                {"Three products of your choice can be fully processed for free ("}
+                {freeProductsRemaining}
+                {" remaining) - the same attributes, summary, questions and structured data a subscription writes. The rest of the catalogue needs a subscription."}
+              </Text>
+              <Text as="p">
+                What gets written stays written, in your own Shopify metafields, whether you subscribe or not.
+              </Text>
+            </BlockStack>
+          </Banner>
+        ) : null}
+
         <Card>
           <InlineStack gap="300" wrap blockAlign="end">
             <div style={{ flexGrow: 1, minWidth: 260 }}>
@@ -310,6 +406,7 @@ export default function ProductsOverview() {
                 { title: "Image text" },
                 { title: "State" },
                 { title: "Plain text" },
+                ...(!hasAccess ? [{ title: "Free processing" }] : []),
               ]}
             >
               {rows.map((row, i) => (
@@ -382,6 +479,20 @@ export default function ProductsOverview() {
                       </Text>
                     )}
                   </IndexTable.Cell>
+                  {!hasAccess ? (
+                    <IndexTable.Cell>
+                      {freeProductsRemaining > 0 ? (
+                        <ProcessProductAction
+                          productId={row.id}
+                          attributes={row.attributes}
+                        />
+                      ) : (
+                        <Link to="/app/plans">
+                          <Text as="span">Free products used - see plans</Text>
+                        </Link>
+                      )}
+                    </IndexTable.Cell>
+                  ) : null}
                 </IndexTable.Row>
               ))}
             </IndexTable>

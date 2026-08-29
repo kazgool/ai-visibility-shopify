@@ -17,16 +17,25 @@ import {
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
+// FREE-TIER-SPEC §5: these three routes load without a subscription -
+// dashboard (score, setup state), diagnostics (crawler check), and the
+// products list (the three free writes). Everything else keeps redirecting
+// to the plans screen. Widen this list only by editing FREE-TIER-SPEC first.
+const FREE_ROUTES = ["/app", "/app/diagnostics", "/app/products"];
+
 /**
  * One gate, at the entrance (BILLING-SPEC §4). Without an active subscription
- * every page under /app redirects to the plans screen, so everything
- * downstream can assume a paying shop and stays free of plan conditionals.
+ * every page under /app redirects to the plans screen, except the routes
+ * allowlisted above, so everything else downstream can assume a paying shop
+ * and stays free of plan conditionals.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
 
-  if (url.pathname !== "/app/plans") {
+  const isFreeRoute = FREE_ROUTES.includes(url.pathname);
+
+  if (url.pathname !== "/app/plans" && !isFreeRoute) {
     const shopRow = await db.shop.findUnique({ where: { domain: session.shop } });
     const comped = await isComped(session.shop, shopRow?.id);
 

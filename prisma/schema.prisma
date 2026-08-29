@@ -45,6 +45,11 @@ model Shop {
   uninstalledAt  DateTime?
   plan           String    @default("none")
   metafieldsInit Boolean   @default(false)
+  // Free-tier counter (FREE-TIER-SPEC §4): lives on the Shop row so it
+  // survives uninstall and reinstall, keyed by domain. Incremented only
+  // after a successful write - a failed write must not consume one of the
+  // three.
+  freeProductsUsed Int     @default(0)
 
   settings      Setting[]
   jobRuns       JobRun[]

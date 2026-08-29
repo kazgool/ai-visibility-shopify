@@ -105,6 +105,21 @@ export async function activeSubscription(
   return subs.find((s) => s.status === "ACTIVE") ?? null;
 }
 
+/**
+ * Does this shop have paid access right now - comped, or an active Shopify
+ * subscription? Used by the FREE-TIER-SPEC routes to decide whether to show
+ * free-tier wording and enforce the three-product cap.
+ */
+export async function hasPaidAccess(
+  shopDomain: string,
+  shopId: string | undefined,
+  graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
+): Promise<boolean> {
+  if (await isComped(shopDomain, shopId)) return true;
+  const subscription = await activeSubscription(graphql);
+  return Boolean(subscription);
+}
+
 export function planFromName(name: string): PlanHandle | null {
   const entry = Object.entries(PLANS).find(([, p]) => p.name === name);
   return (entry?.[0] as PlanHandle) ?? null;

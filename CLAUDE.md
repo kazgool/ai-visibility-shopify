@@ -80,8 +80,14 @@ over memory — APIs moved fast in 2025–2026.
   string goes through `cleanOutput()` in `app/engine/normalize.ts`; new
   writers must use it too. Imported catalogues are full of entities, and
   a screen reader spelling out `&#8211;` is the failure this prevents.
-- **No trial, no free tier.** $99/year (≤20k products), $149/year above.
-  Do not add trials, coupons, or gating beyond the single entry gate.
+- **No trial, no coupons.** $99/year (≤20k products), $149/year above. There is
+  no time-limited access and nothing is ever taken away at the end.
+  There is now one permanent, quantity-limited exception, decided 28 August
+  2026 and specified in `FREE-TIER-SPEC.md`: the crawler check and the coverage
+  score are free, and three merchant-chosen products are fully processed before
+  payment. It is not a trial - nothing expires, and what was written stays
+  written whether the merchant subscribes or not. Do not extend it, do not add
+  a second free quantity, and do not add discounts.
 - **Secrets never enter the repo.** `.env` locally, `fly secrets` in prod.
 
 ## Working with Marius

@@ -31,6 +31,7 @@ import db from "../db.server";
 import { enqueue } from "../services/queue.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import { businessFor } from "../services/business.server";
+import { hasPaidAccess } from "../services/billing.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
 // in one glance - how much is covered, what is protected, what is left to do -
@@ -109,6 +110,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
   const business = shop ? await businessFor(shop.id) : null;
 
+  // FREE-TIER-SPEC §2, §5: the crawler check and the coverage score (dry
+  // run) are free for every shop; a subscribed shop sees none of this.
+  const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
+  const freeProductsUsed = shop?.freeProductsUsed ?? 0;
+  const freeProductsRemaining = Math.max(0, 3 - freeProductsUsed);
+
   // Is a job stuck? Answered from the row, not from a counter in the browser
   // that resets on every refresh. `updatedAt` moves on every progress write,
   // so a job that is genuinely working never looks stalled however long the
@@ -153,16 +160,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     domain: session.shop,
     embed,
     embedLink: embedDeepLink(session.shop),
+    hasAccess,
+    freeProductsRemaining,
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const mode = String(form.get("mode") ?? "dry");
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { ok: false };
+
+  // The coverage score (dry run) and the crawler check are free
+  // (FREE-TIER-SPEC §2). Writing to the whole catalogue, and bulk alt text,
+  // are not - only the three merchant-chosen products on the Products
+  // screen are free.
+  if (mode === "write" || mode === "alt") {
+    const hasAccess = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+    if (!hasAccess) return { ok: false, needsSubscription: true };
+  }
 
   // A merchant who thinks nothing is happening presses the button again.
   // Progress itself is safe - it lives in the database, so refreshing or
@@ -318,6 +336,8 @@ export default function Dashboard() {
     collectionsBuilt,
     hasBusiness,
     stalledFor,
+    hasAccess,
+    freeProductsRemaining,
   } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -367,6 +387,21 @@ export default function Dashboard() {
       subtitle="Make this catalogue readable by ChatGPT, Claude, Gemini and Perplexity"
     >
       <BlockStack gap="500">
+        {!hasAccess ? (
+          <Banner tone="info" title="Before you subscribe">
+            <BlockStack gap="100">
+              <Text as="p">
+                {"The crawler check and the coverage score are free, and so are the three products you choose to process, from the Products screen ("}
+                {freeProductsRemaining}
+                {" of 3 remaining). Everything else - the rest of the catalogue, automatic freshness, collections, bulk alt text - needs a subscription."}
+              </Text>
+              <Text as="p">
+                What gets written stays written, in your own Shopify metafields, whether you subscribe or not.
+              </Text>
+            </BlockStack>
+          </Banner>
+        ) : null}
+
         {stalled ? (
           <Banner
             tone="warning"
@@ -524,18 +559,26 @@ export default function Dashboard() {
                     Preview changes
                   </Button>
                 </Form>
-                <Form method="post">
-                  <input type="hidden" name="mode" value="write" />
-                  <Button
-                    submit
-                    variant="primary"
-                    loading={busy}
-                    disabled={anyRunning}
-                    size="large"
-                  >
-                    Fill catalogue
-                  </Button>
-                </Form>
+                {hasAccess ? (
+                  <Form method="post">
+                    <input type="hidden" name="mode" value="write" />
+                    <Button
+                      submit
+                      variant="primary"
+                      loading={busy}
+                      disabled={anyRunning}
+                      size="large"
+                    >
+                      Fill catalogue
+                    </Button>
+                  </Form>
+                ) : (
+                  <Link to="/app/plans">
+                    <Button variant="primary" size="large">
+                      Subscribe to fill the whole catalogue
+                    </Button>
+                  </Link>
+                )}
               </InlineStack>
 
               {report && !anyRunning ? (
@@ -570,12 +613,18 @@ export default function Dashboard() {
                   </Text>
                 </BlockStack>
                 <InlineStack gap="200">
-                  <Form method="post">
-                    <input type="hidden" name="mode" value="alt" />
-                    <Button submit loading={busy} disabled={anyRunning}>
-                      Write missing alt text
-                    </Button>
-                  </Form>
+                  {hasAccess ? (
+                    <Form method="post">
+                      <input type="hidden" name="mode" value="alt" />
+                      <Button submit loading={busy} disabled={anyRunning}>
+                        Write missing alt text
+                      </Button>
+                    </Form>
+                  ) : (
+                    <Link to="/app/plans">
+                      <Button>Subscribe to write alt text in bulk</Button>
+                    </Link>
+                  )}
                 </InlineStack>
                 {altReport && lastAlt?.status === "done" ? (
                   <Text as="p" tone="subdued" variant="bodySm">

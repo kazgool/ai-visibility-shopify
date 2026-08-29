@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Shop" ADD COLUMN "freeProductsUsed" INTEGER NOT NULL DEFAULT 0;
