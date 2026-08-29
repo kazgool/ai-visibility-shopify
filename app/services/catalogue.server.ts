@@ -37,8 +37,9 @@ const PRODUCTS_QUERY = `
           descriptionHtml
           vendor
           productType
+          category { name }
           onlineStoreUrl
-          featuredMedia { preview { image { url } } }
+          featuredImage { url altText }
           priceRangeV2 { minVariantPrice { amount currencyCode } }
           totalInventory
           metafields(namespace: "${NAMESPACE}", first: 10) {
@@ -49,6 +50,7 @@ const PRODUCTS_QUERY = `
               node {
                 id
                 title
+                sku
                 selectedOptions { name value }
                 metafields(namespace: "${NAMESPACE}", first: 3) {
                   edges { node { key value } }
@@ -71,7 +73,9 @@ const SINGLE_PRODUCT = `#graphql
       descriptionHtml
       vendor
       productType
+      category { name }
       onlineStoreUrl
+      featuredImage { url altText }
       priceRangeV2 { minVariantPrice { amount currencyCode } }
       totalInventory
       metafields(namespace: "${NAMESPACE}", first: 10) {
@@ -81,6 +85,7 @@ const SINGLE_PRODUCT = `#graphql
         nodes {
           id
           title
+          sku
           selectedOptions { name value }
           metafields(namespace: "${NAMESPACE}", first: 3) {
             nodes { key value }
@@ -91,6 +96,25 @@ const SINGLE_PRODUCT = `#graphql
   }
 `;
 
+const SHOP_INFO = `#graphql
+  query ShopInfo {
+    shop {
+      name
+      primaryDomain { url }
+    }
+  }
+`;
+
+export type ShopInfo = { name: string; url: string };
+
+/** Shop name and storefront URL, for the mirror's Store section. */
+export async function fetchShopInfo(graphql: GraphqlFn): Promise<ShopInfo | null> {
+  const data = await graphql<any>(SHOP_INFO);
+  const shop = data?.shop;
+  if (!shop?.name) return null;
+  return { name: shop.name, url: shop.primaryDomain?.url ?? "" };
+}
+
 export async function fetchProduct(
   graphql: GraphqlFn,
   id: string,
@@ -98,6 +122,13 @@ export async function fetchProduct(
   const data = await graphql<any>(SINGLE_PRODUCT, { id });
   const p = data?.product;
   if (!p) return null;
+  const variants = (p.variants?.nodes ?? []).map((v: any) => ({
+    id: v.id,
+    title: v.title,
+    sku: v.sku ?? null,
+    selectedOptions: v.selectedOptions ?? [],
+    metafields: (v.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
+  }));
   return {
     id: p.id,
     handle: p.handle,
@@ -105,17 +136,16 @@ export async function fetchProduct(
     descriptionHtml: p.descriptionHtml,
     vendor: p.vendor,
     productType: p.productType,
+    category: p.category?.name ?? null,
     onlineStoreUrl: p.onlineStoreUrl,
     price: p.priceRangeV2?.minVariantPrice?.amount ?? null,
     currency: p.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
     available: typeof p.totalInventory === "number" ? p.totalInventory > 0 : undefined,
+    sku: variants[0]?.sku ?? null,
+    imageUrl: p.featuredImage?.url ?? null,
+    imageAlt: p.featuredImage?.altText ?? null,
     metafields: (p.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
-    variants: (p.variants?.nodes ?? []).map((v: any) => ({
-      id: v.id,
-      title: v.title,
-      selectedOptions: v.selectedOptions ?? [],
-      metafields: (v.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
-    })),
+    variants,
   };
 }
 
@@ -151,7 +181,7 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
   const products = new Map<string, ProductInput>();
   const variants = new Map<
     string,
-    { id: string; title: string | null; selectedOptions: { name: string; value: string }[]; metafields: { key: string; value: string }[] }
+    { id: string; title: string | null; sku: string | null; selectedOptions: { name: string; value: string }[]; metafields: { key: string; value: string }[] }
   >();
   for (const line of body.split("\n")) {
     if (!line.trim()) continue;
@@ -165,10 +195,14 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         descriptionHtml: row.descriptionHtml,
         vendor: row.vendor,
         productType: row.productType,
+        category: row.category?.name ?? null,
         onlineStoreUrl: row.onlineStoreUrl,
         price: row.priceRangeV2?.minVariantPrice?.amount ?? null,
         currency: row.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
         available: typeof row.totalInventory === "number" ? row.totalInventory > 0 : undefined,
+        sku: null,
+        imageUrl: row.featuredImage?.url ?? null,
+        imageAlt: row.featuredImage?.altText ?? null,
         metafields: [],
         variants: [],
       });
@@ -182,10 +216,15 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
       const variant = {
         id: row.id,
         title: row.title ?? null,
+        sku: row.sku ?? null,
         selectedOptions: row.selectedOptions ?? [],
         metafields: [] as { key: string; value: string }[],
       };
-      if (parent) parent.variants!.push(variant);
+      if (parent) {
+        parent.variants!.push(variant);
+        // First variant is enough for the mirror's sku field.
+        if (parent.sku == null) parent.sku = variant.sku;
+      }
       variants.set(row.id, variant);
       continue;
     }

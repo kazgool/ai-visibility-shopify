@@ -17,10 +17,11 @@ import type { FieldValue } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
 import { pingProducts } from "./indexnow.server";
-import { fetchAllProducts, fetchProduct } from "./catalogue.server";
+import { fetchAllProducts, fetchProduct, fetchShopInfo, type ShopInfo } from "./catalogue.server";
 import { mayWrite, writeFacts, writeVariantFacts, type ProductInput } from "./facts.server";
 import { renderMirror } from "./mirror.server";
-import { businessFor } from "./business.server";
+import { businessFor, type BusinessRecord } from "./business.server";
+import { formatPrice } from "./price.server";
 import type { BusinessInfo } from "../engine";
 
 /**
@@ -36,7 +37,7 @@ function capsuleFields(
     title: product.title,
     descriptionHtml: product.descriptionHtml,
     facts,
-    price: product.price ?? null,
+    price: formatPrice(product.price),
     currency: product.currency ?? null,
     available: product.available,
     vendor: product.vendor ?? null,
@@ -67,19 +68,25 @@ async function cacheMirror(
   domain: string,
   product: ProductInput,
   facts: Fact[],
-  business: BusinessInfo | null = null,
+  // BusinessRecord, not BusinessInfo: the mirror's Store section needs the
+  // official profile URLs, which live on the record rather than on the
+  // commercial answers the engine reads.
+  business: BusinessRecord | null = null,
+  shopInfo: ShopInfo | null = null,
 ) {
   const handle = product.handle;
   if (!handle) return;
 
   // One input, three readers: the summary, the questions and the audience line
   // are all derived from it, and the questions need the business answers or
-  // they come back without the commercial ones.
+  // they come back without the commercial ones. Formatted once, here, so the
+  // mirror, the summary sentence and the "how much" answer all agree.
+  const price = formatPrice(product.price);
   const capsuleInput = {
     title: product.title,
     descriptionHtml: product.descriptionHtml,
     facts,
-    price: product.price ?? null,
+    price,
     currency: product.currency ?? null,
     available: product.available,
     vendor: product.vendor ?? null,
@@ -97,11 +104,19 @@ async function cacheMirror(
     fitFor: buildFitFor(capsuleInput),
     business,
     facts,
-    price: product.price ?? null,
+    price,
     currency: product.currency ?? null,
     available: product.available,
     vendor: product.vendor ?? null,
+    sku: product.sku ?? null,
+    imageUrl: product.imageUrl ?? null,
+    imageAlt: product.imageAlt ?? null,
+    productType: product.productType ?? null,
+    category: product.category ?? null,
     updatedAt: new Date().toISOString(),
+    store: shopInfo
+      ? { name: shopInfo.name, url: shopInfo.url, profiles: business?.socialProfiles ?? null }
+      : null,
   });
 
   await db.mirrorCache.upsert({
@@ -145,6 +160,8 @@ export async function runBulkExtract(
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
+  // Site-wide, so fetched once for the whole pass rather than per product.
+  const shopInfo = options.dryRun ? null : await fetchShopInfo(graphql);
 
   const products = await fetchAllProducts(graphql);
   const engineOptions = { extraStopwords };
@@ -207,7 +224,7 @@ export async function runBulkExtract(
           })),
         );
       }
-      await cacheMirror(shopId, shop.domain, product, split.productFacts, business);
+      await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
     }
 
     done += 1;
@@ -237,6 +254,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
+  const shopInfo = await fetchShopInfo(graphql);
   const facts = extractProduct(product, dictionary, { extraStopwords });
   if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
@@ -256,7 +274,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const [outcome] = await writeFacts(graphql, [
     { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts, business) },
   ]);
-  await cacheMirror(shopId, shop.domain, product, split.productFacts, business);
+  await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
   if (outcome.written.length > 0 && product.handle) {
     await pingProducts(shopId, shop.domain, [product.handle]);
   }

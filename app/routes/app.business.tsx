@@ -160,15 +160,15 @@ export default function Business() {
                   value={deliveryCost}
                   onChange={setDeliveryCost}
                   autoComplete="off"
-                  placeholder="25 RON, or: free over 500 RON"
-                  helpText="Shops with several shipping rates: state the lowest and tick the box below."
+                  placeholder="Free over 500, or: 25"
+                  helpText="Write it with your own currency, exactly as you want it published. Shops with several shipping rates: state the lowest and tick the box below."
                 />
                 <Checkbox
                   label="This is a starting price"
                   name="deliveryCostIsFrom"
                   checked={deliveryCostIsFrom}
                   onChange={setDeliveryCostIsFrom}
-                  helpText={'Published as "From 25 RON" - honest when the real cost depends on size or distance.'}
+                  helpText='Published with "From" in front of what you typed above - honest when the real cost depends on size or distance.'
                 />
               </BlockStack>
             </Card>

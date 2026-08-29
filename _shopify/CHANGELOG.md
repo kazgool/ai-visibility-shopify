@@ -17,6 +17,33 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ## Unreleased
 
 ### Added
+- Plain text mirror carries what it was missing: the variant SKU, the featured
+  image and its alt text, the product type and Shopify's standard product
+  category, all requested in the same catalogue query
+  (`catalogue.server.ts`) and published as front matter, each omitted when
+  empty. A new `## Store` section, above the source line, carries the shop
+  name, the storefront URL and the official profile URLs the merchant filled
+  in on the Business screen. Those profiles were already published on the
+  themed page as an `Organization` node with `sameAs`, but the mirror exists
+  for the reader that cannot parse the themed page - which is the same reader
+  that would never see that node. The section publishes nothing when there is
+  nothing under it. Tests in `app/services/__tests__/mirror.server.test.ts`.
+
+### Fixed
+- Prices published with Shopify's raw trailing zero: the Admin API returns
+  `1190.0`, which read as a broken import rather than a price, in the mirror
+  front matter, in the generated summary sentence and in the generated "How
+  much does X cost?" answer. A new `price.server.ts` formats the amount once
+  at the services boundary - two decimals when it is not a whole number, none
+  when it is - before the value reaches any engine function, so all three
+  outputs agree and the engine stays pure. A test pins `1190.0` so it cannot
+  come back.
+- The Business screen named a currency in its own help text, so a merchant
+  outside Romania read an example in RON. The delivery cost placeholder and
+  both help strings now name no currency; the field is free text and the
+  merchant writes their own.
+
+### Added (free tier)
 - Free tier (`FREE-TIER-SPEC.md`, decided 28 Aug 2026): before subscribing, a
   merchant gets the crawler check and the coverage score unlimited, plus
   three products of their choosing fully processed. `Shop.freeProductsUsed`

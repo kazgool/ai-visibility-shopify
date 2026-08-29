@@ -17,6 +17,7 @@ export type ProductState = Record<string, FieldState>;
 export type VariantInput = {
   id: string;
   title?: string | null;
+  sku?: string | null;
   selectedOptions: { name: string; value: string }[];
   metafields?: { key: string; value: string }[];
 };
@@ -28,10 +29,14 @@ export type ProductInput = {
   descriptionHtml?: string | null;
   vendor?: string | null;
   productType?: string | null;
+  category?: string | null;
   onlineStoreUrl?: string | null;
   price?: string | null;
   currency?: string | null;
   available?: boolean;
+  sku?: string | null;
+  imageUrl?: string | null;
+  imageAlt?: string | null;
   metafields?: { key: string; value: string }[];
   variants?: VariantInput[];
 };

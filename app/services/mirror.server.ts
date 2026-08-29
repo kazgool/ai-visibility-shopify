@@ -8,6 +8,17 @@
 import type { BusinessInfo, Fact } from "../engine";
 import { warrantyWithUnit } from "../engine";
 import { cleanOutput } from "../engine/normalize";
+import type { SocialProfiles } from "./social-profiles";
+import { SOCIAL_PLATFORMS } from "./social-profiles";
+
+/** Shop name, storefront URL and the official profiles filled in on the
+ * Business screen - the Organization node the themed page carries, for the
+ * reader that cannot parse the themed page either. */
+export type MirrorStore = {
+  name: string;
+  url: string;
+  profiles?: SocialProfiles | null;
+};
 
 export type MirrorInput = {
   handle: string;
@@ -21,6 +32,10 @@ export type MirrorInput = {
   available?: boolean;
   vendor?: string | null;
   sku?: string | null;
+  imageUrl?: string | null;
+  imageAlt?: string | null;
+  productType?: string | null;
+  category?: string | null;
   updatedAt?: string;
   // The questions and the audience line are published in the page's structured
   // data too, but a crawler that reads a themed page badly is exactly the
@@ -30,6 +45,7 @@ export type MirrorInput = {
   questions?: { q: string; a: string }[];
   fitFor?: string | null;
   business?: BusinessInfo | null;
+  store?: MirrorStore | null;
 };
 
 function yamlEscape(value: string): string {
@@ -58,6 +74,12 @@ export function renderMirror(raw: MirrorInput): string {
   if (input.available !== undefined) {
     lines.push(`availability: ${input.available ? "in stock" : "out of stock"}`);
   }
+  if (input.productType) lines.push(`category: ${yamlEscape(cleanOutput(input.productType))}`);
+  if (input.category) {
+    lines.push(`product_category: ${yamlEscape(cleanOutput(input.category))}`);
+  }
+  if (input.imageUrl) lines.push(`image: ${yamlEscape(input.imageUrl)}`);
+  if (input.imageAlt) lines.push(`image_alt: ${yamlEscape(cleanOutput(input.imageAlt))}`);
   if (input.updatedAt) lines.push(`updated: ${yamlEscape(input.updatedAt)}`);
   lines.push("---");
   lines.push("");
@@ -129,6 +151,24 @@ export function renderMirror(raw: MirrorInput): string {
       lines.push("| | |");
       lines.push("| --- | --- |");
       for (const [k, v] of rows) lines.push(`| ${k} | ${v} |`);
+      lines.push("");
+    }
+  }
+
+  // The Organization node with the official profiles is published on the
+  // themed page by the storefront block, but a crawler reading this mirror
+  // instead of the themed page would otherwise never see it.
+  const store = input.store;
+  if (store && (store.name || store.url || store.profiles)) {
+    const profileUrls = SOCIAL_PLATFORMS.map((p) => store.profiles?.[p]).filter(
+      (v): v is string => !!v,
+    );
+    if (store.name || store.url || profileUrls.length > 0) {
+      lines.push("## Store");
+      lines.push("");
+      if (store.name) lines.push(cleanOutput(store.name));
+      if (store.url) lines.push(store.url);
+      for (const profileUrl of profileUrls) lines.push(profileUrl);
       lines.push("");
     }
   }
