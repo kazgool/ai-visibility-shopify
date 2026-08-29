@@ -106,3 +106,31 @@ describe("renderMirror store section", () => {
     expect(out).toContain("Nordwood");
   });
 });
+
+describe("renderMirror Part of section", () => {
+  it("lists each collection the product belongs to, linked to its storefront page", () => {
+    const out = renderMirror({
+      ...base,
+      collections: [
+        { title: "Dining Tables", url: "https://example.myshopify.com/collections/dining-tables" },
+        { title: "Walnut Furniture", url: "https://example.myshopify.com/collections/walnut-furniture" },
+      ],
+    });
+
+    expect(out).toContain("## Part of");
+    expect(out).toContain("- [Dining Tables](https://example.myshopify.com/collections/dining-tables)");
+    expect(out).toContain("- [Walnut Furniture](https://example.myshopify.com/collections/walnut-furniture)");
+    // Not a mirror URL - collections have no mirror of their own.
+    expect(out).not.toContain("/collections/dining-tables/mirror");
+  });
+
+  it("publishes no Part of section when the product is in no collection", () => {
+    const out = renderMirror({ ...base, collections: [] });
+    expect(out).not.toContain("## Part of");
+  });
+
+  it("publishes no Part of section when collections is absent entirely", () => {
+    const out = renderMirror(base);
+    expect(out).not.toContain("## Part of");
+  });
+});

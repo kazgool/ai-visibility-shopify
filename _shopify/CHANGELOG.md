@@ -16,6 +16,46 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Fixed
+- `llms.txt` and `agents.md` now publish the official profile URLs from the
+  Business screen, matching the per-product mirror's `## Store` section -
+  previously the same information was published inconsistently across the
+  two. `renderLlmsTxt`'s `business` field is now typed as `BusinessRecord`
+  (which carries `socialProfiles`) instead of `BusinessInfo`, so the profiles
+  flow through without a cast.
+- The shop name in `llms.txt`/`agents.md` no longer depends on a mirror
+  happening to carry a `## Store` section first - it silently fell back to
+  the domain slug (e.g. `mrdigital-dev`) for any shop whose mirrors predated
+  that section. `fetchShopInfo()`'s result is now persisted to a `Setting`
+  row (`shopInfo`, same per-shop key/value pattern as `business.server.ts`)
+  every time extraction runs (`catalogue.server.ts` `saveShopInfo`), and
+  `llmsTxtBody` reads that row instead of parsing `MirrorCache.body`.
+  `storeNameFromBody` is removed. The Admin API is still never called on the
+  request path. `llms-txt.server.ts` reads the row itself rather than
+  importing `catalogue.server.ts`'s read helper: that module value-imports
+  `admin.server.ts` for the bulk-export helpers, which loads
+  `shopify.server.ts` and constructs a real `PrismaSessionStorage` at import
+  time - too heavy to drag into a request-path module that is unit tested
+  directly, so the "shopInfo" key is duplicated the same way
+  `business.server.ts` keeps its own private key rather than sharing one. The
+  mirror's own `## Store` section keeps using the `ShopInfo` already fetched
+  for the current extraction pass rather than reading the Setting row back -
+  it is the same value being persisted, so re-reading it inside the same pass
+  would be redundant.
+- Product mirrors now publish which collections a product belongs to - the
+  relationship the merchant already declared, not a recommendation.
+  `collections(first: 5)` (handle, title) added to both the single-product
+  and bulk catalogue queries (`catalogue.server.ts`); the bulk query flattens
+  it into its own JSONL rows the same way it already does for variants,
+  joined back to the parent product by `__parentId`. Rendered as a
+  `## Part of` section linking each collection's title to its storefront
+  page (`https://<shop-domain>/collections/<handle>`) - collections have no
+  mirror of their own, so nothing links to a mirror URL that does not exist.
+  Publishes nothing when the product is in no collection.
+
+Tests extended in `app/services/__tests__/mirror.server.test.ts` and
+`app/services/__tests__/llms-txt.server.test.ts`.
+
 ### Added
 - Crawler hits surfaced (`CRAWLER-HITS-SPEC.md` Phase 2, `EXPERIENCE-PRD.md`
   §2, §6, §7): the `CrawlerHit` table has been logging real app-proxy

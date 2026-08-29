@@ -4,10 +4,13 @@
 // size. Never paginate a 10,000-product catalogue by hand: it burns the rate
 // limit and takes minutes instead of seconds.
 
+import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
 import { sleep } from "./admin.server";
 import type { ProductInput } from "./facts.server";
 import { NAMESPACE } from "./facts.server";
+
+const SHOP_INFO_SETTING_KEY = "shopInfo";
 
 const RUN_BULK = `#graphql
   mutation RunBulk($query: String!) {
@@ -42,6 +45,9 @@ const PRODUCTS_QUERY = `
           featuredImage { url altText }
           priceRangeV2 { minVariantPrice { amount currencyCode } }
           totalInventory
+          collections(first: 5) {
+            edges { node { id handle title } }
+          }
           metafields(namespace: "${NAMESPACE}", first: 10) {
             edges { node { key value } }
           }
@@ -78,6 +84,9 @@ const SINGLE_PRODUCT = `#graphql
       featuredImage { url altText }
       priceRangeV2 { minVariantPrice { amount currencyCode } }
       totalInventory
+      collections(first: 5) {
+        nodes { handle title }
+      }
       metafields(namespace: "${NAMESPACE}", first: 10) {
         nodes { key value }
       }
@@ -115,6 +124,22 @@ export async function fetchShopInfo(graphql: GraphqlFn): Promise<ShopInfo | null
   return { name: shop.name, url: shop.primaryDomain?.url ?? "" };
 }
 
+/**
+ * Persist the last shop name and storefront URL fetched from the Admin API
+ * to Setting (per-shop key/value, same table and same upsert shape as
+ * business.server.ts), so llms.txt can read the shop name without an Admin
+ * API call on the request path. Read back by llms-txt.server.ts, which keeps
+ * its own copy of the "shopInfo" key rather than importing this module - see
+ * the comment at the top of llms-txt.server.ts for why.
+ */
+export async function saveShopInfo(shopId: string, info: ShopInfo): Promise<void> {
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: SHOP_INFO_SETTING_KEY } },
+    create: { shopId, key: SHOP_INFO_SETTING_KEY, value: JSON.stringify(info) },
+    update: { value: JSON.stringify(info) },
+  });
+}
+
 export async function fetchProduct(
   graphql: GraphqlFn,
   id: string,
@@ -146,6 +171,7 @@ export async function fetchProduct(
     imageAlt: p.featuredImage?.altText ?? null,
     metafields: (p.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
     variants,
+    collections: (p.collections?.nodes ?? []).map((c: any) => ({ handle: c.handle, title: c.title })),
   };
 }
 
@@ -205,6 +231,7 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         imageAlt: row.featuredImage?.altText ?? null,
         metafields: [],
         variants: [],
+        collections: [],
       });
       continue;
     }
@@ -226,6 +253,15 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         if (parent.sku == null) parent.sku = variant.sku;
       }
       variants.set(row.id, variant);
+      continue;
+    }
+
+    // Collection membership child row - the bulk operation flattens this
+    // connection into its own JSONL rows the same way it does variants, one
+    // row per collection the product belongs to, linked by __parentId.
+    if (row.id?.includes("/Collection/") && row.__parentId) {
+      const parent = products.get(row.__parentId);
+      if (parent) parent.collections!.push({ handle: row.handle, title: row.title });
       continue;
     }
 

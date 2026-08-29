@@ -17,7 +17,13 @@ import type { FieldValue } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
 import { pingProducts } from "./indexnow.server";
-import { fetchAllProducts, fetchProduct, fetchShopInfo, type ShopInfo } from "./catalogue.server";
+import {
+  fetchAllProducts,
+  fetchProduct,
+  fetchShopInfo,
+  saveShopInfo,
+  type ShopInfo,
+} from "./catalogue.server";
 import { mayWrite, writeFacts, writeVariantFacts, type ProductInput } from "./facts.server";
 import { renderMirror } from "./mirror.server";
 import { businessFor, type BusinessRecord } from "./business.server";
@@ -117,6 +123,10 @@ async function cacheMirror(
     store: shopInfo
       ? { name: shopInfo.name, url: shopInfo.url, profiles: business?.socialProfiles ?? null }
       : null,
+    collections: (product.collections ?? []).map((c) => ({
+      title: c.title,
+      url: `https://${domain}/collections/${c.handle}`,
+    })),
   });
 
   await db.mirrorCache.upsert({
@@ -161,7 +171,10 @@ export async function runBulkExtract(
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
   // Site-wide, so fetched once for the whole pass rather than per product.
+  // Persisted to Setting so llmsTxtBody can read the shop name without an
+  // Admin API call on the request path (ARCHITECTURE §3).
   const shopInfo = options.dryRun ? null : await fetchShopInfo(graphql);
+  if (shopInfo) await saveShopInfo(shopId, shopInfo);
 
   const products = await fetchAllProducts(graphql);
   const engineOptions = { extraStopwords };
@@ -255,6 +268,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
   const shopInfo = await fetchShopInfo(graphql);
+  if (shopInfo) await saveShopInfo(shopId, shopInfo);
   const facts = extractProduct(product, dictionary, { extraStopwords });
   if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 

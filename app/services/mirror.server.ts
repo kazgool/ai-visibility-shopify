@@ -46,6 +46,11 @@ export type MirrorInput = {
   fitFor?: string | null;
   business?: BusinessInfo | null;
   store?: MirrorStore | null;
+  // Collection membership - the relationship the merchant already declared.
+  // Not a recommendation and not derived from anything: the storefront's own
+  // "which collections is this in" answer, rendered as links to the
+  // storefront collection pages. Collections have no mirror of their own.
+  collections?: { title: string; url: string }[] | null;
 };
 
 function yamlEscape(value: string): string {
@@ -153,6 +158,15 @@ export function renderMirror(raw: MirrorInput): string {
       for (const [k, v] of rows) lines.push(`| ${k} | ${v} |`);
       lines.push("");
     }
+  }
+
+  if (input.collections && input.collections.length > 0) {
+    lines.push("## Part of");
+    lines.push("");
+    for (const c of input.collections) {
+      lines.push(`- [${cleanOutput(c.title)}](${c.url})`);
+    }
+    lines.push("");
   }
 
   // The Organization node with the official profiles is published on the

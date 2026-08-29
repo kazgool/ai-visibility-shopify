@@ -39,6 +39,7 @@ export type ProductInput = {
   imageAlt?: string | null;
   metafields?: { key: string; value: string }[];
   variants?: VariantInput[];
+  collections?: { handle: string; title: string }[];
 };
 
 export function parseState(product: ProductInput): ProductState {
