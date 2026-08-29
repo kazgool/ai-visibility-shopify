@@ -280,6 +280,46 @@ export default function Plans() {
         <Card>
           <BlockStack gap="300">
             <Text as="h2" variant="headingMd">
+              What we refuse to sell you
+            </Text>
+            <Text as="p" tone="subdued">
+              Most apps in this category do at least one of these. We build
+              none of them, on purpose.
+            </Text>
+            <List>
+              <List.Item>
+                <Text as="span" fontWeight="semibold">
+                  No prompt sampling sold as visibility.
+                </Text>{" "}
+                Firing a handful of test questions at an assistant and
+                reporting how often you were named measures that sample, not
+                your visibility - the answers change by phrasing, by session
+                and by the day. Nobody can measure that yet, so we do not
+                sell you a number that pretends to.
+              </List.Item>
+              <List.Item>
+                <Text as="span" fontWeight="semibold">
+                  No generated content published under your name.
+                </Text>{" "}
+                We never write blog posts or product text and publish them as
+                yours. We only extract, structure and publish what you
+                already wrote - nothing invented, nothing overwritten.
+              </List.Item>
+              <List.Item>
+                <Text as="span" fontWeight="semibold">
+                  No access to your orders or customers.
+                </Text>{" "}
+                This app's permissions are read_products, write_products,
+                read_themes - the whole list, verifiable on Shopify's own app
+                permissions screen. No orders, no customers, no analytics.
+              </List.Item>
+            </List>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
               What you are paying for
             </Text>
             <List>

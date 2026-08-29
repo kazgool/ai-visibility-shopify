@@ -32,6 +32,7 @@ import { enqueue } from "../services/queue.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import { businessFor } from "../services/business.server";
 import { hasPaidAccess } from "../services/billing.server";
+import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
 // in one glance - how much is covered, what is protected, what is left to do -
@@ -110,6 +111,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : null;
   const business = shop ? await businessFor(shop.id) : null;
 
+  // CRAWLER-HITS-SPEC §6, EXPERIENCE-PRD §7: real requests to the plain text
+  // mirror and llms.txt, logged by the app proxy. session.shop is the domain
+  // string CrawlerHit.shopId is keyed on - never shop.id.
+  const crawlerHits = await crawlerHitsForDashboard(session.shop, 7);
+
   // FREE-TIER-SPEC §2, §5: the crawler check and the coverage score (dry
   // run) are free for every shop; a subscribed shop sees none of this.
   const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
@@ -162,6 +168,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     embedLink: embedDeepLink(session.shop),
     hasAccess,
     freeProductsRemaining,
+    crawlerHits,
   };
 };
 
@@ -338,6 +345,7 @@ export default function Dashboard() {
     stalledFor,
     hasAccess,
     freeProductsRemaining,
+    crawlerHits,
   } = useLoaderData<typeof loader>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -535,6 +543,53 @@ export default function Dashboard() {
                 </InlineStack>
               </Banner>
             ) : null}
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="200">
+            <BlockStack gap="050">
+              <Text as="h2" variant="headingMd">
+                Who requested your plain text pages
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                Real requests to your plain text mirror and llms.txt, logged
+                by our proxy in the last {crawlerHits.days} days. Not visits
+                to your themed storefront - Shopify serves those directly and
+                we never see them.
+              </Text>
+            </BlockStack>
+
+            {crawlerHits.byBot.length === 0 ? (
+              <Text as="p" tone="subdued">
+                No requests recorded in the last {crawlerHits.days} days.
+                These pages only get requested once the app embed is active
+                in your theme and products have been processed - see Setup
+                below. We log real requests only; we never estimate a number
+                here.
+              </Text>
+            ) : (
+              <InlineStack gap="150" wrap>
+                {crawlerHits.byBot.map((b: { bot: string; count: number; lastSeen: string }) => (
+                  <Box
+                    key={b.bot}
+                    padding="200"
+                    borderRadius="200"
+                    borderWidth="025"
+                    borderColor="border"
+                  >
+                    <BlockStack gap="050">
+                      <Text as="p" variant="bodySm" fontWeight="semibold">
+                        {b.bot}
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {`${b.count} request${b.count === 1 ? "" : "s"} - last ${new Date(b.lastSeen).toLocaleDateString()}`}
+                      </Text>
+                    </BlockStack>
+                  </Box>
+                ))}
+              </InlineStack>
+            )}
           </BlockStack>
         </Card>
 

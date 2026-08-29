@@ -473,13 +473,14 @@ export default function ProductEditor() {
             {mirrorUrl ? (
               <Text as="p" variant="bodySm">
                 <a href={mirrorUrl} target="_blank" rel="noreferrer">
-                  Open the plain text page an assistant reads for this product
+                  What AI reads for this product
                 </a>
               </Text>
             ) : (
               <Text as="p" tone="subdued" variant="bodySm">
-                No plain text page yet - nothing has been published for this
-                product.
+                Not readable yet - runs when this product is processed. Use
+                Preview changes or Fill catalogue from the dashboard, or
+                process it from the Products screen.
               </Text>
             )}
             {crawlers.length > 0 ? (

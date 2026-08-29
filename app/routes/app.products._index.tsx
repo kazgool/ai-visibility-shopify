@@ -405,7 +405,7 @@ export default function ProductsOverview() {
                 { title: "Summary" },
                 { title: "Image text" },
                 { title: "State" },
-                { title: "Plain text" },
+                { title: "What AI reads" },
                 ...(!hasAccess ? [{ title: "Free processing" }] : []),
               ]}
             >
@@ -475,7 +475,7 @@ export default function ProductsOverview() {
                       </a>
                     ) : (
                       <Text as="span" tone="subdued">
-                        Not readable yet
+                        Not readable yet - runs when processed
                       </Text>
                     )}
                   </IndexTable.Cell>

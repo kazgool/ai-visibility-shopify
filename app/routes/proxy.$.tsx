@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { keyFileBody } from "../services/indexnow.server";
+import { llmsTxtBody } from "../services/llms-txt.server";
 
 // App proxy: shop.com/apps/ai-visibility/<handle> → here.
 //
@@ -103,6 +104,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!shop) {
     log(session.shop, 404);
     return new Response("Not found.\n", { status: 404, headers });
+  }
+
+  // llms.txt and agents.md (EXPERIENCE-PRD §8): generated live from
+  // MirrorCache and the Business setting on every request, same as the
+  // per-product mirror below, never written to a file on a schedule. Both
+  // paths serve the same content (see llms-txt.server.ts for why).
+  if (handle === "llms.txt" || handle === "agents.md") {
+    const body = await llmsTxtBody(shop.id, session.shop);
+    log(session.shop, 200, null);
+    return new Response(body, { status: 200, headers });
   }
 
   const cached = await db.mirrorCache.findUnique({

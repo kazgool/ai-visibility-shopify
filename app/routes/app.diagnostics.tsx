@@ -23,6 +23,14 @@ import {
   recordPreferredSourceEligibility,
   type PreferredSourceStatus,
 } from "../services/preferred-source.server";
+import {
+  recentHitsForDiagnostics,
+  DIAGNOSTICS_HITS_PAGE_SIZE,
+} from "../services/crawler-hits.server";
+// Type-only import: erased at build time, so it does not pull the .server
+// module (and the db client it imports) into the client bundle the way a
+// value import of DIAGNOSTICS_HITS_PAGE_SIZE would.
+import type { DiagnosticsHitRow } from "../services/crawler-hits.server";
 
 // What a merchant actually wants to know: can assistants read my store, and if
 // not, why. Status codes alone are useless to a non-technical reader, so every
@@ -86,7 +94,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const preferredSource = shop ? await preferredSourceEligibilityFor(shop.id) : null;
   const domain = await primaryDomainFor(admin.graphql, session.shop);
 
-  return { recent, themeScan, domain, preferredSource };
+  // CRAWLER-HITS-SPEC §6, §9: real requests logged by the app proxy. Keyed
+  // by the shop domain, not shop.id - see the note on CrawlerHit.shopId in
+  // crawler-hits.server.ts.
+  const crawlerHits = await recentHitsForDiagnostics(session.shop);
+
+  return {
+    recent,
+    themeScan,
+    domain,
+    preferredSource,
+    crawlerHits,
+    proxyDomain: session.shop,
+    hitsPageSize: DIAGNOSTICS_HITS_PAGE_SIZE,
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -154,8 +175,13 @@ function formatRecordedDate(iso: string): string {
   });
 }
 
+function toneForStatus(status: number): "success" | "critical" {
+  return status >= 200 && status < 300 ? "success" : "critical";
+}
+
 export default function Diagnostics() {
-  const { themeScan, domain, preferredSource } = useLoaderData<typeof loader>();
+  const { themeScan, domain, preferredSource, crawlerHits, proxyDomain, hitsPageSize } =
+    useLoaderData<typeof loader>();
   const result = useActionData<typeof action>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -173,10 +199,12 @@ export default function Diagnostics() {
       <BlockStack gap="400">
         <Card>
           <BlockStack gap="300">
-            <Text as="p">
-              We request a product page from outside Shopify, once for each AI
-              crawler, using the exact user agent it uses. This is the only test
-              that reflects what an assistant really sees.
+            <Text as="p" variant="bodySm" tone="subdued">
+              We requested a product page once per crawler, with that
+              crawler&apos;s exact user agent, from outside Shopify. This
+              tests whether these bots <b>can</b> read your store - it is not
+              a log of who actually did; that is the table further down this
+              page.
             </Text>
             <Form method="post">
               <Button submit variant="primary" loading={busy}>
@@ -243,6 +271,80 @@ export default function Diagnostics() {
             </BlockStack>
           </Card>
         ) : null}
+
+        <Card>
+          <BlockStack gap="300">
+            <BlockStack gap="050">
+              <Text as="h2" variant="headingMd">
+                Who requested your plain text pages
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                Real requests to your plain text mirror, llms.txt and
+                agents.md, logged by our proxy - up to the most recent{" "}
+                {hitsPageSize}. Not visits to your themed
+                storefront pages; Shopify serves those directly and we never
+                see them. The check above tests whether a crawler <b>can</b>{" "}
+                read your store; this table shows who <b>did</b>, and when.
+              </Text>
+            </BlockStack>
+
+            {crawlerHits.length === 0 ? (
+              <Text as="p" tone="subdued">
+                No requests recorded yet. These pages only get requested once
+                the app embed is active in your theme and products have been
+                processed - see the dashboard. We log real requests only; we
+                never estimate or invent a number here.
+              </Text>
+            ) : (
+              <BlockStack gap="150">
+                {crawlerHits.map((h: DiagnosticsHitRow, i: number) => (
+                  <InlineStack key={i} gap="200" blockAlign="center" wrap>
+                    <Badge tone={toneForStatus(h.status)}>{h.bot}</Badge>
+                    <Text as="span" variant="bodySm">
+                      {h.handle ?? h.path}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {h.status} · {new Date(h.at).toLocaleString()}
+                    </Text>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              llms.txt and agents.md
+            </Text>
+            <Text as="p" tone="subdued">
+              Generated live from your current catalogue every time either
+              page is requested - not written to a file on a timer, so they
+              are never stale.
+            </Text>
+            <List>
+              <List.Item>
+                <a
+                  href={`https://${proxyDomain}/apps/ai-visibility/llms.txt`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  https://{proxyDomain}/apps/ai-visibility/llms.txt
+                </a>
+              </List.Item>
+              <List.Item>
+                <a
+                  href={`https://${proxyDomain}/apps/ai-visibility/agents.md`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  https://{proxyDomain}/apps/ai-visibility/agents.md
+                </a>
+              </List.Item>
+            </List>
+          </BlockStack>
+        </Card>
 
         {theme ? (
           <Card>

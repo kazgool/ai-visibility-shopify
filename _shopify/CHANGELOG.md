@@ -17,6 +17,45 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ## Unreleased
 
 ### Added
+- Crawler hits surfaced (`CRAWLER-HITS-SPEC.md` Phase 2, `EXPERIENCE-PRD.md`
+  §2, §6, §7): the `CrawlerHit` table has been logging real app-proxy
+  requests for three weeks with nothing to show for it. `crawler-hits.server.ts`
+  adds two read-only aggregations - a 7-day per-bot count for the dashboard,
+  and a fuller 50-row table for Diagnostics - both querying `CrawlerHit` by
+  the shop *domain* string, which is what `shopId` holds on that table, not
+  `Shop.id`. Both screens state explicitly that these are requests to the
+  plain text mirror and llms.txt through our proxy, never visits to the
+  themed storefront, which Shopify serves directly and we do not see. A miss
+  (non-200) never inflates the dashboard count; Diagnostics shows every
+  status. The Diagnostics crawler access card and the new hits table now
+  distinguish "can read" from "did read" in one sentence. No new table, no
+  new column, no change to logging. Tests in
+  `app/services/__tests__/crawler-hits.server.test.ts`.
+- `llms.txt` and `agents.md` (`EXPERIENCE-PRD.md` §8), served through the app
+  proxy alongside the mirror. Both generated per request from `MirrorCache`
+  and the Business setting - shop name, storefront URL, the commercial facts
+  where filled, and an index of every processed product's title and mirror
+  URL - never written to a file on a schedule, unlike every competitor in
+  `BATTLECARDS.md`. No Admin API call on this path: the shop name and each
+  product's title and URL are read back out of `MirrorCache.body`'s own front
+  matter and Store section. Both paths serve identical content; the
+  community conventions for the two filenames describe the same kind of
+  plain-text index and neither specifies a divergent structure, so one
+  renderer (`llms-txt.server.ts`) backs both rather than inventing a
+  difference that does not exist. Linked from a new Diagnostics card. Tests
+  in `app/services/__tests__/llms-txt.server.test.ts`.
+
+### Changed
+- "Plain text" column and links renamed to "What AI reads" on the products
+  list and the product editor (`EXPERIENCE-PRD.md` §7) - same URL, same
+  behaviour. Empty states on both screens now say what has to happen before
+  the page exists, instead of a bare dash.
+- The three refusals (`EXPERIENCE-PRD.md` §9b, §9c) - no prompt sampling sold
+  as visibility, no generated content published under the merchant's name, no
+  access to orders or customers - now appear as a card on the Plans screen,
+  where a merchant decides whether to pay.
+
+### Added
 - Plain text mirror carries what it was missing: the variant SKU, the featured
   image and its alt text, the product type and Shopify's standard product
   category, all requested in the same catalogue query
