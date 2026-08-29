@@ -16,6 +16,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
+import { CRAWLER_INFO } from "../services/crawler-info";
 import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
 import {
   preferredSourceEligibilityFor,
@@ -195,17 +196,35 @@ export default function Diagnostics() {
                 Checked {crawler.targetUrl}
               </Text>
 
-              {crawler.results.map((r: AgentResult) => (
-                <BlockStack gap="100" key={r.agent}>
-                  <InlineStack gap="200" blockAlign="center">
-                    <Badge tone={toneFor(r.cause)}>{r.agent}</Badge>
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      {r.status ?? "no response"} · {r.ms} ms
-                    </Text>
-                  </InlineStack>
-                  <Text as="p">{r.detail}</Text>
-                </BlockStack>
-              ))}
+              {crawler.results.map((r: AgentResult) => {
+                const info = CRAWLER_INFO[r.agent];
+                return (
+                  <BlockStack gap="100" key={r.agent}>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Badge tone={toneFor(r.cause)}>{r.agent}</Badge>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {r.status ?? "no response"} · {r.ms} ms
+                      </Text>
+                    </InlineStack>
+                    {info ? (
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {info.company} - {info.purpose}
+                      </Text>
+                    ) : null}
+                    <Text as="p">{r.detail}</Text>
+                  </BlockStack>
+                );
+              })}
+
+              <Text as="p" variant="bodySm" tone="subdued">
+                Google-Extended and Applebot-Extended are not crawlers, so you
+                will not see them here. They are robots.txt-only tokens that
+                tell Google and Apple what their real crawlers - Googlebot and
+                Applebot, already checked above - are allowed to do with pages
+                already fetched. No request ever arrives carrying either name.
+                If your logs show one, it is something else, usually a
+                scanner borrowing the name.
+              </Text>
 
               {crawler.robotsDisallows?.length ? (
                 <Banner tone="warning" title="robots.txt blocks these crawlers">

@@ -143,6 +143,25 @@ running.
 | `PHASE-0.md`, `PHASE-1-SPEC.md`, `PHASE-2-SPEC.md` | build briefs, mostly executed |
 | `LAUNCH-PLAN.md` | the phase plan, still the roadmap |
 
+## 6b. Two facts to check before promising anything built on them
+
+Both came from the WordPress side, 28 August 2026, and both are the kind of
+thing that gets promised in a settings screen before anyone checks.
+
+**Search Console's Generative AI report is not in any API.** It exists, it was
+fully rolled out to every property on 11 August 2026, and it can only be
+exported by hand. So connecting Search Console brings the ordinary search data,
+not the AI figures a merchant would connect it for. If a connection card is
+ever built, that sentence belongs on it before the button.
+
+**If external connections are built, use a service account, not OAuth.** Google
+requires a client secret for a refresh token, so OAuth would mean running an
+authentication service holding every merchant's credentials. With a service
+account the merchant creates the credential and the requests go from them to
+Google. On Shopify the key must live in the app's own encrypted storage and
+never in a metafield, because metafields are readable by the merchant's other
+apps.
+
 ## 7. Next three things
 
 1. Activate the app embed in the dev store's theme and confirm the JSON-LD

@@ -17,6 +17,40 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ## Unreleased
 
 ### Added
+- Readability check (`app/engine/citation.ts`, ported from the WordPress
+  plugin): a word overlap ratio, not a similarity model. It compares the
+  product title, and as a fallback the opening sentence of the summary,
+  against the words used in that product's generated buyer questions, after
+  normalising and stripping stopwords. Grounded in a published analysis of
+  1.4 million ChatGPT prompts finding that assistants rewrite a prompt into
+  narrower sub-questions and search those, so a title that shares wording
+  with those sub-questions is more likely to surface. Verdicts: `good`
+  (title score >= 0.4 and the handle is descriptive), `partial` (title
+  score >= 0.2, or opening score >= 0.4), `weak` otherwise, and `null` when
+  the product has no generated questions to compare against. Also flags an
+  opaque (non-hyphenated, identifier-looking) handle, but never rewrites
+  one or offers to - changing a handle breaks existing links unless a
+  redirect is created explicitly, so the screen says the change is worth
+  considering for new products, not existing ones. Surfaced in a new
+  Readability card on the product editor (`app/routes/app.products.$id.tsx`)
+  with the source and its limits stated on screen. Pure, read-only: no new
+  metafield, no new table, nothing published. Tests in
+  `app/engine/__tests__/citation.test.ts`.
+- Crawler check taxonomy: three crawlers added to `crawler-check.server.ts`
+  alongside the existing five - `DeepSeekBot`, `Applebot` (Apple's real
+  crawler), and `Google-CloudVertexBot` - each with its documented user
+  agent string. A new `CRAWLER_INFO` map records, for every crawler tested,
+  which company runs it and what it is for (training, search indexing, or
+  answering a live user question), surfaced as one line next to each
+  verdict on the Diagnostics screen. Also documented and shown on that
+  screen: `Google-Extended` and `Applebot-Extended` are not crawlers but
+  robots.txt-only tokens controlling what Google and Apple's real crawlers
+  may do with pages already fetched, so no request ever arrives carrying
+  either name and they are deliberately not tested - a request claiming to
+  be one of them is something else, usually a scanner. Verified against
+  Google Search Central and Apple's Applebot documentation on 22 August
+  2026. Additive only: no change to check timing, retries, or verdict
+  logic.
 - Diagnostic-only `CrawlerHit.forwarding` column: records the raw values of
   candidate client-address headers (`x-forwarded-for`, `fly-client-ip`,
   `cf-connecting-ip`, `true-client-ip`, `x-real-ip`, `forwarded`) as a JSON

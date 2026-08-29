@@ -79,7 +79,13 @@ Let it run on the dev store and any live install for at least a week, then
 read the table by hand. Three possible outcomes:
 
 1. Real bot user agents appear (`GPTBot`, `ClaudeBot`, `PerplexityBot`,
-   `OAI-SearchBot`, `Google-Extended`) — build the rest.
+   `OAI-SearchBot`, `Applebot`, `DeepSeekBot`) — build the rest.
+   `Google-Extended` was in this list and should not have been: it is a
+   robots.txt token, not a crawler, and no request ever arrives under that
+   name. A request that claims it is something else borrowing the name.
+   Corrected 28 August 2026, after the WordPress side verified it against
+   Google's and Apple's own documentation. §5 already said this; this line
+   contradicted it.
 2. Only Shopify's own user agent appears — the feature dies here; document it
    and delete the table.
 3. No requests at all — a finding in itself: the mirror is not being read,

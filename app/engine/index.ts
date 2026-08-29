@@ -20,6 +20,7 @@ export type { ProductLike } from "./types";
 export {
   buildSummary,
   buildQuestions,
+  warrantyWithUnit,
   buildFitFor,
   type CapsuleInput,
   type BusinessInfo,
@@ -47,6 +48,12 @@ export {
 export { buildAnswerPreview, type AnswerInput, type AnswerPreview } from "./answer";
 export { normalize, prepareText, prepareTextCased, diacriticPattern, cleanOutput } from "./normalize";
 export { DEFAULT_STOPWORDS, stopwordSet } from "./stopwords";
+export {
+  checkCitationReadiness,
+  isDescriptiveHandle,
+  type CitationCheck,
+  type CitationVerdict,
+} from "./citation";
 
 import { extractFromText, type ExtractOptions, type Fact } from "./extract";
 import { DEFAULT_DICTIONARY } from "./dictionary";

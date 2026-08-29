@@ -67,25 +67,35 @@ async function cacheMirror(
   domain: string,
   product: ProductInput,
   facts: Fact[],
+  business: BusinessInfo | null = null,
 ) {
   const handle = product.handle;
   if (!handle) return;
+
+  // One input, three readers: the summary, the questions and the audience line
+  // are all derived from it, and the questions need the business answers or
+  // they come back without the commercial ones.
+  const capsuleInput = {
+    title: product.title,
+    descriptionHtml: product.descriptionHtml,
+    facts,
+    price: product.price ?? null,
+    currency: product.currency ?? null,
+    available: product.available,
+    vendor: product.vendor ?? null,
+    productType: product.productType ?? null,
+    business,
+  };
 
   const body = renderMirror({
     handle,
     title: product.title,
     url: product.onlineStoreUrl ?? `https://${domain}/products/${handle}`,
     description: product.descriptionHtml ?? "",
-    summary: buildSummary({
-      title: product.title,
-      descriptionHtml: product.descriptionHtml,
-      facts,
-      price: product.price ?? null,
-      currency: product.currency ?? null,
-      available: product.available,
-      vendor: product.vendor ?? null,
-      productType: product.productType ?? null,
-    }),
+    summary: buildSummary(capsuleInput),
+    questions: buildQuestions(capsuleInput),
+    fitFor: buildFitFor(capsuleInput),
+    business,
     facts,
     price: product.price ?? null,
     currency: product.currency ?? null,
@@ -197,7 +207,7 @@ export async function runBulkExtract(
           })),
         );
       }
-      await cacheMirror(shopId, shop.domain, product, split.productFacts);
+      await cacheMirror(shopId, shop.domain, product, split.productFacts, business);
     }
 
     done += 1;
@@ -246,7 +256,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const [outcome] = await writeFacts(graphql, [
     { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts, business) },
   ]);
-  await cacheMirror(shopId, shop.domain, product, split.productFacts);
+  await cacheMirror(shopId, shop.domain, product, split.productFacts, business);
   if (outcome.written.length > 0 && product.handle) {
     await pingProducts(shopId, shop.domain, [product.handle]);
   }

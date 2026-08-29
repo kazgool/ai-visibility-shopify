@@ -5,7 +5,8 @@
 // (ARCHITECTURE §3). A crawler that cannot parse a themed page can still read
 // this.
 
-import type { Fact } from "../engine";
+import type { BusinessInfo, Fact } from "../engine";
+import { warrantyWithUnit } from "../engine";
 import { cleanOutput } from "../engine/normalize";
 
 export type MirrorInput = {
@@ -21,6 +22,14 @@ export type MirrorInput = {
   vendor?: string | null;
   sku?: string | null;
   updatedAt?: string;
+  // The questions and the audience line are published in the page's structured
+  // data too, but a crawler that reads a themed page badly is exactly the
+  // reader this file exists for. Leaving them out gave the worst reader the
+  // thinnest copy, which is backwards. The WordPress mirror has carried both
+  // from the start.
+  questions?: { q: string; a: string }[];
+  fitFor?: string | null;
+  business?: BusinessInfo | null;
 };
 
 function yamlEscape(value: string): string {
@@ -75,6 +84,53 @@ export function renderMirror(raw: MirrorInput): string {
     lines.push("");
     lines.push(cleanOutput(input.description.replace(/<[^>]*>/g, " ")));
     lines.push("");
+  }
+
+  if (input.questions && input.questions.length > 0) {
+    lines.push("## Questions");
+    lines.push("");
+    for (const qa of input.questions) {
+      lines.push(`**${cleanOutput(qa.q)}**`);
+      lines.push("");
+      lines.push(cleanOutput(qa.a));
+      lines.push("");
+    }
+  }
+
+  if (input.fitFor) {
+    lines.push("## Who it suits");
+    lines.push("");
+    lines.push(cleanOutput(input.fitFor));
+    lines.push("");
+  }
+
+  // The commercial answers, as a table rather than only as questions. They are
+  // the same facts, but a reader scanning for "does it ship to me" finds a row
+  // faster than a sentence. Empty fields publish nothing, as everywhere else.
+  const b = input.business;
+  if (b) {
+    const rows: [string, string][] = [];
+    if (b.deliveryVaries) {
+      rows.push(["Delivery", "Varies by product, stated on each product page"]);
+    } else if (b.deliveryTime) {
+      rows.push(["Delivery", cleanOutput(b.deliveryTime)]);
+    }
+    if (b.deliveryCost) {
+      const cost = cleanOutput(b.deliveryCost);
+      rows.push(["Delivery cost", b.deliveryCostIsFrom ? `From ${cost}` : cost]);
+    }
+    if (b.returnDays) rows.push(["Returns", `${b.returnDays} days`]);
+    if (b.warranty) rows.push(["Warranty", cleanOutput(warrantyWithUnit(b.warranty))]);
+    if (b.paymentMethods) rows.push(["Payment", cleanOutput(b.paymentMethods)]);
+
+    if (rows.length > 0) {
+      lines.push("## Buying it");
+      lines.push("");
+      lines.push("| | |");
+      lines.push("| --- | --- |");
+      for (const [k, v] of rows) lines.push(`| ${k} | ${v} |`);
+      lines.push("");
+    }
   }
 
   lines.push(`Source: ${input.url}`);

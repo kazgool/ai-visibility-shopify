@@ -17,6 +17,18 @@ import { stripTags, cleanOutput } from "./normalize";
  * Every field is optional and a question is only asked when its answer is
  * real - a policy nobody filled in produces nothing, never a placeholder.
  */
+/**
+ * Warranty is always stated in months. A merchant who types "24" means 24
+ * months, and publishing the bare number leaves an assistant unable to tell
+ * months from years - the only thing the buyer wanted to know. A value written
+ * in words already carries its unit and is returned untouched.
+ */
+export function warrantyWithUnit(warranty: string): string {
+  const trimmed = warranty.trim();
+  if (!/^\d+$/.test(trimmed)) return trimmed;
+  return trimmed === "1" ? "1 month" : `${trimmed} months`;
+}
+
 export type BusinessInfo = {
   /** e.g. "2-4 working days". Left empty when it varies by product. */
   deliveryTime?: string;
@@ -212,10 +224,14 @@ export function buildQuestions(input: CapsuleInput): QA[] {
         a: `Yes, within ${b.returnDays} days.`,
       });
     }
+    // A bare number is the most common way this gets filled in, and "warranty:
+    // 12" tells an assistant nothing - months or years is exactly the part that
+    // matters. Warranty is always stated in months, so a number on its own gets
+    // the unit. Anything the merchant wrote in words is left untouched.
     if (b.warranty) {
       out.push({
         q: `What warranty does ${input.title} have?`,
-        a: cleanOutput(`${b.warranty}.`),
+        a: cleanOutput(`${warrantyWithUnit(b.warranty)}.`),
       });
     }
     if (b.paymentMethods) {

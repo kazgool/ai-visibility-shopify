@@ -17,7 +17,14 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { buildAnswerPreview, cleanOutput, extractProduct, type Fact } from "../engine";
+import {
+  buildAnswerPreview,
+  checkCitationReadiness,
+  cleanOutput,
+  extractProduct,
+  type CitationCheck,
+  type Fact,
+} from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 
@@ -157,13 +164,27 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     currency: product.priceRangeV2?.minVariantPrice?.currencyCode ?? null,
   });
 
+  // Does the title (and, as a fallback, the summary opening) actually share
+  // wording with the questions buyers would ask? Computed fresh on every
+  // load: it reads and reports, it writes nothing.
+  const summaryText = metafields.find((m) => m.key === "summary")?.value ?? "";
+  const summaryOpening = summaryText.split(/(?<=[.!?])\s/)[0] ?? summaryText;
+  const citation = checkCitationReadiness({
+    title: cleanOutput(product.title),
+    summaryOpening: cleanOutput(summaryOpening),
+    questions: storedQuestions,
+    handle: product.handle,
+  });
+
   return {
     answer,
+    citation,
     crawlers,
     product: {
       id: product.id,
       // The page header is ours; imported titles carry entities.
       title: cleanOutput(product.title),
+      handle: product.handle,
       image: product.featuredMedia?.preview?.image?.url ?? null,
     },
     mirrorUrl: mirror ? `https://${session.shop}/apps/ai-visibility/${product.handle}` : null,
@@ -329,7 +350,19 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 };
 
 export default function ProductEditor() {
-  const { product, images, storedFacts, autoFacts, source, updatedAt, capsule, crawlers, answer, mirrorUrl } =
+  const {
+    product,
+    images,
+    storedFacts,
+    autoFacts,
+    source,
+    updatedAt,
+    capsule,
+    crawlers,
+    answer,
+    citation,
+    mirrorUrl,
+  } =
     useLoaderData<typeof loader>() as {
       answer: {
         question: string;
@@ -337,8 +370,9 @@ export default function ProductEditor() {
         withoutApp: string;
         sources: string[];
       } | null;
+      citation: CitationCheck | null;
       crawlers: { agent: string; ok: boolean; checkedAt: string }[];
-      product: { id: string; title: string; image: string | null };
+      product: { id: string; title: string; handle: string; image: string | null };
       mirrorUrl: string | null;
       images: {
         id: string;
@@ -515,6 +549,56 @@ export default function ProductEditor() {
             </BlockStack>
           </Card>
         ) : null}
+
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingMd">
+              Readability
+            </Text>
+            <Text as="p" tone="subdued">
+              Based on a published analysis of 1.4 million ChatGPT prompts.
+              This is a rule of thumb about wording, not a guarantee of being
+              cited.
+            </Text>
+            {citation === null ? (
+              <Text as="p" tone="subdued">
+                No buyer questions are published for this product yet, so
+                there is nothing to compare the title against. Add questions
+                below first.
+              </Text>
+            ) : (
+              <BlockStack gap="200">
+                <InlineStack gap="150" blockAlign="center">
+                  <Badge
+                    tone={
+                      citation.verdict === "good"
+                        ? "success"
+                        : citation.verdict === "partial"
+                          ? "warning"
+                          : "critical"
+                    }
+                  >
+                    {citation.verdict === "good"
+                      ? "Title matches buyer questions"
+                      : citation.verdict === "partial"
+                        ? "Title partially matches buyer questions"
+                        : "Title does not match buyer questions"}
+                  </Badge>
+                </InlineStack>
+                {citation.verdict !== "good" && citation.missingFromTitle.length > 0 ? (
+                  <Text as="p" tone="subdued">
+                    {`Consider working these words into the title: ${citation.missingFromTitle.join(", ")}.`}
+                  </Text>
+                ) : null}
+                {!citation.handleIsDescriptive ? (
+                  <Text as="p" tone="subdued">
+                    {`The URL handle ("${product.handle}") reads as an identifier rather than natural language. Changing it now would break every existing link to this product - Shopify only keeps a redirect when one is created explicitly - so this is not worth doing for a live product. Worth considering when naming new products.`}
+                  </Text>
+                ) : null}
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Card>
 
         <Card>
           <Form method="post">

@@ -20,7 +20,14 @@ export const AGENTS: Record<string, string> = {
     "Mozilla/5.0 (compatible; Claude-SearchBot/1.0; +https://anthropic.com/claude-searchbot)",
   PerplexityBot:
     "Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+  DeepSeekBot: "Mozilla/5.0 (compatible; DeepSeekBot/1.0; +https://www.deepseek.com/about)",
+  Applebot:
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)",
+  "Google-CloudVertexBot":
+    "Mozilla/5.0 (compatible; Google-CloudVertexBot; +https://cloud.google.com/generative-ai-app-builder/docs/prepare-data#website)",
 };
+
+export { CRAWLER_INFO, NON_CRAWLER_TOKENS } from "./crawler-info";
 
 export type Cause =
   | "ok"
