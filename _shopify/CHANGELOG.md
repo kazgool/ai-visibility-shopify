@@ -83,6 +83,122 @@ Server changes only - no extension changes, so this does not require
   inline on the product row, the same as `priceRangeV2`, since it is a plain
   object field rather than a connection. Backs the SEO screen's meta title
   and meta description audit table; the app never writes these fields.
+- SEO-WORKSPACE-PRD build order steps 1-2: `app/engine/meta.ts`
+  (`buildMetaTitle`, `buildMetaDescription`), pure and tested, condensing the
+  product's own title/description/facts the same way `buildSummary` does;
+  price and availability excluded on purpose since a meta description is
+  cached by search engines. New `app/services/seo.server.ts` writer for
+  `Product.seo.title` / `Product.seo.description` (Shopify's own fields, not
+  `$app` metafields): provenance under two new `state` keys, `seo_title` and
+  `seo_description`, reusing the existing human-protection rule
+  (`mayWriteSeo`); a `prev` field captured only on the first write supports
+  an exact revert (`revertSeo`), distinct from resetting to automatic; the
+  `productUpdate` mutation always sends both `seo.title` and `seo.description`
+  together, filling the untouched one with its current live value, because
+  the single-subfield behaviour is undocumented (§3.1, §9). New "Search
+  listing (meta title and description)" card in `app.products.$id.tsx`,
+  mirroring the existing summary card: Generate (fills the field without
+  writing), Save (marks human when edited, auto when untouched), Revert to
+  before the app (shown only when a prior value was captured), character
+  counts. Gated on `seo_unlocked` in both the loader and the action - a
+  posted form cannot bypass a hidden card. Bulk queue, full-catalogue audit,
+  Products index column and handover export are PRD steps 3-6 and are not
+  built yet.
+- SEO-WORKSPACE-PRD §3.5: the review-and-apply bulk queue on `/app/seo`,
+  replacing the old read-only "Meta fields" tab (deleted per §5 - its "we
+  never write them" sentence was no longer true). `buildSeoQueue`
+  (`app/services/seo.server.ts`) is a pure function: given the catalogue and
+  the shop name, it proposes a meta title and/or description only for a
+  field that is both empty and not protected (`mayWriteSeo`), using the same
+  `buildMetaTitle`/`buildMetaDescription` the product editor card calls, so
+  the two surfaces never disagree. A product already carrying an earlier
+  automatic value is left out of the queue entirely - regenerating it is the
+  product editor's own "Generate" button, not a silent bulk rewrite. Fields
+  left empty on purpose (state says human) surface in a separate collapsed
+  "protected" list with the reason, never silently dropped; a non-empty
+  field with no state entry ("set outside this app") is counted in the
+  coverage line and never proposed.
+
+  New `app/services/seo-bulk.server.ts` (I/O): `runSeoQueueBuild` reads the
+  whole catalogue through the existing `fetchAllProducts` bulk export and
+  calls `buildSeoQueue`, writing nothing; `runSeoApply` re-reads each
+  approved product immediately before writing (`fetchProduct`, one Admin
+  API call per product) because the queue snapshot can be minutes old and
+  the write-time `mayWrite`/unchanged check must win, then writes through
+  the existing `writeSeo`. New worker tasks `seo_queue_build` and
+  `seo_apply` (`worker/tasks.ts`, registered in `worker/index.ts`), following
+  `bulk_extract`'s JobRun progress pattern; `seo_apply` advances the poll
+  cursor after a run that wrote anything, the same self-feed guard
+  `bulk_extract` and `bulk_alt_text` already use. No scheduled job ever
+  calls `seo_apply` - it only runs from an explicit operator "Apply"
+  submission, never automatically.
+
+  Sequential single mutations, not `bulkOperationRunMutation`: `productUpdate`
+  has no bulk form for distinct per-product values, the write-time re-check
+  needs a synchronous read immediately before each write (which a staged
+  bulk mutation cannot do), and only one bulk operation may run per shop at a
+  time, which would otherwise serialize against the read-side bulk export
+  this same feature depends on. The existing throttled admin client
+  (`admin.server.ts`) already paces every call off Shopify's returned cost
+  budget - the same protection every other bulk writer in this app relies
+  on, not a new mechanism.
+
+  ENTITLEMENT: `seo_unlocked` is checked in the `/app/seo` loader (existing),
+  the action (existing, now covers the two new intents since the check runs
+  before intent dispatch), `seo_queue_build` (refuses before the bulk export
+  starts), and `runSeoApply` inside `seo_apply` (refuses before its first
+  read or write) - a job queued while unlocked but executed after the key is
+  removed touches nothing and the JobRun report says why (`status: "refused"`).
+  New pure-function tests in `app/services/__tests__/seo-queue.server.test.ts`.
+- `/app/seo` rebuilt a fourth time, replacing the five-tab structure recorded
+  above: three earlier attempts read as a diagnostics report with nothing to
+  press ("pare ca nu am ce sa fac aici"). The screen now mirrors
+  `app._index.tsx` - a metric row, then action cards - and `Tabs` is gone from
+  the file entirely.
+  - Metric row: products with a meta description, products with a meta
+    title (both from the last "Write the missing search listings" preview),
+    distinct schema node types published and conflict count (both from the
+    last scan). A count never prints as a bare zero: an un-previewed catalogue
+    says "Not checked yet", an un-scanned or password-walled storefront says
+    "Not scanned yet" / "Could not be read" instead of 0.
+  - "Write the missing search listings" card: the existing bulk queue
+    (`seo-bulk.server.ts`, unchanged) reshaped into the dashboard's
+    preview/primary button pair - Preview builds the queue read-only, the
+    primary button is labelled with the real selected count ("Write N
+    listings") and stays disabled until a preview has produced rows to
+    review. The per-row checkboxes, select all/clear all, pagination and the
+    protected-fields disclosure are unchanged from the prior build.
+  - New "What your descriptions say that your titles do not" card:
+    `app/engine/term-gap.ts` (`computeTermGap`, pure, tested), terms found in
+    a product's description that appear in no product title and no meta
+    field anywhere in the catalogue. Supports two-word phrases as well as
+    single words (bounded to adjacent-pair bigrams, one candidate per text
+    position, no combinatorial expansion) because a preposition often carries
+    the meaning in this catalogue's language ("fara gluten"); a bigram is
+    kept unless both words are stopwords, so "fara gluten" survives even
+    though "fara" alone is a stopword. Not a keyword tool: no search volume,
+    no ranking data, no recommendation - every row states only what was
+    counted ("used in N descriptions, in no title and no meta field").
+    Computed inside `buildSeoQueue` from the same catalogue read the listings
+    queue already does, so it costs no second bulk fetch; `SeoQueue` gained a
+    `termGap` field and `buildSeoQueue` now takes a `stopwords` argument.
+  - "What we found to fix" card: the existing scan, conflicts and
+    missing-reasons findings recomposed into one severity-ordered list
+    (critical: noindex, robots.txt disallow; warning: node-type conflicts,
+    real gaps; info: gaps that could not be determined because the scan
+    failed) instead of separate tabs, each line naming where it is fixed and
+    linking there. "Scan now" moved into this card's header, matching the AI
+    dashboard's crawler-check card. A failed or absent scan shows no
+    findings and says why, rather than an empty list reading as "nothing
+    wrong".
+  - The former Overview/Published schema/Conflicts/Crawl tabs are now one
+    "Full scan detail" disclosure (Polaris `Collapsible`, closed by default)
+    at the bottom of the screen - the fuller detail stays reachable, but is
+    no longer the page's primary structure.
+  - New tests: `app/engine/__tests__/term-gap.test.ts` (a term in
+    descriptions only, a term already in a title, a term only in a meta
+    field, a stopword that must never appear, an empty catalogue, phrase
+    survival, and ranking by product count).
 
 ## Version 14 - 31 August 2026
 

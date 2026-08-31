@@ -22,10 +22,18 @@ export {
   buildQuestions,
   warrantyWithUnit,
   buildFitFor,
+  orderFacts,
   type CapsuleInput,
   type BusinessInfo,
   type QA,
 } from "./summary";
+export { buildMetaTitle, buildMetaDescription, type MetaInput } from "./meta";
+export {
+  computeTermGap,
+  extractTerms,
+  type TermGapProduct,
+  type TermGapRow,
+} from "./term-gap";
 export {
   buildCollectionCapsule,
   buildCollectionSummary,

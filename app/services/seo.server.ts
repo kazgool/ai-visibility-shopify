@@ -1,0 +1,386 @@
+// The SEO writer - Product.seo.title and Product.seo.description
+// (SEO-WORKSPACE-PRD §3). Unlike every other field this app writes, these are
+// Shopify's own fields, not `$app` metafields, so they need their own writer
+// even though provenance still lives in the same `state` metafield.
+//
+// Two things make this different from writeFacts in facts.server.ts:
+//  - the "current value" to compare against comes from `Product.seo`, not
+//    from our metafields, so the unchanged check is reimplemented here
+//    (CLAUDE.md rule 3: never write an identical value - it marks the
+//    product updated, which re-fires products/update, which queues
+//    extraction, which would write again);
+//  - revert needs a value to go back to. Before this app's first write to a
+//    product's seo fields, the prior value is captured in the state entry
+//    itself (`prev`), captured once and never touched by later regenerations
+//    (SEO-WORKSPACE-PRD §3.1).
+
+import type { GraphqlFn } from "./admin.server";
+import { NAMESPACE, ENGINE_VERSION, parseState, type ProductState } from "./facts.server";
+import type { Fact } from "../engine";
+import { buildMetaTitle, buildMetaDescription, type MetaInput } from "../engine/meta";
+import { computeTermGap, type TermGapRow } from "../engine/term-gap";
+
+export type SeoKey = "seo_title" | "seo_description";
+
+/** Same FieldState shape as facts.server.ts, with the one field seo adds. */
+export type SeoFieldState = {
+  source: "auto" | "human";
+  at: string;
+  engine?: string;
+  /** The value in place before this app ever wrote this field. Set once. */
+  prev: string;
+};
+
+export type ProductSeoInput = {
+  id: string;
+  metafields?: { key: string; value: string }[];
+  seo?: { title: string | null; description: string | null } | null;
+};
+
+/**
+ * Does this app own this field right now? Same rule as mayWrite in
+ * facts.server.ts, reimplemented against `Product.seo` because the current
+ * value does not live in our metafields: a human-written value is never
+ * touched, and a non-empty value with no state entry is treated as human -
+ * it came from somewhere else (the merchant, a previous SEO app, an import).
+ */
+export function mayWriteSeo(product: ProductSeoInput, key: SeoKey): boolean {
+  const state = parseState({ id: product.id, title: "", metafields: product.metafields });
+  const entry = state[key] as SeoFieldState | undefined;
+  if (entry?.source === "human") return false;
+
+  const current = key === "seo_title" ? product.seo?.title : product.seo?.description;
+  if (current && current !== "" && !entry) return false;
+
+  return true;
+}
+
+const PRODUCT_UPDATE_SEO = `#graphql
+  mutation UpdateProductSeo($input: ProductInput!) {
+    productUpdate(input: $input) {
+      product { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const METAFIELDS_SET = `#graphql
+  mutation SetSeoState($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      userErrors { field message }
+    }
+  }
+`;
+
+export type SeoField = { value: string; source: "auto" | "human" };
+
+export type WriteSeoOutcome = {
+  written: SeoKey[];
+  skipped: SeoKey[];
+  unchanged: SeoKey[];
+};
+
+/**
+ * Write one or both seo fields for a product. The Admin API's documented
+ * behaviour when only one of `seo.title` / `seo.description` is sent is not
+ * settled (SEO-WORKSPACE-PRD §3.1, §9), so this always sends both subfields
+ * together, filling the one not being changed with its current live value
+ * read from the same product - never depending on the unresolved answer.
+ */
+export async function writeSeo(
+  graphql: GraphqlFn,
+  product: ProductSeoInput,
+  fields: Partial<Record<SeoKey, SeoField>>,
+): Promise<WriteSeoOutcome> {
+  const outcome: WriteSeoOutcome = { written: [], skipped: [], unchanged: [] };
+  const state = parseState({ id: product.id, title: "", metafields: product.metafields });
+  const now = new Date().toISOString();
+
+  const currentTitle = product.seo?.title ?? "";
+  const currentDescription = product.seo?.description ?? "";
+  let nextTitle = currentTitle;
+  let nextDescription = currentDescription;
+  let touched = false;
+
+  const keys: SeoKey[] = ["seo_title", "seo_description"];
+  for (const key of keys) {
+    const field = fields[key];
+    if (!field) continue;
+
+    if (!mayWriteSeo(product, key)) {
+      outcome.skipped.push(key);
+      continue;
+    }
+
+    const current = key === "seo_title" ? currentTitle : currentDescription;
+    // Never write an identical value - see the file header.
+    if (field.value === current) {
+      outcome.unchanged.push(key);
+      continue;
+    }
+
+    const prevEntry = state[key] as SeoFieldState | undefined;
+    const nextEntry: SeoFieldState = {
+      source: field.source,
+      at: now,
+      engine: ENGINE_VERSION,
+      // Captured only on the first write this app ever makes to this field;
+      // later regenerations never overwrite it, so revert always means "as
+      // it was before this app touched it" (SEO-WORKSPACE-PRD §3.1).
+      prev: prevEntry ? prevEntry.prev : current,
+    };
+    state[key] = nextEntry as unknown as ProductState[string];
+
+    if (key === "seo_title") nextTitle = field.value;
+    else nextDescription = field.value;
+    outcome.written.push(key);
+    touched = true;
+  }
+
+  if (!touched) return outcome;
+
+  const productRes = await graphql<any>(PRODUCT_UPDATE_SEO, {
+    input: {
+      id: product.id,
+      seo: { title: nextTitle, description: nextDescription },
+    },
+  });
+  const errors = productRes?.productUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(`productUpdate (seo): ${JSON.stringify(errors)}`);
+  }
+
+  await graphql<any>(METAFIELDS_SET, {
+    metafields: [
+      {
+        ownerId: product.id,
+        namespace: NAMESPACE,
+        key: "state",
+        type: "json",
+        value: JSON.stringify(state),
+      },
+    ],
+  });
+
+  return outcome;
+}
+
+/**
+ * Revert to the value in place before this app ever wrote the field: writes
+ * `prev` back through the same mutation and deletes the state entry.
+ * Distinct from "reset to automatic", which only clears the human flag so
+ * the next pass may regenerate.
+ */
+export async function revertSeo(
+  graphql: GraphqlFn,
+  product: ProductSeoInput,
+  keys: SeoKey[],
+): Promise<SeoKey[]> {
+  const state = parseState({ id: product.id, title: "", metafields: product.metafields });
+  const currentTitle = product.seo?.title ?? "";
+  const currentDescription = product.seo?.description ?? "";
+  let nextTitle = currentTitle;
+  let nextDescription = currentDescription;
+  const reverted: SeoKey[] = [];
+
+  for (const key of keys) {
+    const entry = state[key] as SeoFieldState | undefined;
+    if (!entry) continue;
+    if (key === "seo_title") nextTitle = entry.prev;
+    else nextDescription = entry.prev;
+    delete state[key];
+    reverted.push(key);
+  }
+
+  if (reverted.length === 0) return reverted;
+
+  const productRes = await graphql<any>(PRODUCT_UPDATE_SEO, {
+    input: {
+      id: product.id,
+      seo: { title: nextTitle, description: nextDescription },
+    },
+  });
+  const errors = productRes?.productUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(`productUpdate (seo revert): ${JSON.stringify(errors)}`);
+  }
+
+  await graphql<any>(METAFIELDS_SET, {
+    metafields: [
+      {
+        ownerId: product.id,
+        namespace: NAMESPACE,
+        key: "state",
+        type: "json",
+        value: JSON.stringify(state),
+      },
+    ],
+  });
+
+  return reverted;
+}
+
+/** Reset to automatic: drop the human flag, keep `prev`, let the next pass regenerate. */
+export function clearSeoHumanFlag(state: ProductState, key: SeoKey): void {
+  const entry = state[key] as SeoFieldState | undefined;
+  if (entry) state[key] = { ...entry, source: "auto" };
+}
+
+// The review-and-apply queue (SEO-WORKSPACE-PRD §3.5). Pure: takes an
+// already-fetched catalogue and computes what could be written, writing
+// nothing. This is the smallest useful reading of §3.5's build step -
+// "for every product whose meta title or meta description is empty and not
+// protected, compute the suggestion" - so a product that already carries an
+// automatic value from an earlier pass is left alone here; regenerating an
+// existing auto value is the product editor's job (its own Generate button),
+// not a silent bulk rewrite.
+
+export type SeoQueueProduct = {
+  id: string;
+  handle: string;
+  title: string;
+  descriptionHtml?: string | null;
+  vendor?: string | null;
+  metafields?: { key: string; value: string }[];
+  seo?: { title: string | null; description: string | null } | null;
+  facts?: Fact[];
+};
+
+export type SeoQueueRow = {
+  id: string;
+  handle: string;
+  title: string;
+  currentTitle: string;
+  currentDescription: string;
+  /** null when this field is not proposed for this product. */
+  titleSuggestion: string | null;
+  descriptionSuggestion: string | null;
+};
+
+export type SeoProtectedRow = {
+  id: string;
+  handle: string;
+  title: string;
+  field: SeoKey;
+  reason: string;
+};
+
+export type SeoQueue = {
+  checked: number;
+  missingTitle: number;
+  missingDescription: number;
+  /** Non-empty fields with no state entry - set by someone else, never touched. */
+  outsideApp: number;
+  rows: SeoQueueRow[];
+  protectedRows: SeoProtectedRow[];
+  /**
+   * The term-gap card's data (dashboard rebuild, 31 Aug 2026): terms found in
+   * product descriptions that appear in no title and no meta field, computed
+   * over the same catalogue read in the same pass so this never costs a
+   * second bulk fetch. Not a keyword tool - see engine/term-gap.ts.
+   */
+  termGap: TermGapRow[];
+};
+
+export function buildSeoQueue(
+  products: SeoQueueProduct[],
+  shopName: string | null,
+  stopwords: Set<string>,
+): SeoQueue {
+  const rows: SeoQueueRow[] = [];
+  const protectedRows: SeoProtectedRow[] = [];
+  let missingTitle = 0;
+  let missingDescription = 0;
+  let outsideApp = 0;
+
+  for (const product of products) {
+    const seoLike: ProductSeoInput = {
+      id: product.id,
+      metafields: product.metafields,
+      seo: product.seo ?? null,
+    };
+    const currentTitle = product.seo?.title ?? "";
+    const currentDescription = product.seo?.description ?? "";
+    const titleEmpty = currentTitle === "";
+    const descriptionEmpty = currentDescription === "";
+    const titleWritable = mayWriteSeo(seoLike, "seo_title");
+    const descriptionWritable = mayWriteSeo(seoLike, "seo_description");
+
+    if (titleEmpty) missingTitle += 1;
+    if (descriptionEmpty) missingDescription += 1;
+    // A non-empty field this app is not allowed to write is either
+    // human-marked or, more commonly here, unattributed - came from the
+    // merchant, an import, or a previous app. Either way it is "outside".
+    if (!titleEmpty && !titleWritable) outsideApp += 1;
+    if (!descriptionEmpty && !descriptionWritable) outsideApp += 1;
+
+    if (titleEmpty && !titleWritable) {
+      protectedRows.push({
+        id: product.id,
+        handle: product.handle,
+        title: product.title,
+        field: "seo_title",
+        reason: "Left empty on purpose - edited by you, so bulk passes leave it alone.",
+      });
+    }
+    if (descriptionEmpty && !descriptionWritable) {
+      protectedRows.push({
+        id: product.id,
+        handle: product.handle,
+        title: product.title,
+        field: "seo_description",
+        reason: "Left empty on purpose - edited by you, so bulk passes leave it alone.",
+      });
+    }
+
+    const canProposeTitle = titleEmpty && titleWritable;
+    const canProposeDescription = descriptionEmpty && descriptionWritable;
+    if (!canProposeTitle && !canProposeDescription) continue;
+
+    const metaInput: MetaInput = {
+      title: product.title,
+      descriptionHtml: product.descriptionHtml,
+      facts: product.facts ?? [],
+      vendor: product.vendor ?? null,
+      shopName,
+    };
+
+    const titleSuggestion = canProposeTitle ? buildMetaTitle(metaInput) || null : null;
+    const descriptionSuggestion = canProposeDescription
+      ? buildMetaDescription(metaInput) || null
+      : null;
+    if (!titleSuggestion && !descriptionSuggestion) continue;
+
+    rows.push({
+      id: product.id,
+      handle: product.handle,
+      title: product.title,
+      currentTitle,
+      currentDescription,
+      titleSuggestion,
+      descriptionSuggestion,
+    });
+  }
+
+  const termGap = computeTermGap(
+    products.map((p) => ({
+      id: p.id,
+      title: p.title,
+      descriptionHtml: p.descriptionHtml,
+      seoTitle: p.seo?.title ?? null,
+      seoDescription: p.seo?.description ?? null,
+    })),
+    stopwords,
+    { limit: 25 },
+  );
+
+  return {
+    checked: products.length,
+    missingTitle,
+    missingDescription,
+    outsideApp,
+    rows,
+    protectedRows,
+    termGap,
+  };
+}

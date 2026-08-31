@@ -70,7 +70,8 @@ const DESCRIPTIVE_ORDER = [
   "room", "camera", "use", "occasion",
 ];
 
-function orderFacts(facts: Fact[]): Fact[] {
+/** Exported for meta.ts, which orders facts the same way for the same reason. */
+export function orderFacts(facts: Fact[]): Fact[] {
   const rank = (f: Fact) => {
     const i = DESCRIPTIVE_ORDER.indexOf(f.k.toLowerCase());
     return i === -1 ? DESCRIPTIVE_ORDER.length : i;

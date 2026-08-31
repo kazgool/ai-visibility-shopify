@@ -18,6 +18,8 @@ async function main() {
       crawler_check: tasks.crawler_check,
       bulk_collections: tasks.bulk_collections,
       seo_watch: tasks.seo_watch,
+      seo_queue_build: tasks.seo_queue_build,
+      seo_apply: tasks.seo_apply,
     },
     // Freshness in layers: webhooks fire instantly, the poll closes the gap
     // when one is dropped, the sweep guarantees nothing is missed for long.

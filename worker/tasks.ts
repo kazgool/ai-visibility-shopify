@@ -26,6 +26,7 @@ import {
   type ThemeScanResult,
 } from "../app/services/theme-scan.server";
 import { diffThemeScans, type SeoWatchChange } from "../app/services/seo-watch";
+import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -620,6 +621,129 @@ export const bulk_collections: Task = async (payload, helpers) => {
         },
       });
     }
+    throw error;
+  }
+};
+
+/**
+ * Build the meta title / meta description review queue (SEO-WORKSPACE-PRD
+ * §3.5). Read-only: it reads the whole catalogue through the same bulk
+ * export `bulk_extract` uses and computes suggestions, writing nothing. The
+ * operator reviews the result on `/app/seo` and approves rows into a
+ * separate `seo_apply` job.
+ *
+ * ENTITLEMENT: gated here independently of the route that enqueued it - a
+ * queue build for a shop without `seo_unlocked` is refused before the
+ * (expensive) bulk export even starts.
+ */
+export const seo_queue_build: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = payload as { shopId: string; jobRunId: string };
+
+  if (!(await isSeoUnlocked(shopId))) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "refused",
+        finishedAt: new Date(),
+        report: { refused: true, reason: "SEO module not enabled for this shop" } as any,
+      },
+    });
+    helpers.logger.info(`seo_queue_build ${shopId}: refused, seo_unlocked is off`);
+    return;
+  }
+
+  await db.jobRun.update({
+    where: { id: jobRunId },
+    data: { status: "running", startedAt: new Date() },
+  });
+
+  try {
+    const queue = await runSeoQueueBuild(shopId, {
+      onProgress: async (done, total) => {
+        await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
+      },
+    });
+
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "done", finishedAt: new Date(), report: queue as any },
+    });
+    helpers.logger.info(
+      `seo_queue_build ${shopId}: ${queue.checked} checked, ${queue.rows.length} proposed, ` +
+        `${queue.protectedRows.length} protected, ${queue.outsideApp} field(s) set outside this app`,
+    );
+  } catch (error) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },
+    });
+    throw error;
+  }
+};
+
+/**
+ * Write the operator-approved rows (SEO-WORKSPACE-PRD §3.5, §7). No
+ * scheduled job ever calls this - it only runs from an explicit "Apply"
+ * submission on `/app/seo`, carrying the exact product ids and field values
+ * the operator saw and approved.
+ *
+ * ENTITLEMENT: re-checked inside `runSeoApply` at execution time, not only
+ * when the route enqueued it - the queue may sit for a while before an
+ * operator presses Apply, and `seo_unlocked` can be switched off in between.
+ * A refused run touches nothing and the report says why.
+ */
+export const seo_apply: Task = async (payload, helpers) => {
+  const { shopId, jobRunId, items } = payload as {
+    shopId: string;
+    jobRunId: string;
+    items: SeoApplyItem[];
+  };
+
+  await db.jobRun.update({
+    where: { id: jobRunId },
+    data: { status: "running", startedAt: new Date() },
+  });
+
+  try {
+    const report = await runSeoApply(shopId, items, {
+      onProgress: async (done, total) => {
+        await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
+      },
+    });
+
+    if (report.refused) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "refused",
+          finishedAt: new Date(),
+          report: {
+            ...report,
+            reason: "SEO module was disabled for this shop before this job ran",
+          } as any,
+        },
+      });
+      helpers.logger.info(`seo_apply ${shopId}: refused, seo_unlocked is off`);
+      return;
+    }
+
+    // Same self-feed guard bulk_extract and bulk_alt_text use: a mass write
+    // makes every touched product look "recently changed" to poll_changes,
+    // which would otherwise queue a no-op extract_product per product.
+    if (report.written > 0) await advancePollCursor(shopId);
+
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "done", finishedAt: new Date(), report: report as any },
+    });
+    helpers.logger.info(
+      `seo_apply ${shopId}: ${report.written} written, ${report.skipped} skipped, ${report.unchanged} unchanged`,
+    );
+  } catch (error) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },
+    });
     throw error;
   }
 };

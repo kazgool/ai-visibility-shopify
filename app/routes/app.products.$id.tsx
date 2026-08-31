@@ -22,11 +22,15 @@ import {
   checkCitationReadiness,
   cleanOutput,
   extractProduct,
+  buildMetaTitle,
+  buildMetaDescription,
   type CitationCheck,
   type Fact,
 } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
+import { isSeoUnlocked } from "../services/billing.server";
+import { writeSeo, revertSeo, mayWriteSeo, type SeoKey } from "../services/seo.server";
 
 // The editor pattern the WordPress module got right, and the reason human work
 // survives: the extracted value is shown as the starting point, the merchant
@@ -35,12 +39,15 @@ import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server"
 
 const PRODUCT = `#graphql
   query ProductForEditor($id: ID!) {
+    shop { name }
     product(id: $id) {
       id
       title
       handle
       descriptionHtml
       productType
+      vendor
+      seo { title description }
       priceRangeV2 { minVariantPrice { amount currencyCode } }
       featuredMedia { preview { image { url altText } } }
       media(first: 20) {
@@ -80,8 +87,13 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const res = await admin.graphql(PRODUCT, { variables: { id: gid(params.id!) } });
   const json = await res.json();
   const product = json.data?.product;
+  const shopName = json.data?.shop?.name ?? null;
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  // Entitlement (ENTITLEMENT rule): the card is gated here, not only on
+  // display - the action below checks it again for the "seo" intents, since
+  // a form can be posted directly regardless of what the loader rendered.
+  const seoUnlocked = await isSeoUnlocked(shop?.id);
   const mirror = shop
     ? await db.mirrorCache.findUnique({
         where: { shopId_handle: { shopId: shop.id, handle: product.handle } },
@@ -176,6 +188,44 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     handle: product.handle,
   });
 
+  // Search listing card (SEO-WORKSPACE-PRD §3.4). Gated on seoUnlocked; the
+  // suggestions are computed either way so the action can reuse them without
+  // a second round trip, but the UI below only renders when unlocked.
+  const seoProductLike = { id: product.id, metafields, seo: product.seo ?? null };
+  const facts = storedFacts.length > 0 ? storedFacts : autoFacts;
+  const metaInput = {
+    title: product.title,
+    descriptionHtml: product.descriptionHtml,
+    facts,
+    vendor: product.vendor ?? null,
+    shopName,
+  };
+  const titleSuggestion = buildMetaTitle(metaInput);
+  const descriptionSuggestion = buildMetaDescription(metaInput);
+  const currentSeoTitle = product.seo?.title ?? "";
+  const currentSeoDescription = product.seo?.description ?? "";
+
+  function seoSource(key: SeoKey, current: string): "human" | "auto" | "outside" | "missing" {
+    const entry = state[key] as { source: "auto" | "human" } | undefined;
+    if (entry) return entry.source;
+    if (current !== "") return "outside";
+    return "missing";
+  }
+
+  const seo = {
+    unlocked: seoUnlocked,
+    title: currentSeoTitle,
+    description: currentSeoDescription,
+    titleSuggestion,
+    descriptionSuggestion,
+    titleSource: seoSource("seo_title", currentSeoTitle),
+    descriptionSource: seoSource("seo_description", currentSeoDescription),
+    titleCanRevert: Boolean((state.seo_title as any)?.prev !== undefined),
+    descriptionCanRevert: Boolean((state.seo_description as any)?.prev !== undefined),
+    titleCanWrite: mayWriteSeo(seoProductLike, "seo_title"),
+    descriptionCanWrite: mayWriteSeo(seoProductLike, "seo_description"),
+  };
+
   return {
     answer,
     citation,
@@ -201,14 +251,100 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       questionsSource: state.questions?.source ?? null,
       fitForSource: state.fit_for?.source ?? null,
     },
+    seo,
   };
 };
 
 export const action = async ({ params, request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const intent = String(form.get("intent"));
   const id = gid(params.id!);
+
+  // GraphqlFn wrapper for the seo.server.ts writer, which shares its shape
+  // with the worker's admin client (admin.server.ts) rather than the raw
+  // Remix admin.graphql Response.
+  const graphql = async (query: string, variables: Record<string, unknown> = {}) => {
+    const r = await admin.graphql(query, { variables });
+    const j: any = await r.json();
+    if (j.errors?.length) throw new Error(`GraphQL errors: ${JSON.stringify(j.errors)}`);
+    return j.data;
+  };
+
+  // Entitlement (ENTITLEMENT rule): the card being hidden in the loader does
+  // not stop a form being posted directly, so every seo intent is checked
+  // again here.
+  if (intent === "seo" || intent === "seo_revert" || intent === "seo_reset") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    const unlocked = await isSeoUnlocked(shop?.id);
+    if (!unlocked) {
+      return { error: "The search listing capability is not enabled for this shop." };
+    }
+  }
+
+  if (intent === "seo") {
+    const res = await admin.graphql(PRODUCT, { variables: { id } });
+    const json = await res.json();
+    const productData = json.data?.product;
+    const metafields = (productData?.metafields?.nodes ?? []) as { key: string; value: string }[];
+    const productLike = { id, metafields, seo: productData?.seo ?? null };
+
+    const title = String(form.get("title") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    const titleSuggestion = String(form.get("titleSuggestion") ?? "");
+    const descriptionSuggestion = String(form.get("descriptionSuggestion") ?? "");
+
+    const fields: Partial<Record<SeoKey, { value: string; source: "auto" | "human" }>> = {};
+    if (form.has("title")) {
+      fields.seo_title = { value: title, source: title === titleSuggestion ? "auto" : "human" };
+    }
+    if (form.has("description")) {
+      fields.seo_description = {
+        value: description,
+        source: description === descriptionSuggestion ? "auto" : "human",
+      };
+    }
+
+    const outcome = await writeSeo(graphql, productLike, fields);
+    return { seoSaved: true, outcome };
+  }
+
+  if (intent === "seo_revert") {
+    const res = await admin.graphql(PRODUCT, { variables: { id } });
+    const json = await res.json();
+    const productData = json.data?.product;
+    const metafields = (productData?.metafields?.nodes ?? []) as { key: string; value: string }[];
+    const productLike = { id, metafields, seo: productData?.seo ?? null };
+
+    const keys = form.getAll("key").map(String) as SeoKey[];
+    const reverted = await revertSeo(graphql, productLike, keys);
+    return { seoReverted: true, reverted };
+  }
+
+  if (intent === "seo_reset") {
+    // Back to automatic: drop the human flag but keep prev, so a later
+    // revert still restores the pre-app value; the next pass may regenerate.
+    const res = await admin.graphql(PRODUCT, { variables: { id } });
+    const json = await res.json();
+    const metafields = (json.data?.product?.metafields?.nodes ?? []) as {
+      key: string;
+      value: string;
+    }[];
+    const state = parseState({ id, title: "", metafields });
+    const keys = form.getAll("key").map(String) as SeoKey[];
+    for (const key of keys) {
+      const entry = state[key] as { source: "auto" | "human"; at: string; engine?: string; prev: string } | undefined;
+      if (entry) state[key] = { ...entry, source: "auto" };
+    }
+    await admin.graphql(SET, {
+      variables: {
+        metafields: [
+          { ownerId: id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) },
+        ],
+      },
+    });
+    return { seoReset: true };
+  }
 
   // Alt text is media, not metafields, so it takes its own path.
   if (intent === "alt") {
@@ -362,6 +498,7 @@ export default function ProductEditor() {
     answer,
     citation,
     mirrorUrl,
+    seo,
   } =
     useLoaderData<typeof loader>() as {
       answer: {
@@ -393,6 +530,19 @@ export default function ProductEditor() {
         questionsSource: string | null;
         fitForSource: string | null;
       };
+      seo: {
+        unlocked: boolean;
+        title: string;
+        description: string;
+        titleSuggestion: string;
+        descriptionSuggestion: string;
+        titleSource: "human" | "auto" | "outside" | "missing";
+        descriptionSource: "human" | "auto" | "outside" | "missing";
+        titleCanRevert: boolean;
+        descriptionCanRevert: boolean;
+        titleCanWrite: boolean;
+        descriptionCanWrite: boolean;
+      };
     };
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -409,6 +559,8 @@ export default function ProductEditor() {
   const [qas, setQas] = useState<{ q: string; a: string }[]>(
     capsule.questions.length > 0 ? capsule.questions : [],
   );
+  const [seoTitle, setSeoTitle] = useState(seo?.title ?? "");
+  const [seoDescription, setSeoDescription] = useState(seo?.description ?? "");
 
   function updateQa(i: number, field: "q" | "a", value: string) {
     setQas((prev) => prev.map((r, j) => (j === i ? { ...r, [field]: value } : r)));
@@ -421,6 +573,18 @@ export default function ProductEditor() {
       <Badge tone="success">Automatic</Badge>
     ) : (
       <Badge>Not written</Badge>
+    );
+  }
+
+  function SeoSourceBadge({ src }: { src: "human" | "auto" | "outside" | "missing" }) {
+    return src === "human" ? (
+      <Badge tone="attention">Edited by you</Badge>
+    ) : src === "auto" ? (
+      <Badge tone="success">Automatic</Badge>
+    ) : src === "outside" ? (
+      <Badge tone="warning">Set outside this app</Badge>
+    ) : (
+      <Badge>Not set</Badge>
     );
   }
 
@@ -844,6 +1008,125 @@ export default function ProductEditor() {
             </BlockStack>
           </Form>
         </Card>
+
+        {seo?.unlocked ? (
+          <Card>
+            <Form method="post">
+              <input type="hidden" name="intent" value="seo" />
+              <input type="hidden" name="titleSuggestion" value={seo.titleSuggestion} />
+              <input type="hidden" name="descriptionSuggestion" value={seo.descriptionSuggestion} />
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Search listing (meta title and description)
+                </Text>
+                <Text as="p" tone="subdued">
+                  Generated by condensing this product's own text; nothing is
+                  written until you save, and anything a person wrote is never
+                  overwritten.
+                </Text>
+
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingSm">
+                    Meta title
+                  </Text>
+                  <SeoSourceBadge src={seo.titleSource} />
+                </InlineStack>
+                <TextField
+                  label="Meta title"
+                  labelHidden
+                  name="title"
+                  value={seoTitle}
+                  onChange={setSeoTitle}
+                  autoComplete="off"
+                  disabled={!seo.titleCanWrite}
+                  helpText={
+                    seo.titleCanWrite
+                      ? `${seoTitle.length} characters, aiming for under 60.`
+                      : "Set outside this app or edited by hand - protected from bulk passes."
+                  }
+                />
+                <InlineStack gap="200">
+                  <Button
+                    size="micro"
+                    disabled={!seo.titleCanWrite}
+                    onClick={() => setSeoTitle(seo.titleSuggestion)}
+                  >
+                    Generate
+                  </Button>
+                </InlineStack>
+
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingSm">
+                    Meta description
+                  </Text>
+                  <SeoSourceBadge src={seo.descriptionSource} />
+                </InlineStack>
+                {seo.descriptionSource === "missing" ? (
+                  <Text as="p" tone="subdued">
+                    This field is empty, so what search engines see is decided
+                    by your theme: most fall back to a cut of the description,
+                    some publish no description at all. Generate fills the
+                    field from this product's own text, so it stops depending
+                    on the theme.
+                  </Text>
+                ) : null}
+                <TextField
+                  label="Meta description"
+                  labelHidden
+                  name="description"
+                  value={seoDescription}
+                  onChange={setSeoDescription}
+                  multiline={3}
+                  autoComplete="off"
+                  disabled={!seo.descriptionCanWrite}
+                  helpText={
+                    seo.descriptionCanWrite
+                      ? `${seoDescription.length} characters, aiming for 140 to 160.`
+                      : "Set outside this app or edited by hand - protected from bulk passes."
+                  }
+                />
+                <InlineStack gap="200">
+                  <Button
+                    size="micro"
+                    disabled={!seo.descriptionCanWrite}
+                    onClick={() => setSeoDescription(seo.descriptionSuggestion)}
+                  >
+                    Generate
+                  </Button>
+                </InlineStack>
+
+                <InlineStack gap="200">
+                  <Button submit variant="primary" loading={busy}>
+                    Save
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Form>
+
+            {seo.titleCanRevert || seo.descriptionCanRevert ? (
+              <Box paddingBlockStart="300">
+                <Form method="post">
+                  <input type="hidden" name="intent" value="seo_revert" />
+                  {seo.titleCanRevert ? <input type="hidden" name="key" value="seo_title" /> : null}
+                  {seo.descriptionCanRevert ? (
+                    <input type="hidden" name="key" value="seo_description" />
+                  ) : null}
+                  <Button submit loading={busy} tone="critical">
+                    Revert to before the app
+                  </Button>
+                  <Box paddingBlockStart="100">
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Puts back exactly what these fields held before this app
+                      first wrote to them. Where that was nothing, the field
+                      goes back to empty and what search engines see is again
+                      up to your theme.
+                    </Text>
+                  </Box>
+                </Form>
+              </Box>
+            ) : null}
+          </Card>
+        ) : null}
 
         <Card>
           <BlockStack gap="200">

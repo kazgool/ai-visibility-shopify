@@ -18,7 +18,9 @@ export async function enqueue(
     | "extract_product"
     | "bulk_alt_text"
     | "crawler_check"
-    | "bulk_collections",
+    | "bulk_collections"
+    | "seo_queue_build"
+    | "seo_apply",
   payload: Record<string, unknown>,
 ) {
   const u = await workerUtils();
