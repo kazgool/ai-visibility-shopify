@@ -17,6 +17,35 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ## Unreleased
 
 ### Fixed
+- The free-tier cap (FREE-TIER-SPEC §3-4: three merchant-chosen products,
+  automatic freshness excluded) was enforced only at the `/app` route
+  entrance, never in the background pipeline. `poll_changes` (every 15
+  minutes), `sweep_missing` (daily) and the `products/create`/`products/update`
+  webhooks all queued `extract_product` for every changed or missing product
+  on every installed shop regardless of plan, so an unsubscribed shop's whole
+  catalogue was processed automatically within a day or two, and a shop that
+  cancelled but stayed installed kept being refreshed forever for free.
+  Fixed with one authority in `billing.server.ts`, in two forms because the
+  cost differs by orders of magnitude: `mayProcessAutomatically(shop,
+  graphql)` is the authoritative, Shopify-backed check (comped or an active
+  subscription), called once per shop per pass in `poll_changes` and
+  `sweep_missing` before any job is queued - an unsubscribed shop is skipped
+  before the catalogue is even read, and the poll cursor is left unadvanced
+  so the window is picked back up correctly if the shop later subscribes.
+  `mayProcessAutomaticallyCached(shop)` is the cheap backstop (the `comped`
+  Setting row plus the cached `Shop.plan` column, no Admin API call), run
+  inside `extract_product` itself - the single choke point every automatic
+  path funnels through - to catch the webhook path (which has no loop to
+  gate) and anything already queued before a shop's access changed. Skips
+  are logged once per shop per pass, naming the shop and the reason. Nothing
+  written by a prior pass is touched or withdrawn; the shop simply stops
+  receiving new automatic writes. The explicit "process this product" action
+  on the Products screen (the free tier itself) calls `extractOneProduct`
+  directly from the route action, never through the job queue, so it is
+  unaffected. `bulk_extract` and `bulk_alt_text` were checked separately and
+  were already gated correctly: their route action (`app._index.tsx`) calls
+  `hasPaidAccess` before enqueueing either job.
+  Tests added in `app/services/__tests__/billing.server.test.ts`.
 - `llms.txt` and `agents.md` now publish the official profile URLs from the
   Business screen, matching the per-product mirror's `## Store` section -
   previously the same information was published inconsistently across the
@@ -84,6 +113,30 @@ Tests extended in `app/services/__tests__/mirror.server.test.ts` and
   renderer (`llms-txt.server.ts`) backs both rather than inventing a
   difference that does not exist. Linked from a new Diagnostics card. Tests
   in `app/services/__tests__/llms-txt.server.test.ts`.
+- SEO unlock (`BILLING-SPEC.md` §5.2): a second, unrelated access-code switch
+  on the plans screen, `SEO_UNLOCK_KEY` compared in constant time exactly like
+  `MASTER_KEY`/`checkMasterKey`, entered by the operator during a paid setup
+  engagement, never a merchant-facing feature (no badge, no upgrade copy).
+  `checkSeoUnlockKey`, `grantSeoUnlock` and `isSeoUnlocked` in
+  `billing.server.ts` follow the existing comp pattern (`Setting("seo_unlocked")`).
+  `syncSeoUnlockMetafield` mirrors that flag to the `seo_unlocked` shop
+  metafield (new definition in `metafields.server.ts`, `PUBLIC_READ`), the
+  same way `business.server.ts` and `theme-scan.server.ts` hand a database
+  value to Liquid. **Extension change**: the theme block reads
+  `shop.metafields['$app'].seo_unlocked.value` and, only when it is true,
+  now also emits four schema.org pieces that a real-store audit found
+  missing, computed at render time from live data (no job, no new
+  metafield): `BreadcrumbList` on product pages (home page plus the
+  collection the visitor arrived through, or the product's first collection
+  as a fallback); `WebSite` + `SearchAction` on the home page only
+  (`template.name == 'index'`); `priceValidUntil` (today plus one year,
+  computed on every render so it can never be a stored date in the past)
+  and `itemCondition` (`https://schema.org/NewCondition`) on every `Offer`
+  and `AggregateOffer`. None of the four existed in any form before, and
+  extend mode still never emits a second Product node. Requires
+  `npx shopify app deploy` to take effect - this entry is not server-only.
+  Tests in `app/services/__tests__/billing.server.test.ts`
+  (`checkSeoUnlockKey`: correct key, wrong key, empty candidate, unset env).
 
 ### Changed
 - "Plain text" column and links renamed to "What AI reads" on the products

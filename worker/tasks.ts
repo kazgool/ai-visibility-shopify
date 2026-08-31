@@ -8,6 +8,10 @@ import type { Task } from "graphile-worker";
 import db from "../app/db.server";
 import { extractOneProduct, runBulkExtract } from "../app/services/extract.server";
 import { adminGraphql } from "../app/services/admin.server";
+import {
+  mayProcessAutomatically,
+  mayProcessAutomaticallyCached,
+} from "../app/services/billing.server";
 import { fetchCollections, writeCollections } from "../app/services/collections.server";
 import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
@@ -78,8 +82,33 @@ export const bulk_extract: Task = async (payload, helpers) => {
   }
 };
 
+/**
+ * Every automatic path - both webhooks and, before this shop-level check
+ * runs, anything already queued by the poll or the sweep - funnels through
+ * this one task, which makes it the backstop for FREE-TIER-SPEC §3: a shop
+ * with no paid access must not get its catalogue kept fresh automatically.
+ *
+ * The check here is the cheap, cached form (`mayProcessAutomaticallyCached`)
+ * on purpose: this task runs once per product, so an Admin API call here
+ * would mean one extra call per product on a large catalogue. The
+ * authoritative, API-backed check already ran once per shop in
+ * `poll_changes` and `sweep_missing` before any job reached this queue; this
+ * is only a net for the webhook path, which has no loop to gate, and for
+ * jobs already queued when a shop's access changed underneath them.
+ */
 export const extract_product: Task = async (payload, helpers) => {
   const { shopId, productGid } = payload as { shopId: string; productGid: string };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) return;
+
+  if (!(await mayProcessAutomaticallyCached(shop))) {
+    helpers.logger.info(
+      `extract_product ${shop.domain}: skipped, no active subscription or comp`,
+    );
+    return;
+  }
+
   const outcome = await extractOneProduct(shopId, productGid);
   helpers.logger.info(
     `extract_product ${productGid}: wrote ${outcome.written.join(",") || "nothing"}` +
@@ -226,6 +255,20 @@ export const poll_changes: Task = async (_payload, helpers) => {
 
     try {
       const graphql = await adminGraphql(shop.domain);
+
+      // FREE-TIER-SPEC §3: automatic freshness is not free. Checked here,
+      // once per shop per run, before any job is queued - not inside
+      // extract_product, where it would cost one Admin API call per
+      // product. The cursor is deliberately left unadvanced: the next run,
+      // once the shop is paid again, picks the window back up from here
+      // rather than losing whatever changed while it was skipped.
+      if (!(await mayProcessAutomatically(shop, graphql))) {
+        helpers.logger.info(
+          `poll_changes ${shop.domain}: skipped, no active subscription or comp`,
+        );
+        continue;
+      }
+
       let cursor: string | null = null;
       let queued = 0;
 
@@ -281,6 +324,17 @@ export const sweep_missing: Task = async (_payload, helpers) => {
   for (const shop of shops) {
     try {
       const graphql = await adminGraphql(shop.domain);
+
+      // Same rule as poll_changes: FREE-TIER-SPEC §3 excludes the sweep
+      // from the free tier, checked once per shop before the (expensive)
+      // catalogue read even starts.
+      if (!(await mayProcessAutomatically(shop, graphql))) {
+        helpers.logger.info(
+          `sweep_missing ${shop.domain}: skipped, no active subscription or comp`,
+        );
+        continue;
+      }
+
       const dictionary = await dictionaryFor(shop.id);
       const extraStopwords = await extraStopwordsFor(shop.id);
       const products = await fetchAllProducts(graphql);

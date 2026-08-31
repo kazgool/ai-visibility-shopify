@@ -6,6 +6,8 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import db from "../db.server";
+import type { GraphqlFn } from "./admin.server";
+import { NAMESPACE } from "./facts.server";
 
 export { PLANS, type PlanHandle } from "./plans";
 import { PLANS, type PlanHandle } from "./plans";
@@ -50,6 +52,98 @@ export async function isComped(_shopDomain: string, shopId?: string): Promise<bo
     where: { shopId_key: { shopId, key: COMP_KEY } },
   });
   return Boolean(row?.value);
+}
+
+/**
+ * A second, unrelated switch: a capability inside the published app, turned
+ * on per shop by a key that only the operator has, entered during a paid
+ * setup engagement. The merchant never types it, and unlike `checkMasterKey`
+ * this grants no billing bypass and no plan - it only lets the storefront
+ * block emit a few additional schema.org properties (see the theme block).
+ *
+ * Same mechanism as `checkMasterKey` on purpose: a single secret, compared in
+ * constant time so the field cannot be used to guess it, never logged, never
+ * hardcoded, never displayed anywhere in the interface. The key lives only in
+ * `fly secrets` / `.env`.
+ */
+export function checkSeoUnlockKey(candidate: string): boolean {
+  const expected = process.env.SEO_UNLOCK_KEY ?? "";
+  if (expected === "" || candidate === "") return false;
+
+  const a = createHash("sha256").update(candidate.trim()).digest();
+  const b = createHash("sha256").update(expected.trim()).digest();
+  return timingSafeEqual(a, b);
+}
+
+const SEO_UNLOCK_KEY_SETTING = "seo_unlocked";
+
+/** Same write pattern as `grantComp`: a per-shop Setting row, no expiry. */
+export async function grantSeoUnlock(shopId: string, reason: string) {
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: SEO_UNLOCK_KEY_SETTING } },
+    create: { shopId, key: SEO_UNLOCK_KEY_SETTING, value: reason },
+    update: { value: reason },
+  });
+}
+
+/** Does this shop have the seo_unlocked switch on? */
+export async function isSeoUnlocked(shopId?: string): Promise<boolean> {
+  if (!shopId) return false;
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SEO_UNLOCK_KEY_SETTING } },
+  });
+  return Boolean(row?.value);
+}
+
+const SEO_UNLOCK_SHOP_ID = `#graphql
+  query SeoUnlockShopId { shop { id } }
+`;
+
+const SET_SEO_UNLOCK_METAFIELD = `#graphql
+  mutation SetShopSeoUnlock($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      userErrors { field message }
+    }
+  }
+`;
+
+/**
+ * Mirror the `seo_unlocked` Setting row to a shop metafield with public
+ * storefront read access - the same pattern `business.server.ts` and
+ * `theme-scan.server.ts` use to hand a database value to Liquid, which has no
+ * way to read our database directly. Called right after `grantSeoUnlock`
+ * succeeds; there is no other path that changes this flag, so there is no
+ * other place that needs to call it.
+ */
+export async function syncSeoUnlockMetafield(
+  shopId: string,
+  graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
+): Promise<void> {
+  const unlocked = await isSeoUnlocked(shopId);
+
+  const idRes = await graphql(SEO_UNLOCK_SHOP_ID);
+  const idJson = await idRes.json();
+  const shopGid = idJson.data?.shop?.id;
+  if (!shopGid) throw new Error("Could not resolve shop id");
+
+  const res = await graphql(SET_SEO_UNLOCK_METAFIELD, {
+    variables: {
+      metafields: [
+        {
+          ownerId: shopGid,
+          namespace: NAMESPACE,
+          key: "seo_unlocked",
+          type: "boolean",
+          value: unlocked ? "true" : "false",
+        },
+      ],
+    },
+  });
+  const json = await res.json();
+  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(`metafieldsSet (shop seo_unlocked): ${JSON.stringify(errors)}`);
+  }
 }
 
 const ACTIVE_SUBSCRIPTIONS = `#graphql
@@ -118,6 +212,71 @@ export async function hasPaidAccess(
   if (await isComped(shopDomain, shopId)) return true;
   const subscription = await activeSubscription(graphql);
   return Boolean(subscription);
+}
+
+/**
+ * Same query as `activeSubscription`, for callers whose graphql function
+ * already returns parsed data rather than a `Response`. The worker's
+ * `adminGraphql` (admin.server.ts) is the case: it parses the response and
+ * throttles internally, so `await graphql(...)` is the data, not something
+ * with a `.json()` method.
+ */
+async function activeSubscriptionDirect(graphql: GraphqlFn): Promise<Subscription | null> {
+  const data = await graphql<{
+    currentAppInstallation?: { activeSubscriptions?: Subscription[] };
+  }>(ACTIVE_SUBSCRIPTIONS);
+  const subs = data?.currentAppInstallation?.activeSubscriptions ?? [];
+  return subs.find((s) => s.status === "ACTIVE") ?? null;
+}
+
+/**
+ * The single authority for whether a shop may be processed automatically -
+ * by the poll, the sweep, or a webhook - as opposed to a merchant explicitly
+ * asking for it. FREE-TIER-SPEC §3 lists "automatic freshness (webhooks, the
+ * poll, the weekly sweep)" as explicitly not free: a shop with no paid
+ * access must not have its catalogue kept fresh for nothing.
+ *
+ * This is the authoritative form: it asks Shopify directly, the same call
+ * `hasPaidAccess` makes for a live request. It costs one Admin API call, so
+ * it belongs where it runs once per shop per pass - `poll_changes` and
+ * `sweep_missing` - never once per product. A comped shop never reaches the
+ * API call at all.
+ *
+ * See `mayProcessAutomaticallyCached` for the cheap counterpart used as a
+ * per-product backstop.
+ */
+export async function mayProcessAutomatically(
+  shop: { id: string; domain: string },
+  graphql: GraphqlFn,
+): Promise<boolean> {
+  if (await isComped(shop.domain, shop.id)) return true;
+  const subscription = await activeSubscriptionDirect(graphql);
+  return Boolean(subscription);
+}
+
+/**
+ * The cheap counterpart to `mayProcessAutomatically`: no Admin API call, just
+ * the comped `Setting` row and the cached `Shop.plan` column. Used in
+ * `extract_product`, the single choke point every automatic path funnels
+ * through - the webhooks have no loop of their own to gate, and this also
+ * catches anything already queued before a shop's access changed.
+ *
+ * The trap: `Shop.plan` is refreshed only when a merchant opens the app
+ * (`app.tsx`'s loader), so it goes stale on a shop that cancels and never
+ * returns - it would keep reading the last plan it saw forever. That is
+ * exactly why this is a backstop and not the authority: `poll_changes` and
+ * `sweep_missing` gate with the live check first, so an abandoned shop stops
+ * being queued at all, and this function only needs to catch what slips
+ * through - the webhook path, and jobs queued before this shop's access
+ * changed.
+ */
+export async function mayProcessAutomaticallyCached(shop: {
+  id: string;
+  domain: string;
+  plan: string;
+}): Promise<boolean> {
+  if (await isComped(shop.domain, shop.id)) return true;
+  return shop.plan !== "none";
 }
 
 export function planFromName(name: string): PlanHandle | null {

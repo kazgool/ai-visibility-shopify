@@ -154,6 +154,20 @@ Three ways to give the app away, in order of preference:
 A comped shop skips the Shopify subscription check entirely; the plans
 screen says so plainly rather than pretending a plan exists.
 
+## 5.2 SEO unlock (`SEO_UNLOCK_KEY`, unrelated to billing)
+
+A second, separate switch, same mechanism as the access code above but a
+different secret and a different effect: it grants no plan and no comp, it
+only lets the storefront block emit a few additional schema.org properties
+(BreadcrumbList, WebSite/SearchAction, priceValidUntil, itemCondition - see
+the theme block for detail). Turned on per shop, during a paid setup
+engagement, by a "Have a setup code?" link on the plans screen next to the
+access code one - deliberately as quiet, no badge, no explanation of what it
+does. A correct code writes `Setting("seo_unlocked")` and mirrors it to the
+`seo_unlocked` shop metafield so the Liquid block can read it. The key lives
+only in `fly secrets` / `.env`, is never shown anywhere in the interface, and
+is compared in constant time.
+
 ## 6. Data model
 
 `Shop.plan` holds the handle (`none` | `standard` | `high_volume`), plus

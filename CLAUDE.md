@@ -95,6 +95,9 @@ over memory — APIs moved fast in 2025–2026.
 - He runs PowerShell commands and clicks UIs; **you write all files and
   code**. Give him commands one step at a time, exact and copy-pasteable,
   and tell him which terminal (dev running vs free).
+- **Always start a command block with `cd F:\ai-visibility-shopify`.** He
+  works in several PowerShell windows at once, so no block may assume the
+  working directory it inherited from an earlier one.
 - Explain what a change does and why before or as you make it — he
   supervises, catches real bugs (he found the self-feed loop and the
   audience semantics), and decides product questions. Bring him decisions,

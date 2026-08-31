@@ -69,6 +69,7 @@ const VARIANT_DEFINITIONS = [
 const SHOP_DEFINITIONS = [
   { key: "business", type: "json", name: "Business info" },
   { key: "theme_scan", type: "json", name: "Theme scan" },
+  { key: "seo_unlocked", type: "boolean", name: "SEO unlock" },
 ] as const;
 
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {

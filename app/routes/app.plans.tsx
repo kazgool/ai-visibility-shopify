@@ -22,10 +22,13 @@ import { PLANS, type PlanHandle } from "../services/plans";
 import {
   activeSubscription,
   checkMasterKey,
+  checkSeoUnlockKey,
   grantComp,
+  grantSeoUnlock,
   isComped,
   planFromName,
   startSubscription,
+  syncSeoUnlockMetafield,
 } from "../services/billing.server";
 import { extractProduct } from "../engine";
 import { cleanOutput } from "../engine/normalize";
@@ -96,6 +99,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     throw redirect(`/app${new URL(request.url).search}`);
   }
 
+  // Setup code: an unrelated switch, entered by the operator during a paid
+  // setup engagement. Grants no plan and no billing bypass.
+  if (form.get("intent") === "seo_unlock") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return { error: "Shop not found" };
+
+    if (!checkSeoUnlockKey(String(form.get("seoCode") ?? ""))) {
+      return { seoCodeError: "That code is not valid." };
+    }
+    await grantSeoUnlock(shop.id, `code:${new Date().toISOString()}`);
+    await syncSeoUnlockMetafield(shop.id, admin.graphql);
+    throw redirect(`/app${new URL(request.url).search}`);
+  }
+
   const plan = String(form.get("plan")) as PlanHandle;
   if (!PLANS[plan]) return { error: "Unknown plan" };
 
@@ -138,13 +155,20 @@ export default function Plans() {
     renewsAt: string | null;
   };
   const result = useActionData<typeof action>() as
-    | { codeError?: string; error?: string; confirmationUrl?: string }
+    | {
+        codeError?: string;
+        seoCodeError?: string;
+        error?: string;
+        confirmationUrl?: string;
+      }
     | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [showCode, setShowCode] = useState(Boolean(result?.codeError));
   // Polaris TextField is controlled; without state it cannot be typed into.
   const [code, setCode] = useState("");
+  const [showSeoCode, setShowSeoCode] = useState(Boolean(result?.seoCodeError));
+  const [seoCode, setSeoCode] = useState("");
 
   // Shopify's confirmation page refuses to render inside the admin iframe, so
   // the whole browser window has to go there. Without this the merchant sees
@@ -380,6 +404,37 @@ export default function Plans() {
             )}
           </Box>
         ) : null}
+
+        <Box paddingBlockStart="200">
+          {showSeoCode ? (
+            <Card>
+              <Form method="post">
+                <input type="hidden" name="intent" value="seo_unlock" />
+                <BlockStack gap="300">
+                  <TextField
+                    label="Setup code"
+                    name="seoCode"
+                    value={seoCode}
+                    onChange={setSeoCode}
+                    autoComplete="off"
+                    error={result?.seoCodeError}
+                    helpText="If you were given a code, enter it here."
+                  />
+                  <InlineStack gap="200">
+                    <Button submit variant="primary" loading={busy}>
+                      Apply code
+                    </Button>
+                    <Button onClick={() => setShowSeoCode(false)}>Cancel</Button>
+                  </InlineStack>
+                </BlockStack>
+              </Form>
+            </Card>
+          ) : (
+            <Button variant="plain" onClick={() => setShowSeoCode(true)}>
+              Have a setup code?
+            </Button>
+          )}
+        </Box>
       </BlockStack>
     </Page>
   );
