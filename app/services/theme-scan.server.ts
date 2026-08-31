@@ -10,6 +10,43 @@
 import db from "../db.server";
 import { NAMESPACE } from "./facts.server";
 
+/** One top-level JSON-LD node, after @graph is flattened. */
+export type LdNode = {
+  types: string[];
+  id: string;
+  /**
+   * Only present (and only meaningful) on a Product node: true when that
+   * node carries its own nested `aggregateRating` property. AggregateRating
+   * is never a top-level node on this platform, so this is how its presence
+   * is actually determined - see deriveMissingReasons.
+   */
+  hasAggregateRating?: boolean;
+};
+
+export type PageScan = {
+  url: string;
+  nodes: LdNode[];
+  passwordProtected: boolean;
+  /** The canonical URL the page declares, null when no canonical tag exists. */
+  canonical?: string | null;
+  /** True when a robots meta tag on the page contains "noindex". */
+  noindex?: boolean;
+};
+
+export type RobotsCheck = {
+  fetched: boolean;
+  content: string;
+  /** Disallow lines whose path prefix matches one of the scanned pages. */
+  disallowsRelevant: string[];
+};
+
+export type ConflictEntry = {
+  type: string;
+  count: number;
+  /** True when one of the repeated nodes carries an @id our own block sets. */
+  weEmitOne: boolean;
+};
+
 export type ThemeScanResult = {
   hasProductLd: boolean;
   nodeCount: number;
@@ -20,6 +57,36 @@ export type ThemeScanResult = {
   checkedUrl: string;
   /** The storefront answered with the password page: nothing can be read. */
   passwordProtected?: boolean;
+
+  /** Part 1/2: full page scans, product and home. */
+  product?: PageScan;
+  home?: PageScan;
+  productConflicts?: ConflictEntry[];
+  homeConflicts?: ConflictEntry[];
+
+  /** Part 5: weekly-watch history, appended by the SEO screen and the job. */
+  watchChanges?: { page: "product" | "home"; nodeType: string; detectedAt: string }[];
+
+  /**
+   * True when the scanned product page's own Product node (theme's or ours)
+   * carries a nested aggregateRating. Determined from what the page actually
+   * renders, not guessed - see extractLdNodes/scanPage.
+   */
+  hasAggregateRating?: boolean;
+  /** True when the scanned page(s) carry a top-level FAQPage node. */
+  hasFAQPage?: boolean;
+
+  /** Crawl tab: robots.txt as served, and canonical/noindex on each scanned page. */
+  robots?: RobotsCheck;
+
+  /** Persisted so every tab reads the same values without recomputing. */
+  missingReasons?: {
+    nodeType: string;
+    emitted: boolean;
+    reason: string | null;
+    fixScreen: string | null;
+  }[];
+  richResultsUrl?: string;
 };
 
 const LD_BLOCK = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -41,14 +108,135 @@ function collectNodes(parsed: any): any[] {
 }
 
 /**
- * Fetch a product page as a plain client and report what structured data the
- * theme already publishes. Deliberately not authenticated: this is what a
- * crawler sees.
+ * Every top-level JSON-LD node found in a page's HTML, `@graph` flattened.
+ * Malformed JSON in one script block is skipped, never thrown - a broken
+ * block is a finding to report, not a reason to fail the whole scan.
  */
-export async function scanThemeForProductLd(
-  productUrl: string,
+export function extractLdNodes(html: string): LdNode[] {
+  const nodes: LdNode[] = [];
+  for (const match of html.matchAll(LD_BLOCK)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(match[1].trim());
+    } catch {
+      continue;
+    }
+    for (const node of collectNodes(parsed)) {
+      const types = typesOf(node);
+      if (types.length === 0) continue;
+      nodes.push({
+        types,
+        id: String(node["@id"] ?? ""),
+        // AggregateRating lives nested inside a Product node on this
+        // platform (never as its own top-level node), so this is the only
+        // place its presence can be read off the page. Key omitted entirely
+        // when absent, so existing shape-equality checks are unaffected.
+        ...(node && typeof node === "object" && node.aggregateRating
+          ? { hasAggregateRating: true }
+          : {}),
+      });
+    }
+  }
+  return nodes;
+}
+
+/**
+ * An @id our own block would have set. The extension sets `#product` on the
+ * Product node and `#collection` on the CollectionPage node; it never sets
+ * an @id on the Organization node it emits itself (only when extending the
+ * theme's own). Recognising our suffix is how a conflict can name us as one
+ * of the two sources without guessing at the other.
+ */
+export function isOurNodeId(id: string): boolean {
+  return id.endsWith("#product") || id.endsWith("#collection");
+}
+
+/**
+ * Two top-level nodes of the same @type on one page is a real defect: a
+ * search engine or assistant has to choose between them. Report every
+ * repeated type, and say plainly when one of the repeats is ours.
+ */
+export function detectConflicts(nodes: LdNode[]): ConflictEntry[] {
+  const byType = new Map<string, LdNode[]>();
+  for (const node of nodes) {
+    for (const type of node.types) {
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type)!.push(node);
+    }
+  }
+  const conflicts: ConflictEntry[] = [];
+  for (const [type, list] of byType) {
+    if (list.length < 2) continue;
+    conflicts.push({
+      type,
+      count: list.length,
+      weEmitOne: list.some((n) => isOurNodeId(n.id)),
+    });
+  }
+  return conflicts.sort((a, b) => a.type.localeCompare(b.type));
+}
+
+const CANONICAL_TAG = /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i;
+const CANONICAL_TAG_REVERSED = /<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i;
+const ROBOTS_META_TAG = /<meta[^>]+name=["']robots["'][^>]+content=["']([^"']*)["']/i;
+const ROBOTS_META_TAG_REVERSED = /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']robots["']/i;
+
+/** The canonical URL a page declares, or null when it has no canonical tag. */
+export function extractCanonical(html: string): string | null {
+  const match = CANONICAL_TAG.exec(html) ?? CANONICAL_TAG_REVERSED.exec(html);
+  return match ? match[1] : null;
+}
+
+/**
+ * True when the page carries a robots meta tag whose content includes
+ * "noindex" - the single most damaging finding this screen can surface, so
+ * it is read directly off the page rather than inferred.
+ */
+export function extractNoindex(html: string): boolean {
+  const match = ROBOTS_META_TAG.exec(html) ?? ROBOTS_META_TAG_REVERSED.exec(html);
+  if (!match) return false;
+  return /noindex/i.test(match[1]);
+}
+
+const DISALLOW_LINE = /^\s*Disallow:\s*(\S+)\s*$/gim;
+
+/**
+ * Fetch robots.txt as actually served by the storefront and report which of
+ * its Disallow rules would block one of the scanned pages. A plain prefix
+ * match: robots.txt rules are path prefixes, not full expressions, so this
+ * is what actually determines a block for the simple cases this screen
+ * covers. Never throws - an unreachable robots.txt is a finding, not a
+ * failure.
+ */
+export async function fetchRobotsCheck(
+  origin: string,
+  scannedPaths: string[],
+): Promise<RobotsCheck> {
+  try {
+    const res = await fetch(`${origin}/robots.txt`, {
+      headers: { "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)" },
+    });
+    if (!res.ok) {
+      return { fetched: false, content: "", disallowsRelevant: [] };
+    }
+    const content = await res.text();
+    const disallows: string[] = [];
+    for (const match of content.matchAll(DISALLOW_LINE)) {
+      disallows.push(match[1]);
+    }
+    const disallowsRelevant = disallows.filter((path) =>
+      scannedPaths.some((scanned) => path !== "" && scanned.startsWith(path)),
+    );
+    return { fetched: true, content, disallowsRelevant };
+  } catch {
+    return { fetched: false, content: "", disallowsRelevant: [] };
+  }
+}
+
+async function fetchWithPasswordUnlock(
+  url: string,
   storefrontPassword?: string | null,
-): Promise<ThemeScanResult> {
+): Promise<string> {
   const headers: Record<string, string> = {
     // Identify honestly; some merchants log user agents.
     "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)",
@@ -60,7 +248,7 @@ export async function scanThemeForProductLd(
   // the merchant gave us the password we unlock a session for the scan; the
   // crawler check reports the protection either way.
   if (storefrontPassword) {
-    const origin = new URL(productUrl).origin;
+    const origin = new URL(url).origin;
     const unlock = await fetch(`${origin}/password`, {
       method: "POST",
       headers: {
@@ -78,12 +266,43 @@ export async function scanThemeForProductLd(
     if (cookie) headers.Cookie = cookie.split(";")[0];
   }
 
-  const res = await fetch(productUrl, { headers, redirect: "follow" });
+  const res = await fetch(url, { headers, redirect: "follow" });
+  return res.text();
+}
 
-  const html = await res.text();
+/** Fetch one page as a plain client and report every JSON-LD node found. */
+export async function scanPage(
+  url: string,
+  storefrontPassword?: string | null,
+): Promise<PageScan> {
+  const html = await fetchWithPasswordUnlock(url, storefrontPassword);
 
-  // A password page is not a theme finding — say so plainly.
+  // A password page is not a theme finding - say so plainly.
   if (/name=["']password["']/i.test(html) && !/ld\+json/i.test(html)) {
+    return { url, nodes: [], passwordProtected: true, canonical: null, noindex: false };
+  }
+
+  return {
+    url,
+    nodes: extractLdNodes(html),
+    passwordProtected: false,
+    canonical: extractCanonical(html),
+    noindex: extractNoindex(html),
+  };
+}
+
+/**
+ * Fetch a product page as a plain client and report what structured data the
+ * theme already publishes. Deliberately not authenticated: this is what a
+ * crawler sees.
+ */
+export async function scanThemeForProductLd(
+  productUrl: string,
+  storefrontPassword?: string | null,
+): Promise<ThemeScanResult> {
+  const page = await scanPage(productUrl, storefrontPassword);
+
+  if (page.passwordProtected) {
     return {
       hasProductLd: false,
       nodeCount: 0,
@@ -92,42 +311,239 @@ export async function scanThemeForProductLd(
       organizationEmitters: [],
       checkedUrl: productUrl,
       passwordProtected: true,
+      product: page,
     };
   }
-  const emitters: string[] = [];
-  const organizationEmitters: string[] = [];
-  let nodeCount = 0;
 
-  for (const match of html.matchAll(LD_BLOCK)) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(match[1].trim());
-    } catch {
-      continue; // A theme with broken JSON-LD is a finding in itself, later.
-    }
+  const productNodes = page.nodes.filter((n) => n.types.includes("Product"));
+  const orgNodes = page.nodes.filter((n) => n.types.includes("Organization"));
 
-    for (const node of collectNodes(parsed)) {
-      const types = typesOf(node);
-      const id = String(node["@id"] ?? "");
-      if (types.includes("Product")) {
-        nodeCount += 1;
-        if (id) emitters.push(id);
-      }
-      if (types.includes("Organization")) {
-        if (id) organizationEmitters.push(id);
-        else organizationEmitters.push("");
-      }
-    }
+  return {
+    hasProductLd: productNodes.length > 0,
+    nodeCount: productNodes.length,
+    emitters: productNodes.map((n) => n.id).filter(Boolean),
+    hasOrganizationLd: orgNodes.length > 0,
+    organizationEmitters: orgNodes.map((n) => n.id),
+    checkedUrl: productUrl,
+    product: page,
+    productConflicts: detectConflicts(page.nodes),
+    hasAggregateRating: productNodes.some((n) => n.hasAggregateRating === true),
+    hasFAQPage: page.nodes.some((n) => n.types.includes("FAQPage")),
+  };
+}
+
+/**
+ * Scan both a product page and the home page. They emit different things -
+ * WebSite with SearchAction is home-page only - so a single scan would
+ * report the home page's nodes as missing from products, or the reverse.
+ */
+export async function scanStorefront(
+  productUrl: string,
+  homeUrl: string,
+  storefrontPassword?: string | null,
+): Promise<ThemeScanResult> {
+  const base = await scanThemeForProductLd(productUrl, storefrontPassword);
+  if (base.passwordProtected) return base;
+
+  const home = await scanPage(homeUrl, storefrontPassword);
+
+  // Crawl tab (PRD - EXPERIENCE-PRD §6): cheap because both pages are
+  // already fetched above; robots.txt is the one extra request, done once.
+  let robots: RobotsCheck | undefined;
+  try {
+    const origin = new URL(homeUrl).origin;
+    const productPath = new URL(productUrl).pathname;
+    const homePath = new URL(homeUrl).pathname;
+    robots = await fetchRobotsCheck(origin, [productPath, homePath]);
+  } catch {
+    robots = { fetched: false, content: "", disallowsRelevant: [] };
   }
 
   return {
-    hasProductLd: nodeCount > 0,
-    nodeCount,
-    emitters,
-    hasOrganizationLd: organizationEmitters.length > 0,
-    organizationEmitters,
-    checkedUrl: productUrl,
+    ...base,
+    home,
+    homeConflicts: home.passwordProtected ? undefined : detectConflicts(home.nodes),
+    hasFAQPage: base.hasFAQPage || home.nodes.some((n) => n.types.includes("FAQPage")),
+    robots,
   };
+}
+
+// --- Part 3: why the missing ones are missing -----------------------------
+
+export type MissingReasonInput = {
+  embedActive: boolean;
+  mode: "extend" | "full" | "unknown";
+  hasFacts: boolean;
+  hasSummary: boolean;
+  hasFitFor: boolean;
+  hasReturnDays: boolean;
+  hasDeliveryTime: boolean;
+  /** null when the scanned page could not be read at all (e.g. password wall). */
+  hasRating: boolean | null;
+  hasCollectionQuestions: boolean | null;
+  hasSocialProfiles: boolean;
+  seoUnlocked: boolean;
+  isCollectionPage: boolean;
+};
+
+export type MissingReason = {
+  nodeType: string;
+  emitted: boolean;
+  reason: string | null;
+  fixScreen: string | null;
+};
+
+/**
+ * For each node type the extension is capable of emitting, say whether it is
+ * emitted and, when not, the concrete reason - derived from real state, not
+ * a static checklist. Read against ai-visibility.liquid's own conditions.
+ */
+export function deriveMissingReasons(input: MissingReasonInput): MissingReason[] {
+  const reasons: MissingReason[] = [];
+
+  if (!input.embedActive) {
+    return [
+      "Product",
+      "Organization",
+      "WebSite/SearchAction",
+      "BreadcrumbList",
+      "CollectionPage",
+      "FAQPage",
+    ].map((nodeType) => ({
+      nodeType,
+      emitted: false,
+      reason: "The app embed is not active in the theme.",
+      fixScreen: "/app/diagnostics",
+    }));
+  }
+
+  // Product node: full mode emits unconditionally; extend mode only when
+  // there are facts or a generated summary to add.
+  if (input.mode === "full") {
+    reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
+  } else if (input.hasFacts || input.hasSummary) {
+    reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
+  } else {
+    reasons.push({
+      nodeType: "Product",
+      emitted: false,
+      reason: "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.",
+      fixScreen: "/app/products",
+    });
+  }
+
+  // Organization / sameAs.
+  reasons.push(
+    input.hasSocialProfiles
+      ? { nodeType: "Organization", emitted: true, reason: null, fixScreen: null }
+      : {
+          nodeType: "Organization",
+          emitted: false,
+          reason: "No store social profile URLs are filled in on the Business screen.",
+          fixScreen: "/app/business",
+        },
+  );
+
+  // WebSite + SearchAction, home page only, gated on seo_unlocked.
+  reasons.push(
+    input.seoUnlocked
+      ? { nodeType: "WebSite/SearchAction", emitted: true, reason: null, fixScreen: null }
+      : {
+          nodeType: "WebSite/SearchAction",
+          emitted: false,
+          reason: "This property is part of the operator-configured SEO module, not yet enabled for this shop.",
+          fixScreen: null,
+        },
+  );
+
+  // BreadcrumbList, product page only, gated on seo_unlocked.
+  reasons.push(
+    input.seoUnlocked
+      ? { nodeType: "BreadcrumbList", emitted: true, reason: null, fixScreen: null }
+      : {
+          nodeType: "BreadcrumbList",
+          emitted: false,
+          reason: "This property is part of the operator-configured SEO module, not yet enabled for this shop.",
+          fixScreen: null,
+        },
+  );
+
+  // AggregateRating - read directly off the scanned page (it is nested
+  // inside the Product node, never a top-level node of its own).
+  if (input.hasRating === true) {
+    reasons.push({ nodeType: "AggregateRating", emitted: true, reason: null, fixScreen: null });
+  } else if (input.hasRating === null) {
+    reasons.push({
+      nodeType: "AggregateRating",
+      emitted: false,
+      reason: "Could not be determined - the last scan could not read this page.",
+      fixScreen: "/app/diagnostics",
+    });
+  } else {
+    reasons.push({
+      nodeType: "AggregateRating",
+      emitted: false,
+      reason: "The last scan found no rating on this product's page - no review app has written rating metafields for it yet.",
+      fixScreen: null,
+    });
+  }
+
+  // hasMerchantReturnPolicy - depends on Business screen return window.
+  reasons.push(
+    input.hasReturnDays
+      ? { nodeType: "MerchantReturnPolicy", emitted: true, reason: null, fixScreen: null }
+      : {
+          nodeType: "MerchantReturnPolicy",
+          emitted: false,
+          reason: "The return window is empty on the Business screen.",
+          fixScreen: "/app/business",
+        },
+  );
+
+  // OfferShippingDetails - depends on Business screen delivery time.
+  reasons.push(
+    input.hasDeliveryTime
+      ? { nodeType: "OfferShippingDetails", emitted: true, reason: null, fixScreen: null }
+      : {
+          nodeType: "OfferShippingDetails",
+          emitted: false,
+          reason: "Delivery time is empty, or marked as varying, on the Business screen.",
+          fixScreen: "/app/business",
+        },
+  );
+
+  // CollectionPage / FAQPage, only relevant on a collection page.
+  if (input.isCollectionPage) {
+    reasons.push(
+      input.hasSummary
+        ? { nodeType: "CollectionPage", emitted: true, reason: null, fixScreen: null }
+        : {
+            nodeType: "CollectionPage",
+            emitted: false,
+            reason: "This collection has no generated summary yet - it is written when collections are processed.",
+            fixScreen: "/app/collections",
+          },
+    );
+    if (input.hasCollectionQuestions === true) {
+      reasons.push({ nodeType: "FAQPage", emitted: true, reason: null, fixScreen: null });
+    } else if (input.hasCollectionQuestions === null) {
+      reasons.push({
+        nodeType: "FAQPage",
+        emitted: false,
+        reason: "Could not be determined - the last scan could not read this page.",
+        fixScreen: "/app/diagnostics",
+      });
+    } else {
+      reasons.push({
+        nodeType: "FAQPage",
+        emitted: false,
+        reason: "This collection has no generated questions yet.",
+        fixScreen: "/app/collections",
+      });
+    }
+  }
+
+  return reasons;
 }
 
 const SHOP_ID = `#graphql

@@ -45,6 +45,7 @@ const PRODUCTS_QUERY = `
           featuredImage { url altText }
           priceRangeV2 { minVariantPrice { amount currencyCode } }
           totalInventory
+          seo { title description }
           collections(first: 5) {
             edges { node { id handle title } }
           }
@@ -84,6 +85,7 @@ const SINGLE_PRODUCT = `#graphql
       featuredImage { url altText }
       priceRangeV2 { minVariantPrice { amount currencyCode } }
       totalInventory
+      seo { title description }
       collections(first: 5) {
         nodes { handle title }
       }
@@ -172,6 +174,7 @@ export async function fetchProduct(
     metafields: (p.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
     variants,
     collections: (p.collections?.nodes ?? []).map((c: any) => ({ handle: c.handle, title: c.title })),
+    seo: p.seo ? { title: p.seo.title ?? null, description: p.seo.description ?? null } : null,
   };
 }
 
@@ -232,6 +235,10 @@ export async function fetchAllProducts(graphql: GraphqlFn): Promise<ProductInput
         metafields: [],
         variants: [],
         collections: [],
+        // seo is a plain object field, not a connection, so the bulk export
+        // flattens it inline on the product row like priceRangeV2 - it never
+        // arrives as a separate JSONL line keyed by __parentId.
+        seo: row.seo ? { title: row.seo.title ?? null, description: row.seo.description ?? null } : null,
       });
       continue;
     }

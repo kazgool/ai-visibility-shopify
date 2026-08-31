@@ -39,5 +39,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM Extension Liquid is parsed nowhere but `shopify app deploy`, so a syntax
+REM error there surfaces at release time with everything else already green.
+REM Theme check does not catch the brace case; this does. See the header of
+REM scripts/check-liquid.mjs for the release it cost.
+echo.
+echo === liquid ===
+call node scripts\check-liquid.mjs
+if errorlevel 1 (
+  echo.
+  echo LIQUID PROBLEM - shopify app deploy would reject this.
+  pause
+  exit /b 1
+)
+
 echo.
 pause

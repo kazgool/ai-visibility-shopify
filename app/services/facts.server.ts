@@ -40,6 +40,9 @@ export type ProductInput = {
   metafields?: { key: string; value: string }[];
   variants?: VariantInput[];
   collections?: { handle: string; title: string }[];
+  // Shopify's own SEO fields (Product.seo). Read-only, never written by this
+  // app - the SEO screen's field audit reads these to find empty ones.
+  seo?: { title: string | null; description: string | null } | null;
 };
 
 export function parseState(product: ProductInput): ProductState {

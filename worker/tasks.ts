@@ -19,6 +19,13 @@ import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { runCrawlerCheck } from "../app/services/crawler-check.server";
 import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
+import { isSeoUnlocked } from "../app/services/billing.server";
+import {
+  scanStorefront,
+  recordThemeScan,
+  type ThemeScanResult,
+} from "../app/services/theme-scan.server";
+import { diffThemeScans, type SeoWatchChange } from "../app/services/seo-watch";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -442,6 +449,98 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
       },
     });
     throw error;
+  }
+};
+
+const FIRST_ONLINE_PRODUCT_SEO = `#graphql
+  query FirstOnlineProductSeoWatch {
+    products(first: 1, query: "published_status:published") {
+      nodes { onlineStoreUrl }
+    }
+  }
+`;
+
+const PRIMARY_DOMAIN_SEO = `#graphql
+  query PrimaryDomainSeoWatch {
+    shop { url }
+  }
+`;
+
+const MAIN_THEME_ID_SEO = `#graphql
+  query MainThemeIdSeoWatch {
+    themes(first: 1, roles: [MAIN]) {
+      nodes { id }
+    }
+  }
+`;
+
+/**
+ * Weekly SEO watch (SEO screen Part 5). Rescans the product page and the
+ * home page and records what changed since last time, so a merchant who
+ * switches theme and silently loses the app embed finds out. Nothing is
+ * auto-fixed and nothing is written to the store here - it only reads and
+ * records.
+ *
+ * Gated the same way poll_changes and sweep_missing are gated for
+ * FREE-TIER-SPEC §3, plus the seo_unlocked switch: an unpaid shop, or a
+ * paid shop without the SEO module, is not scanned.
+ */
+export const seo_watch: Task = async (_payload, helpers) => {
+  const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
+
+  for (const shop of shops) {
+    try {
+      if (!(await isSeoUnlocked(shop.id))) {
+        continue; // not part of this shop's module - no log noise for the common case
+      }
+
+      const graphql = await adminGraphql(shop.domain);
+
+      if (!(await mayProcessAutomatically(shop, graphql))) {
+        helpers.logger.info(`seo_watch ${shop.domain}: skipped, no active subscription or comp`);
+        continue;
+      }
+
+      const productData = await graphql<any>(FIRST_ONLINE_PRODUCT_SEO);
+      const productUrl = productData?.products?.nodes?.[0]?.onlineStoreUrl ?? `https://${shop.domain}`;
+
+      const domainData = await graphql<any>(PRIMARY_DOMAIN_SEO);
+      const homeUrl = domainData?.shop?.url ?? `https://${shop.domain}`;
+
+      const passwordSetting = await db.setting.findUnique({
+        where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+      });
+
+      const current = await scanStorefront(productUrl, homeUrl, passwordSetting?.value);
+
+      const themeData = await graphql<any>(MAIN_THEME_ID_SEO);
+      const themeId = themeData?.themes?.nodes?.[0]?.id;
+      if (!themeId) continue;
+
+      const previousRow = await db.themeScan.findUnique({
+        where: { shopId_themeId: { shopId: shop.id, themeId: String(themeId) } },
+      });
+      const previous = (previousRow?.detail as any as ThemeScanResult) ?? null;
+
+      const nowIso = new Date().toISOString();
+      const newChanges = diffThemeScans(previous, current, nowIso);
+      const priorHistory: SeoWatchChange[] = (previous as any)?.watchChanges ?? [];
+      const watchChanges = [...priorHistory, ...newChanges].slice(-20);
+
+      // recordThemeScan writes only to our own database and the shop
+      // metafield we already mirror the theme scan through - never to the
+      // storefront or to product data.
+      await recordThemeScan(shop.id, String(themeId), { ...current, watchChanges } as any);
+
+      if (newChanges.length > 0) {
+        helpers.logger.info(
+          `seo_watch ${shop.domain}: ${newChanges.length} change(s) detected`,
+        );
+      }
+    } catch (error) {
+      if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
+      helpers.logger.error(`seo_watch failed for ${shop.domain}: ${describeError(error)}`);
+    }
   }
 };
 

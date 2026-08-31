@@ -16,6 +16,91 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+Server changes only - no extension changes, so this does not require
+`shopify app deploy`.
+
+### Added
+- New `/app/seo` screen, gated on the existing `seo_unlocked` Setting flag
+  (same mechanism as the operator-only structured-data properties in the
+  storefront block). Gated at every path that reaches it: the loader refuses
+  and shows an unlocked state, the action refuses independently so a posted
+  form cannot bypass the loader, the nav link only renders when unlocked, and
+  the scheduled weekly job checks the same flag before it runs. A shop
+  without the flag never reaches a scan, an audit query, or a job.
+- `theme-scan.server.ts` now scans both a published product page and the home
+  page and reports every JSON-LD node found, `@graph` nesting flattened,
+  instead of only detecting a Product node. Reports repeated top-level types
+  on one page as a conflict, naming our own block as a source when one of the
+  repeated nodes carries the `#product` or `#collection` id we set, and
+  saying "unknown" rather than guessing when the other source cannot be
+  identified.
+- `deriveMissingReasons` (`theme-scan.server.ts`): for every node type the
+  extension can emit, says whether it is emitted and, when not, the real
+  reason read from the Liquid conditions - embed inactive, extend mode with
+  nothing to add, no return window on Business, no review app's rating
+  metafields, no collection questions yet - each pointing at the screen
+  where it is fixed.
+- `seo-watch.ts`: pure diff between this week's and last week's theme scan,
+  reporting node types that were present and are now gone, with a dated
+  line. New `seo_watch` worker task (worker/tasks.ts, worker/index.ts),
+  scheduled weekly, gated on `seo_unlocked` and on the same
+  `mayProcessAutomatically` check `poll_changes` and `sweep_missing` already
+  use - an unpaid shop is not scanned. Reuses the existing `ThemeScan` table
+  (its `detail` Json column already fits the wider scan shape); no migration.
+- Fixed a false negative: `deriveMissingReasons` was called with `hasRating`
+  and `hasCollectionQuestions` hardcoded to `false`, so a merchant with real
+  reviews saw AggregateRating reported as missing. AggregateRating is nested
+  inside the Product node rather than a top-level node on this platform, so
+  `extractLdNodes` now flags `hasAggregateRating` on a Product node when its
+  own `aggregateRating` property is present, and `scanThemeForProductLd` /
+  `scanStorefront` surface that as `hasAggregateRating` / `hasFAQPage` on the
+  scan result - read from what the page actually renders, not guessed. When
+  the page could not be read at all (password wall), the reason is now
+  "could not be determined" rather than a false claim of absence.
+- `/app/seo` restructured into one nav entry with five tabs (Overview,
+  Published schema, Conflicts, Meta fields, Crawl), addressed by a `?tab=`
+  query parameter on the same route rather than nested route files - every
+  tab reads the same persisted `ThemeScan` row and the same meta-field audit
+  query, so a nested route per tab would duplicate both without adding a
+  distinct URL segment worth the extra entitlement surface. The action now
+  redirects back to the same tab after a scan instead of returning
+  `actionData`, so every tab reflects the fresh scan through the loader
+  rather than only the tab the form was submitted from.
+- New Crawl tab: robots.txt as served by the storefront, whether either
+  scanned page's Disallow rules would block it, whether each scanned page
+  carries a canonical tag and what it points to, and whether either page
+  carries a `noindex` robots meta tag (stated first, as a critical banner,
+  when found). Read-only, same pattern as Diagnostics: no app can rewrite
+  robots.txt.liquid. `theme-scan.server.ts` gained `extractCanonical`,
+  `extractNoindex` and `fetchRobotsCheck`; all three run during the scan
+  already in progress, so the tab costs one extra request (robots.txt) per
+  scan, not a new fetch per page view.
+- Server changes only in this entry too - no extension changes.
+  Nothing is auto-fixed and nothing is written to the store.
+- `catalogue.server.ts`: added `seo { title description }` to both the
+  single-product and bulk product queries, and to `ProductInput`
+  (`facts.server.ts`). Read-only - confirmed the bulk export flattens `seo`
+  inline on the product row, the same as `priceRangeV2`, since it is a plain
+  object field rather than a connection. Backs the SEO screen's meta title
+  and meta description audit table; the app never writes these fields.
+
+## Version 14 - 31 August 2026
+
+Released as `ai-visibility-all-in-one-14`. Server changes in this entry went
+live earlier the same day through CI; the extension changes required
+`shopify app deploy`, which is what created this version.
+
+### Tooling
+- `scripts/check-liquid.mjs`, wired into `check.bat` after the build. Extension
+  Liquid is parsed nowhere but `shopify app deploy`, so a syntax error there
+  surfaces at release time with typecheck, tests and build all green. The
+  first release of the SEO additions failed exactly that way: a literal brace
+  inside a `{{ ... }}` output tag ends the tag early in Liquid's lexer, and
+  Shopify rejected the bundle with "not properly terminated". Theme check does
+  not catch it - run against the offending file it reports no offenses, which
+  was verified rather than assumed. The script checks that one thing and says
+  so; it is not a Liquid parser.
+
 ### Fixed
 - The free-tier cap (FREE-TIER-SPEC §3-4: three merchant-chosen products,
   automatic freshness excluded) was enforced only at the `/app` route

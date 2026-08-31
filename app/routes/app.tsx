@@ -11,6 +11,7 @@ import db from "../db.server";
 import {
   activeSubscription,
   isComped,
+  isSeoUnlocked,
   planFromName,
   recordPlan,
 } from "../services/billing.server";
@@ -59,11 +60,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  const shopRowForNav = await db.shop.findUnique({ where: { domain: session.shop } });
+  const seoUnlocked = shopRowForNav ? await isSeoUnlocked(shopRowForNav.id) : false;
+
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", seoUnlocked };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, seoUnlocked } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
@@ -76,6 +80,7 @@ export default function App() {
         <Link to="/app/business">Business</Link>
         <Link to="/app/dictionary">Dictionary</Link>
         <Link to="/app/diagnostics">Diagnostics</Link>
+        {seoUnlocked ? <Link to="/app/seo">SEO</Link> : null}
         <Link to="/app/plans">Plan</Link>
       </NavMenu>
       <Outlet />

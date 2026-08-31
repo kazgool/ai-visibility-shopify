@@ -17,12 +17,14 @@ async function main() {
       sweep_missing: tasks.sweep_missing,
       crawler_check: tasks.crawler_check,
       bulk_collections: tasks.bulk_collections,
+      seo_watch: tasks.seo_watch,
     },
     // Freshness in layers: webhooks fire instantly, the poll closes the gap
     // when one is dropped, the sweep guarantees nothing is missed for long.
     crontab: [
       "*/15 * * * * poll_changes",
       "30 3 * * 1 sweep_missing", // Monday 03:30 UTC
+      "0 4 * * 1 seo_watch", // Monday 04:00 UTC, seo_unlocked shops only
     ].join("\n"),
   });
   await runner.promise;

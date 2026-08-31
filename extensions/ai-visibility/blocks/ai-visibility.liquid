@@ -98,7 +98,13 @@
           "@type": "SearchAction",
           "target": {
             "@type": "EntryPoint",
-            "urlTemplate": {{ shop.url | append: "/search?q={search_term_string}" | json }}
+            {%- comment -%}
+              The placeholder stays outside the Liquid tag on purpose. A
+              literal brace inside `{{ ... }}` makes Liquid's lexer end the
+              tag early, which fails the bundle at `shopify app deploy` with
+              "not properly terminated" - the only place Liquid is parsed.
+            {%- endcomment -%}
+            "urlTemplate": "{{ shop.url }}/search?q={search_term_string}"
           },
           "query-input": "required name=search_term_string"
         }

@@ -98,6 +98,9 @@ over memory — APIs moved fast in 2025–2026.
 - **Always start a command block with `cd F:\ai-visibility-shopify`.** He
   works in several PowerShell windows at once, so no block may assume the
   working directory it inherited from an earlier one.
+- **Batch files are invoked as `.\check.bat`, `.\dev.bat`, `.\shell.bat`.**
+  PowerShell does not run a script from the current directory without the
+  leading `.\`, so the bare name fails.
 - Explain what a change does and why before or as you make it — he
   supervises, catches real bugs (he found the self-feed loop and the
   audience semantics), and decides product questions. Bring him decisions,
