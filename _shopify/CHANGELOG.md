@@ -14,9 +14,16 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ---
 
-## Unreleased
+## Version 20 - 1 September 2026
 
-This entry now includes extension changes (three fixes to
+Released as `ai-visibility-all-in-one-20`. The whole of the SEO capability
+landed across 31 August and 1 September: the operator unlock, the workspace,
+the meta title and description writer with its bulk review-and-apply queue,
+the product editor card, the extra structured data, and the fixes from a
+two-reviewer audit of all of it. Versions 15 to 19 were same-day deploys of
+the work described here; this heading covers them.
+
+This entry includes extension changes (three fixes to
 `extensions/ai-visibility/blocks/ai-visibility.liquid` and
 `app/engine/meta.ts`, see below) and therefore requires
 `npx shopify app deploy` in addition to the usual server-side push to main.

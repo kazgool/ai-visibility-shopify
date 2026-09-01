@@ -101,6 +101,11 @@ over memory — APIs moved fast in 2025–2026.
 - **Batch files are invoked as `.\check.bat`, `.\dev.bat`, `.\shell.bat`.**
   PowerShell does not run a script from the current directory without the
   leading `.\`, so the bare name fails.
+- **Every delivery ends with `npx shopify app deploy` and a tag**, even when
+  no extension changed. The deploy is what dates the release in the Developer
+  Dashboard, so the CHANGELOG headings keep matching the version numbers
+  Shopify shows; the tag is what a revert starts from. Give both commands
+  every time, without being asked.
 - Explain what a change does and why before or as you make it — he
   supervises, catches real bugs (he found the self-feed loop and the
   audience semantics), and decides product questions. Bring him decisions,
