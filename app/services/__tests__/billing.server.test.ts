@@ -7,15 +7,35 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // llms-txt.server.test.ts stubs it.
 const mockSettingFindUnique = vi.fn();
 const mockSettingDeleteMany = vi.fn();
+const mockSettingUpsert = vi.fn();
+const mockSettingUpdate = vi.fn();
+const mockShopUpdate = vi.fn();
 
-vi.mock("../../db.server", () => ({
-  default: {
+// $transaction here just invokes the callback with the same mocked client -
+// good enough for the free-product-set tests below, which exercise the
+// read-check-write logic, not real Postgres serializability. Declared with
+// `var` and assembled inside the vi.mock factory itself, because vi.mock is
+// hoisted above any top-level const/let in this file - referencing a
+// same-file const from inside the factory throws a TDZ error at import time.
+var mockDb: any;
+
+vi.mock("../../db.server", () => {
+  mockDb = {
     setting: {
       findUnique: (...args: unknown[]) => mockSettingFindUnique(...args),
       deleteMany: (...args: unknown[]) => mockSettingDeleteMany(...args),
+      upsert: (...args: unknown[]) => mockSettingUpsert(...args),
+      update: (...args: unknown[]) => mockSettingUpdate(...args),
     },
-  },
-}));
+    shop: {
+      update: (...args: unknown[]) => mockShopUpdate(...args),
+    },
+    $transaction: (fn: (tx: unknown) => unknown) => mockTransaction(fn),
+  };
+  return { default: mockDb };
+});
+
+const mockTransaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(mockDb));
 
 import {
   mayProcessAutomatically,
@@ -23,6 +43,10 @@ import {
   checkSeoUnlockKey,
   isSeoUnlocked,
   revokeSeoUnlock,
+  freeProductIds,
+  isFreeProduct,
+  addFreeProduct,
+  removeFreeProduct,
 } from "../billing.server";
 
 describe("mayProcessAutomatically", () => {
@@ -202,5 +226,108 @@ describe("checkSeoUnlockKey", () => {
   it("rejects everything when the env var is unset", () => {
     delete process.env.SEO_UNLOCK_KEY;
     expect(checkSeoUnlockKey("anything")).toBe(false);
+  });
+});
+
+// FREE-TIER-SPEC §4 fix: the free product set. "Three products of their
+// choosing," not three writes - membership is what is free, the set's size
+// is the cap, and reprocessing a member is always allowed.
+describe("free product set", () => {
+  beforeEach(() => {
+    mockSettingFindUnique.mockReset();
+    mockSettingUpsert.mockReset();
+    mockSettingUpdate.mockReset();
+    mockShopUpdate.mockReset();
+    mockTransaction.mockClear();
+  });
+
+  it("reads an empty set when nothing is stored", async () => {
+    mockSettingFindUnique.mockResolvedValue(null);
+    expect(await freeProductIds("shop1")).toEqual([]);
+    expect(await isFreeProduct("shop1", "gid://shopify/Product/1")).toBe(false);
+  });
+
+  it("adds a first product to an empty set", async () => {
+    mockSettingFindUnique.mockResolvedValue(null);
+    mockSettingUpsert.mockResolvedValue({});
+    mockShopUpdate.mockResolvedValue({});
+
+    const result = await addFreeProduct("shop1", "gid://shopify/Product/1");
+
+    expect(result).toEqual({ ok: true, ids: ["gid://shopify/Product/1"], alreadyMember: false });
+    expect(mockSettingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ value: JSON.stringify(["gid://shopify/Product/1"]) }),
+      }),
+    );
+  });
+
+  it("processing the same product twice does not grow the set", async () => {
+    mockSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify(["gid://shopify/Product/1"]),
+    });
+
+    const result = await addFreeProduct("shop1", "gid://shopify/Product/1");
+
+    expect(result).toEqual({ ok: true, ids: ["gid://shopify/Product/1"], alreadyMember: true });
+    // Nothing was written - resubmitting a member is a pure read.
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+    expect(mockShopUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a fourth distinct product once the set is full", async () => {
+    mockSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify(["gid://1", "gid://2", "gid://3"]),
+    });
+
+    const result = await addFreeProduct("shop1", "gid://4");
+
+    expect(result.ok).toBe(false);
+    expect(result.ids).toEqual(["gid://1", "gid://2", "gid://3"]);
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+  });
+
+  it("simulated race: two sequential adds against an already-full set both refuse", async () => {
+    // Two overlapping submissions for two different products, modelled here
+    // as two sequential calls both observing the same full set - the shape
+    // a real race collapses to once Postgres serializes the transactions.
+    mockSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify(["gid://1", "gid://2", "gid://3"]),
+    });
+
+    const first = await addFreeProduct("shop1", "gid://4");
+    const second = await addFreeProduct("shop1", "gid://5");
+
+    expect(first.ok).toBe(false);
+    expect(second.ok).toBe(false);
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+  });
+
+  it("removeFreeProduct gives a slot back for a member", async () => {
+    mockSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify(["gid://1", "gid://2"]),
+    });
+    mockSettingUpdate.mockResolvedValue({});
+    mockShopUpdate.mockResolvedValue({});
+
+    await removeFreeProduct("shop1", "gid://1");
+
+    expect(mockSettingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { value: JSON.stringify(["gid://2"]) } }),
+    );
+    expect(mockShopUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { freeProductsUsed: { decrement: 1 } } }),
+    );
+  });
+
+  it("removeFreeProduct is a no-op for a non-member", async () => {
+    mockSettingFindUnique.mockResolvedValue({
+      value: JSON.stringify(["gid://1"]),
+    });
+
+    await removeFreeProduct("shop1", "gid://not-a-member");
+
+    expect(mockSettingUpdate).not.toHaveBeenCalled();
+    expect(mockShopUpdate).not.toHaveBeenCalled();
   });
 });

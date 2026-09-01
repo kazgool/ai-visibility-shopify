@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useState } from "react";
-import { Form, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -29,7 +29,7 @@ import {
 } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
-import { isSeoUnlocked, hasPaidAccess } from "../services/billing.server";
+import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
 import {
   writeSeo,
   revertSeo,
@@ -291,7 +291,10 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   // 2026): seo_unlocked opens the capability, but a shop with no active
   // subscription (and no comp) may still not write here - the same rule
   // app.seo.tsx enforces for the bulk pass. admin.graphql is already at
-  // hand on this route, so this is the hasPaidAccess form.
+  // hand on this route, so this is the hasPaidAccess form. The SEO module is
+  // a separate paid add-on and is never covered by the free-tier's three
+  // products - FREE-TIER-SPEC §3 lists it under "not free" alongside every
+  // other volume/continuity feature.
   if (intent === "seo" || intent === "seo_revert" || intent === "seo_reset") {
     const shop = await db.shop.findUnique({ where: { domain: session.shop } });
     const unlocked = await isSeoUnlocked(shop?.id);
@@ -301,6 +304,31 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
     const paid = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
     if (!paid) {
       return { error: "This shop has no active subscription, so writing search listings is not available." };
+    }
+  }
+
+  // ENTITLEMENT: every other write intent on this route - the facts save
+  // (default branch below), capsule, capsule_reset, reset and alt - was
+  // previously ungated, so any authenticated shop could write any product
+  // through this action regardless of subscription. FREE-TIER-SPEC §2 says
+  // the three merchant-chosen products are "not a preview - the real write",
+  // fully editable the same way a paid catalogue is, so a shop with no
+  // subscription may still write here when this product is one of its three
+  // (or fewer) free products; any other product is refused. A paid shop
+  // (or comp) always passes. This intentionally does not gate GET-only
+  // reads or the seo intents above, which have their own rule.
+  if (intent !== "seo" && intent !== "seo_revert" && intent !== "seo_reset") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return { error: "Shop not found." };
+    const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+    if (!paid) {
+      const free = await isFreeProduct(shop.id, id);
+      if (!free) {
+        return {
+          error:
+            "This product is not one of your three free products and this shop has no active subscription, so it cannot be edited here. Nothing already written is touched.",
+        };
+      }
     }
   }
 
@@ -583,6 +611,10 @@ export default function ProductEditor() {
     };
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  // Refusal errors from the action (entitlement checks, write failures) were
+  // returned but never rendered, so a refused save looked like a successful
+  // one. Surfaced as a critical banner at the top of the editor.
+  const actionData = useActionData<typeof action>() as { error?: string } | undefined;
 
   const initial = storedFacts.length > 0 ? storedFacts : autoFacts;
   const [rows, setRows] = useState<Fact[]>(
@@ -644,6 +676,8 @@ export default function ProductEditor() {
       }
     >
       <BlockStack gap="400">
+        {actionData?.error ? <Banner tone="critical">{actionData.error}</Banner> : null}
+
         {source === "human" ? (
           <Banner tone="info">
             These values were written by a person, so bulk passes leave them

@@ -225,7 +225,7 @@ describe("writeSeo", () => {
     });
 
     const productUpdateCall = graphql.mock.calls.find(([q]) => q.includes("productUpdate"));
-    const input = (productUpdateCall![1] as any).input;
+    const input = (productUpdateCall![1] as any).product;
     expect(input.seo.title).toBe("Existing title");
     expect(input.seo.description).toBe("A short honest description.");
   });
@@ -265,7 +265,7 @@ describe("revertSeo", () => {
 
     expect(reverted).toEqual(["seo_title"]);
     const productUpdateCall = graphql.mock.calls.find(([q]) => q.includes("productUpdate"));
-    const input = (productUpdateCall![1] as any).input;
+    const input = (productUpdateCall![1] as any).product;
     expect(input.seo.title).toBe("The merchant's original title");
     expect(input.seo.description).toBe("Some description");
 

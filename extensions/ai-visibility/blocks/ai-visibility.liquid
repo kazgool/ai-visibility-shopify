@@ -20,13 +20,18 @@
   {%- assign av_business = shop.metafields['$app'].business.value -%}
   {%- assign av_org_id = shop.metafields['$app'].theme_scan.value.organizationId -%}
   {%- comment -%}
-    Whether the theme scan found the theme emitting its own Organization
-    node at all, regardless of whether that node carried a usable @id. Used
-    below to tell "no Organization node on the page" (fine, we add ours)
-    apart from "the theme has one but we cannot reference it" (not fine -
-    see the comment where av_same_as_list is emitted).
+    The @id our own Organization node carries when we emit one below. The
+    theme scan recognises this suffix as ours and excludes it when deciding
+    whether the theme emits an Organization node, so our own output can
+    never feed back into the scan as "the theme has one". If the mirrored
+    organizationId ever is our own id (an old scan recorded before that
+    exclusion), extending it would produce an orphan @id-only fragment, so
+    it is cleared and we emit our complete node instead.
   {%- endcomment -%}
-  {%- assign av_theme_has_org = shop.metafields['$app'].theme_scan.value.hasOrganizationLd -%}
+  {%- assign av_own_org_id = shop.url | append: '#organization' -%}
+  {%- if av_org_id == av_own_org_id -%}
+    {%- assign av_org_id = "" -%}
+  {%- endif -%}
   {%- comment -%}
     Operator-only switch, set during a paid setup engagement (never a
     merchant-facing toggle). Gates a handful of extra schema.org properties
@@ -36,7 +41,13 @@
   {%- comment -%}
     Computed at render time, never stored: "today" moves every day the page is
     rendered, so a stored date would eventually be in the past. One year out
-    is the conventional ceiling for priceValidUntil.
+    is the conventional ceiling for priceValidUntil. This is a synthetic
+    date - no merchant states it anywhere - and it is accepted anyway
+    because it is computed, industry-standard, and recommended by Google;
+    it claims nothing factual about the product itself. itemCondition, by
+    contrast, was removed: publishing NewCondition unconditionally was a
+    factual claim the merchant never made, false for refurbished or
+    second-hand goods, and there is no condition field to derive it from.
   {%- endcomment -%}
   {%- assign av_price_valid_until = "now" | date: "%s" | plus: 31536000 | date: "%Y-%m-%d" -%}
   {%- comment -%}
@@ -56,23 +67,18 @@
 
     We extend the theme's own Organization node only when the scan found a
     real @id to reference. An identifier we invented, or a node the theme
-    has but that carries no @id of its own, is an orphan fragment - worse
-    than no node - so every other case gets our own complete minimal node
-    instead.
+    has but that carries no @id of its own, gives us nothing to attach to,
+    so every other case gets our own complete minimal node, carrying its
+    own stable @id.
 
-    One case needs its own rule: a theme that emits an Organization node
-    with a name and a url but no @id (seen on a live storefront, 31 Aug
-    2026). We cannot extend it - there is nothing to reference - and
-    emitting our own complete node alongside it produces two top-level
-    nodes of @type Organization, which is exactly the conflict the SEO
-    screen's own scan flags as a defect. Two options were weighed and
-    rejected: publishing our node anyway keeps today's duplicate; publishing
-    only "sameAs" with no name or url is still a second node of @type
-    Organization, so the conflict count is unchanged, it only shrinks what
-    is duplicated. Publishing nothing is the only option that removes the
-    conflict, so that is what this case does - at the cost that the
-    merchant's sameAs profiles do not appear in structured data on this
-    page at all until the theme's own node gets an @id we can reference.
+    When the theme emits an id-less Organization node of its own, the page
+    then carries two Organization nodes. Decided 1 September 2026: that is
+    acceptable - it is not a policy violation, and consumers merge or pick.
+    The earlier rule suppressed our node in this case to keep the conflict
+    count at zero, which meant the merchant's own profiles vanished from
+    structured data so that our counter read cleaner - publishing less in
+    order to measure better, the wrong trade. The SEO screen reports this
+    pair as informational, never as a defect.
   {%- endcomment -%}
   {%- assign av_social = av_business.socialProfiles -%}
   {%- assign av_same_as = "" -%}
@@ -91,13 +97,7 @@
   {%- endcomment -%}
   {%- assign av_same_as_list = av_same_as | split: "|" | uniq -%}
 
-  {%- if av_same_as_list.size > 0 and av_org_id == blank and av_theme_has_org -%}
-    {%- comment -%}
-      Theme has an Organization node we cannot reference (no @id) - publish
-      nothing rather than a second node of the same @type. See the comment
-      above av_same_as.
-    {%- endcomment -%}
-  {%- elsif av_same_as_list.size > 0 -%}
+  {%- if av_same_as_list.size > 0 -%}
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -105,6 +105,7 @@
         {%- if av_org_id != blank -%}
         "@id": {{ av_org_id | json }},
         {%- else -%}
+        "@id": {{ av_own_org_id | json }},
         "name": {{ shop.name | json }},
         "url": {{ shop.url | json }},
         {%- endif -%}
@@ -201,7 +202,6 @@
             "availability": {%- if product.available %} "https://schema.org/InStock"{% else %} "https://schema.org/OutOfStock"{% endif %},
             {%- if av_seo_unlocked %}
             "priceValidUntil": {{ av_price_valid_until | json }},
-            "itemCondition": "https://schema.org/NewCondition",
             {%- endif %}
             "url": {{ shop.url | append: product.url | json }}
           }
@@ -213,7 +213,6 @@
             "availability": {%- if product.available %} "https://schema.org/InStock"{% else %} "https://schema.org/OutOfStock"{% endif %},
             {%- if av_seo_unlocked %}
             "priceValidUntil": {{ av_price_valid_until | json }},
-            "itemCondition": "https://schema.org/NewCondition",
             {%- endif %}
             {%- if av_business.deliveryTime != blank and av_business.deliveryVaries != true %}
             "shippingDetails": {
@@ -333,13 +332,14 @@
     {%- endif -%}
 
     {%- comment -%}
-      The llms.txt proposal names rel="describedby" as the way a page points at
-      the llms.txt covering it. Shopify serves /llms.txt for the store, so this
-      links the page to a file the platform already publishes rather than
-      competing with it for the route (PRD §5.1).
+      The llms.txt proposal names rel="describedby" as the way a page points
+      at the llms.txt covering it. This app's llms.txt is generated live
+      under the app proxy path; the bare /llms.txt route is not something
+      this app serves, so pointing there risked a 404. Same target as the
+      Link header the plain text mirror sends.
     {%- endcomment -%}
     {%- if block.settings.llms_link -%}
-      <link rel="describedby" href="{{ shop.url }}/llms.txt">
+      <link rel="describedby" href="{{ shop.url }}/apps/ai-visibility/llms.txt">
     {%- endif -%}
   {%- endif -%}
 
@@ -446,7 +446,7 @@
       "type": "checkbox",
       "id": "llms_link",
       "label": "Point crawlers at your llms.txt",
-      "info": "Adds a standard describedby link to the llms.txt Shopify publishes for your store.",
+      "info": "Adds a standard describedby link to the llms.txt this app generates live for your store.",
       "default": true
     },
     {

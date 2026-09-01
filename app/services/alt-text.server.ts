@@ -79,8 +79,17 @@ export async function writeAltText(
       facts,
       index,
     );
-    updates.push({ id: item.id, alt });
     seenMedia.set(item.id, productGid);
+
+    // Never write an identical value (CLAUDE.md rule 3): a second pass over
+    // an unchanged catalogue was rewriting every machine-or-empty alt text
+    // regardless, which marks every product updated, fires products/update
+    // per product, and queues a re-extraction job for each - a self-feed
+    // storm of the same shape the metafield `unchanged` check in
+    // facts.server.ts exists to prevent.
+    if (alt === existing) return;
+
+    updates.push({ id: item.id, alt });
   });
 
   if (updates.length > 0) {

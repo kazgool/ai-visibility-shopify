@@ -108,9 +108,12 @@ export {
   type MetaColumnState,
 } from "./meta-column";
 
+// productUpdate's `input: ProductInput` argument was deprecated when Shopify
+// split ProductInput in 2024-10; the current documented form (verified on
+// shopify.dev, 1 September 2026) is `productUpdate(product: ProductUpdateInput!)`.
 const PRODUCT_UPDATE_SEO = `#graphql
-  mutation UpdateProductSeo($input: ProductInput!) {
-    productUpdate(input: $input) {
+  mutation UpdateProductSeo($product: ProductUpdateInput!) {
+    productUpdate(product: $product) {
       product { id }
       userErrors { field message }
     }
@@ -193,7 +196,7 @@ export async function writeSeo(
   if (!touched) return outcome;
 
   const productRes = await graphql<any>(PRODUCT_UPDATE_SEO, {
-    input: {
+    product: {
       id: product.id,
       seo: { title: nextTitle, description: nextDescription },
     },
@@ -248,7 +251,7 @@ export async function revertSeo(
   if (reverted.length === 0) return reverted;
 
   const productRes = await graphql<any>(PRODUCT_UPDATE_SEO, {
-    input: {
+    product: {
       id: product.id,
       seo: { title: nextTitle, description: nextDescription },
     },

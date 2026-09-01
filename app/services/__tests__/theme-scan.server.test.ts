@@ -5,6 +5,10 @@ import {
   isOurNodeId,
   canonicalNodeId,
   deriveMissingReasons,
+  organizationPairIsInformational,
+  mergeNarrowScanIntoDetail,
+  themeRowKey,
+  type ThemeScanResult,
 } from "../theme-scan.server";
 
 function withScript(json: string): string {
@@ -82,6 +86,10 @@ describe("isOurNodeId", () => {
   it("recognises our Product and CollectionPage suffixes", () => {
     expect(isOurNodeId("https://x/products/y#product")).toBe(true);
     expect(isOurNodeId("https://x/collections/y#collection")).toBe(true);
+  });
+
+  it("recognises our Organization suffix", () => {
+    expect(isOurNodeId("https://x#organization")).toBe(true);
   });
 
   it("does not recognise a theme's own id or an empty one", () => {
@@ -196,6 +204,30 @@ describe("detectConflicts", () => {
   });
 });
 
+describe("organizationPairIsInformational", () => {
+  it("marks an Organization pair with our node as informational", () => {
+    const nodes = [
+      { types: ["Organization"], id: "" }, // theme's id-less node
+      { types: ["Organization"], id: "https://shop.example#organization" }, // ours
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([{ type: "Organization", count: 2, weEmitOne: true }]);
+    expect(organizationPairIsInformational(conflicts[0])).toBe(true);
+  });
+
+  it("keeps an Organization pair without our node a real conflict", () => {
+    expect(
+      organizationPairIsInformational({ type: "Organization", count: 2, weEmitOne: false }),
+    ).toBe(false);
+  });
+
+  it("never downgrades a Product conflict", () => {
+    expect(
+      organizationPairIsInformational({ type: "Product", count: 2, weEmitOne: true }),
+    ).toBe(false);
+  });
+});
+
 describe("canonicalNodeId", () => {
   it("returns null for an empty id", () => {
     expect(canonicalNodeId("", "https://shop.example/products/x")).toBeNull();
@@ -228,6 +260,8 @@ describe("deriveMissingReasons", () => {
     hasReturnDays: false,
     hasDeliveryTime: false,
     hasRating: false,
+    hasWebSiteNode: false,
+    hasBreadcrumbNode: false,
     hasCollectionQuestions: false,
     hasSocialProfiles: false,
     seoUnlocked: false,
@@ -290,6 +324,47 @@ describe("deriveMissingReasons", () => {
     expect(rating.reason).toMatch(/could not be determined/i);
   });
 
+  it("marks WebSite/SearchAction and BreadcrumbList emitted only when the scan actually found them", () => {
+    const unlocked = { ...base, seoUnlocked: true };
+
+    const notFound = deriveMissingReasons(unlocked);
+    expect(notFound.find((r) => r.nodeType === "WebSite/SearchAction")!.emitted).toBe(false);
+    expect(notFound.find((r) => r.nodeType === "BreadcrumbList")!.emitted).toBe(false);
+    expect(notFound.find((r) => r.nodeType === "WebSite/SearchAction")!.reason).toMatch(
+      /did not find this node/,
+    );
+
+    const found = deriveMissingReasons({
+      ...unlocked,
+      hasWebSiteNode: true,
+      hasBreadcrumbNode: true,
+    });
+    expect(found.find((r) => r.nodeType === "WebSite/SearchAction")!.emitted).toBe(true);
+    expect(found.find((r) => r.nodeType === "BreadcrumbList")!.emitted).toBe(true);
+  });
+
+  it("reports WebSite/SearchAction and BreadcrumbList as could not be determined when the page was unreadable", () => {
+    const reasons = deriveMissingReasons({
+      ...base,
+      seoUnlocked: true,
+      hasWebSiteNode: null,
+      hasBreadcrumbNode: null,
+    });
+    expect(reasons.find((r) => r.nodeType === "WebSite/SearchAction")!.reason).toMatch(
+      /could not be determined/i,
+    );
+    expect(reasons.find((r) => r.nodeType === "BreadcrumbList")!.reason).toMatch(
+      /could not be determined/i,
+    );
+  });
+
+  it("still blames the locked module, not the scan, when seo is not unlocked", () => {
+    const reasons = deriveMissingReasons({ ...base, hasWebSiteNode: true });
+    const site = reasons.find((r) => r.nodeType === "WebSite/SearchAction")!;
+    expect(site.emitted).toBe(false);
+    expect(site.reason).toMatch(/operator-configured SEO module/);
+  });
+
   it("marks FAQPage emitted on a collection page when the scan found generated questions", () => {
     const reasons = deriveMissingReasons({ ...base, isCollectionPage: true, hasCollectionQuestions: true });
     const faq = reasons.find((r) => r.nodeType === "FAQPage")!;
@@ -301,5 +376,114 @@ describe("deriveMissingReasons", () => {
     const faq = reasons.find((r) => r.nodeType === "FAQPage")!;
     expect(faq.emitted).toBe(false);
     expect(faq.reason).toMatch(/could not be determined/i);
+  });
+});
+
+describe("themeRowKey", () => {
+  it("normalises a bare numeric id to the gid form", () => {
+    expect(themeRowKey(123456789)).toBe("gid://shopify/OnlineStoreTheme/123456789");
+    expect(themeRowKey("123456789")).toBe("gid://shopify/OnlineStoreTheme/123456789");
+  });
+
+  it("leaves a gid unchanged", () => {
+    const gid = "gid://shopify/OnlineStoreTheme/123456789";
+    expect(themeRowKey(gid)).toBe(gid);
+  });
+
+  it("leaves a non-numeric fallback value as-is", () => {
+    expect(themeRowKey("current")).toBe("current");
+  });
+});
+
+describe("mergeNarrowScanIntoDetail", () => {
+  const richPrevious: ThemeScanResult = {
+    hasProductLd: true,
+    nodeCount: 1,
+    emitters: ["https://x/products/a#product"],
+    hasOrganizationLd: true,
+    organizationEmitters: ["https://x/#org"],
+    checkedUrl: "https://x/products/a",
+    product: {
+      url: "https://x/products/a",
+      nodes: [{ types: ["Product"], id: "https://x/products/a#product" }],
+      passwordProtected: false,
+      canonical: "https://x/products/a",
+      noindex: false,
+    },
+    home: {
+      url: "https://x/",
+      nodes: [
+        { types: ["WebSite"], id: "https://x/#website" },
+        { types: ["FAQPage"], id: "" },
+      ],
+      passwordProtected: false,
+      canonical: "https://x/",
+      noindex: false,
+    },
+    homeConflicts: [],
+    robots: { fetched: true, content: "User-agent: *\n", disallowsRelevant: [] },
+    watchChanges: [{ page: "home", nodeType: "WebSite", detectedAt: "2026-08-24T00:00:00.000Z" }],
+    missingReasons: [{ nodeType: "Product", emitted: true, reason: null, fixScreen: null }],
+    richResultsUrl: "https://search.google.com/test/rich-results?url=x",
+    hasFAQPage: true,
+  };
+
+  const narrow: ThemeScanResult = {
+    hasProductLd: false,
+    nodeCount: 0,
+    emitters: [],
+    hasOrganizationLd: false,
+    organizationEmitters: [],
+    checkedUrl: "https://x/products/a",
+    product: {
+      url: "https://x/products/a",
+      nodes: [],
+      passwordProtected: false,
+      canonical: null,
+      noindex: false,
+    },
+    productConflicts: [],
+    hasAggregateRating: false,
+    hasFAQPage: false,
+  };
+
+  it("stands alone when there is no previous detail", () => {
+    expect(mergeNarrowScanIntoDetail(null, narrow)).toBe(narrow);
+  });
+
+  it("updates only what the narrow scan measured, preserving the rich fields", () => {
+    const merged = mergeNarrowScanIntoDetail(richPrevious, narrow);
+    // Product-page fields come from the narrow scan.
+    expect(merged.hasProductLd).toBe(false);
+    expect(merged.nodeCount).toBe(0);
+    expect(merged.product).toBe(narrow.product);
+    // The rich fields the narrow scan never looked at are preserved.
+    expect(merged.home).toBe(richPrevious.home);
+    expect(merged.robots).toBe(richPrevious.robots);
+    expect(merged.watchChanges).toEqual(richPrevious.watchChanges);
+    expect(merged.missingReasons).toEqual(richPrevious.missingReasons);
+    expect(merged.richResultsUrl).toBe(richPrevious.richResultsUrl);
+  });
+
+  it("recomputes hasFAQPage across the fresh product page and the preserved home page", () => {
+    // Narrow scan finds no FAQ on the product page, but the preserved home
+    // page still carries one - the merged flag must stay true.
+    const merged = mergeNarrowScanIntoDetail(richPrevious, narrow);
+    expect(merged.hasFAQPage).toBe(true);
+
+    const previousNoHomeFaq = {
+      ...richPrevious,
+      home: { ...richPrevious.home!, nodes: [{ types: ["WebSite"], id: "" }] },
+    };
+    expect(mergeNarrowScanIntoDetail(previousNoHomeFaq, narrow).hasFAQPage).toBe(false);
+  });
+
+  it("returns the previous detail unchanged when the narrow scan hit the password wall", () => {
+    const walled: ThemeScanResult = {
+      ...narrow,
+      passwordProtected: true,
+      product: { ...narrow.product!, nodes: [], passwordProtected: true },
+    };
+    expect(mergeNarrowScanIntoDetail(richPrevious, walled)).toBe(richPrevious);
   });
 });

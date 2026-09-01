@@ -34,13 +34,24 @@ export function keyFileName(shopDomain: string): string {
   return `indexnow-${indexNowKey(shopDomain)}.txt`;
 }
 
-export function keyLocation(shopDomain: string): string {
-  return `https://${shopDomain}/apps/ai-visibility/${keyFileName(shopDomain)}`;
+/**
+ * The key file's URL. `identityDomain` (always the stable .myshopify.com
+ * domain) seeds the filename, since that never changes even if a merchant
+ * repoints their primary domain; `publicDomain` is the domain the file must
+ * actually be fetched from - the same one submitted as `host` and the one
+ * every URL in the ping belongs to. On most stores these differ: session.shop
+ * is myshopify.com, but the storefront and IndexNow's own crawl both live on
+ * the connected primary domain (fix: this used to be the same domain for
+ * both, so every submission and the mirror pages' own links pointed at the
+ * redirecting myshopify duplicate instead of the real storefront URL).
+ */
+export function keyLocation(identityDomain: string, publicDomain: string): string {
+  return `https://${publicDomain}/apps/ai-visibility/${keyFileName(identityDomain)}`;
 }
 
 /** Is this proxy path the key file? Return the body to serve, else null. */
-export function keyFileBody(shopDomain: string, requestedFile: string): string | null {
-  return requestedFile === keyFileName(shopDomain) ? indexNowKey(shopDomain) : null;
+export function keyFileBody(identityDomain: string, requestedFile: string): string | null {
+  return requestedFile === keyFileName(identityDomain) ? indexNowKey(identityDomain) : null;
 }
 
 /**
@@ -48,7 +59,8 @@ export function keyFileBody(shopDomain: string, requestedFile: string): string |
  * at 10,000 URLs; ours are far smaller), deduplicated, best effort.
  */
 export async function pingIndexNow(
-  shopDomain: string,
+  identityDomain: string,
+  publicDomain: string,
   urls: string[],
 ): Promise<{ ok: boolean; submitted: number; status?: number }> {
   const unique = [...new Set(urls)].filter((u) => u.startsWith("http"));
@@ -59,9 +71,9 @@ export async function pingIndexNow(
       method: "POST",
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({
-        host: shopDomain,
-        key: indexNowKey(shopDomain),
-        keyLocation: keyLocation(shopDomain),
+        host: publicDomain,
+        key: indexNowKey(identityDomain),
+        keyLocation: keyLocation(identityDomain, publicDomain),
         urlList: unique.slice(0, 10000),
       }),
     });
@@ -70,6 +82,28 @@ export async function pingIndexNow(
   } catch {
     return { ok: false, submitted: 0 };
   }
+}
+
+const SHOP_INFO_SETTING_KEY = "shopInfo";
+
+/**
+ * The persisted primary domain (catalogue.server.ts saveShopInfo), or the
+ * identity domain when a shop has never run extraction. Shared by
+ * pingProducts and pingCollections so every IndexNow submission uses the
+ * same real storefront URLs the merchant's customers actually see.
+ */
+async function publicDomainFor(shopId: string, identityDomain: string): Promise<string> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SHOP_INFO_SETTING_KEY } },
+  });
+  if (!row?.value) return identityDomain;
+  try {
+    const info = JSON.parse(row.value) as { url?: string };
+    if (info.url) return new URL(info.url).hostname || identityDomain;
+  } catch {
+    // fall through
+  }
+  return identityDomain;
 }
 
 /**
@@ -82,8 +116,9 @@ export async function pingProducts(
   handles: string[],
 ): Promise<void> {
   if (!(await isEnabled(shopId))) return;
-  const urls = handles.filter(Boolean).map((h) => `https://${shopDomain}/products/${h}`);
-  const result = await pingIndexNow(shopDomain, urls);
+  const publicDomain = await publicDomainFor(shopId, shopDomain);
+  const urls = handles.filter(Boolean).map((h) => `https://${publicDomain}/products/${h}`);
+  const result = await pingIndexNow(shopDomain, publicDomain, urls);
   if (!result.ok && result.submitted > 0) {
     console.warn(`indexnow ${shopDomain}: status ${result.status ?? "network error"}`);
   }
@@ -96,8 +131,9 @@ export async function pingCollections(
   handles: string[],
 ): Promise<void> {
   if (!(await isEnabled(shopId))) return;
-  const urls = handles.filter(Boolean).map((h) => `https://${shopDomain}/collections/${h}`);
-  const result = await pingIndexNow(shopDomain, urls);
+  const publicDomain = await publicDomainFor(shopId, shopDomain);
+  const urls = handles.filter(Boolean).map((h) => `https://${publicDomain}/collections/${h}`);
+  const result = await pingIndexNow(shopDomain, publicDomain, urls);
   if (!result.ok && result.submitted > 0) {
     console.warn(`indexnow ${shopDomain}: status ${result.status ?? "network error"}`);
   }

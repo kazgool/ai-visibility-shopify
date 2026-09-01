@@ -33,12 +33,14 @@ import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import {
   scanStorefront,
   recordThemeScan,
+  themeRowKey,
   deriveMissingReasons,
   type ThemeScanResult,
   type MissingReasonInput,
   type ConflictEntry,
 } from "../services/theme-scan.server";
 import { diffThemeScans, formatSeoWatchLine, type SeoWatchChange } from "../services/seo-watch";
+import { organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
 import type { SeoApplyReport } from "../services/seo-bulk.server";
@@ -90,12 +92,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return { unlocked: false as const };
   }
 
-  const themeScan = shop
-    ? await db.themeScan.findFirst({
+  // Pinned to the published theme's own row - the row this screen's scan
+  // writes - rather than "most recent of anything": a themes/publish
+  // webhook once wrote a narrow scan under a differently-spelled theme id,
+  // and findFirst-by-date then surfaced that instead of the rich scan.
+  // Writers now merge and normalise (recordNarrowThemeScan / themeRowKey),
+  // and this read stops depending on write order entirely. Falls back to
+  // the most recent row for shops whose scans predate the normalisation.
+  let themeScan = null;
+  if (shop) {
+    try {
+      const themeRes = await admin.graphql(MAIN_THEME_ID);
+      const themeJson = await themeRes.json();
+      const mainThemeId = themeJson.data?.themes?.nodes?.[0]?.id;
+      if (mainThemeId) {
+        themeScan = await db.themeScan.findUnique({
+          where: {
+            shopId_themeId: { shopId: shop.id, themeId: themeRowKey(String(mainThemeId)) },
+          },
+        });
+      }
+    } catch {
+      themeScan = null;
+    }
+    if (!themeScan) {
+      themeScan = await db.themeScan.findFirst({
         where: { shopId: shop.id },
         orderBy: { scannedAt: "desc" },
-      })
-    : null;
+      });
+    }
+  }
 
   // Storefront password: only report whether one is saved, never the value
   // itself - it is a merchant credential and never belongs in a loader
@@ -298,6 +324,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     hasReturnDays: Boolean(business?.returnDays),
     hasDeliveryTime: Boolean(business?.deliveryTime) && !business?.deliveryVaries,
     hasRating: result.passwordProtected ? null : Boolean(result.hasAggregateRating),
+    // Read off the scan's own node lists, not inferred from the module being
+    // enabled: WebSite lives on the home page, BreadcrumbList on the product
+    // page, and a page that could not be read yields null, never false.
+    hasWebSiteNode:
+      !result.home || result.home.passwordProtected
+        ? null
+        : result.home.nodes.some((n) => n.types.includes("WebSite")),
+    hasBreadcrumbNode:
+      !result.product || result.product.passwordProtected
+        ? null
+        : result.product.nodes.some((n) => n.types.includes("BreadcrumbList")),
     hasCollectionQuestions: result.passwordProtected ? null : Boolean(result.hasFAQPage),
     hasSocialProfiles: Boolean(
       business?.socialProfiles && Object.keys(business.socialProfiles).length > 0,
@@ -383,6 +420,20 @@ function buildFindings(result: ThemeScanResult | undefined): Finding[] {
   ];
   for (const { label, conflicts } of conflictGroups) {
     for (const c of conflicts ?? []) {
+      // An Organization pair where one node is ours is expected, never a
+      // defect: the theme's node has no identifier we can attach to, ours
+      // carries the official profiles, and consumers merge or pick. It is
+      // reported as informational so the merchant knows, and never as
+      // warning or critical severity.
+      if (organizationPairIsInformational(c)) {
+        findings.push({
+          key: `conflict-${label}-${c.type}`,
+          severity: "info",
+          text: `Organization appears ${c.count} times on the ${label}. The theme's node has no identifier we can attach to, so ours carries your official profiles alongside it; consumers merge or pick between the two. Adding an @id to the theme's node would merge them.`,
+          fixHref: null,
+        });
+        continue;
+      }
       findings.push({
         key: `conflict-${label}-${c.type}`,
         severity: "warning",
@@ -451,9 +502,11 @@ function ConflictList({ label, conflicts }: { label: string; conflicts?: Conflic
       {conflicts.map((c) => (
         <List.Item key={c.type}>
           {c.type} appears {c.count} times on the {label}.{" "}
-          {c.weEmitOne
-            ? "One of them is ours - switch the app embed to Extend mode so we reference the theme's node instead of adding a second one."
-            : "Unknown source - the other instance is not something we can identify; check the theme and any other installed apps."}
+          {organizationPairIsInformational(c)
+            ? "Informational: the theme's node has no identifier we can attach to, so ours carries your official profiles alongside it; adding an @id to the theme's node would merge them."
+            : c.weEmitOne
+              ? "One of them is ours - switch the app embed to Extend mode so we reference the theme's node instead of adding a second one."
+              : "Unknown source - the other instance is not something we can identify; check the theme and any other installed apps."}
         </List.Item>
       ))}
     </List>
@@ -1212,7 +1265,13 @@ export default function Seo() {
       ...(stored.product?.nodes.flatMap((n) => n.types) ?? []),
       ...(stored.home?.nodes.flatMap((n) => n.types) ?? []),
     ]).size;
-    const conflictCount = (stored.productConflicts?.length ?? 0) + (stored.homeConflicts?.length ?? 0);
+    const allConflicts = [...(stored.productConflicts ?? []), ...(stored.homeConflicts ?? [])];
+    const conflictCount = allConflicts.length;
+    // The informational Organization pair (theme's id-less node beside ours)
+    // still counts, but it never colours the tile critical on its own.
+    const realConflictCount = allConflicts.filter(
+      (c) => !organizationPairIsInformational(c),
+    ).length;
     schemaMetric = {
       value: String(nodeTypeCount),
       hint: `Distinct JSON-LD types found on the product and home page, scanned ${scanDate}.`,
@@ -1220,7 +1279,7 @@ export default function Seo() {
     conflictMetric = {
       value: String(conflictCount),
       hint: `A node type appearing more than once on the same page, scanned ${scanDate}.`,
-      tone: conflictCount > 0 ? "critical" : undefined,
+      tone: realConflictCount > 0 ? "critical" : undefined,
     };
   }
 

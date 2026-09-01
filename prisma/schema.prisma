@@ -94,12 +94,19 @@ model MirrorCache {
   id        String   @id @default(uuid())
   shopId    String
   handle    String
+  // The product GID this row mirrors. Nullable because rows written before
+  // this column existed have no value; new writes always set it. Lets a
+  // deletion or a handle change be resolved by product id, which is what
+  // both the products/delete and products/update webhooks carry reliably -
+  // the handle on those payloads can be stale or absent.
+  productId String?
   body      String // rendered markdown, served as-is by the proxy route
   updatedAt DateTime @updatedAt
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
   @@unique([shopId, handle])
+  @@index([shopId, productId])
 }
 
 model ThemeScan {

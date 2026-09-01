@@ -24,7 +24,14 @@ import {
   saveShopInfo,
   type ShopInfo,
 } from "./catalogue.server";
-import { mayWrite, writeFacts, writeVariantFacts, type ProductInput } from "./facts.server";
+import {
+  mayWrite,
+  writeFacts,
+  writeVariantFacts,
+  isEligibleForMirror,
+  parseState,
+  type ProductInput,
+} from "./facts.server";
 import { renderMirror } from "./mirror.server";
 import { businessFor, type BusinessRecord } from "./business.server";
 import { formatPrice } from "./price.server";
@@ -100,10 +107,17 @@ async function cacheMirror(
     business,
   };
 
+  // The mirror body must carry the store's public domain, not the
+  // .myshopify.com one the session holds - the same rule the proxy's
+  // canonical header and IndexNow already follow. shopInfo.url is the
+  // primary domain when extraction has fetched it; the session domain is
+  // only the fallback for a shop that has never completed a pass.
+  const publicBase = shopInfo?.url ?? `https://${domain}`;
+
   const body = renderMirror({
     handle,
     title: product.title,
-    url: product.onlineStoreUrl ?? `https://${domain}/products/${handle}`,
+    url: product.onlineStoreUrl ?? `${publicBase}/products/${handle}`,
     description: product.descriptionHtml ?? "",
     summary: buildSummary(capsuleInput),
     questions: buildQuestions(capsuleInput),
@@ -125,15 +139,61 @@ async function cacheMirror(
       : null,
     collections: (product.collections ?? []).map((c) => ({
       title: c.title,
-      url: `https://${domain}/collections/${c.handle}`,
+      url: `${publicBase}/collections/${c.handle}`,
     })),
   });
 
   await db.mirrorCache.upsert({
     where: { shopId_handle: { shopId, handle } },
-    create: { shopId, handle, body },
-    update: { body },
+    create: { shopId, handle, productId: product.id, body },
+    update: { body, productId: product.id },
   });
+}
+
+/**
+ * Remove a stale MirrorCache row before it can keep serving publicly: either
+ * the product's handle changed since we last cached it (renamed product,
+ * this shop's row is now keyed to a URL nobody links to any more) or the
+ * product left the published state entirely (fix: draft/unpublished
+ * products must not stay mirrored or listed in llms.txt). Looked up by
+ * product id, which both the products/update and products/delete webhooks
+ * carry reliably, rather than by handle, which can be stale on both.
+ */
+async function dropStaleMirror(
+  shopId: string,
+  productId: string,
+  currentHandle: string | null,
+  isPublished: boolean,
+): Promise<void> {
+  let existing = await db.mirrorCache.findFirst({
+    where: { shopId, productId },
+  });
+
+  // Rows written before the productId column existed have NULL there, and a
+  // NULL row never matches the lookup above - so a pre-migration mirror
+  // would survive its product's unpublishing or deletion forever. The
+  // products/update webhook (which calls this) carries both id and handle,
+  // so when no row matched by id, any row with this product's current
+  // handle and no productId is adopted here: its productId is set, and from
+  // then on the row behaves like any post-migration row, including being
+  // deletable by products/delete. Rows whose product died before the
+  // migration are caught by the weekly cleanup in sweep_missing instead.
+  if (!existing && currentHandle) {
+    const orphan = await db.mirrorCache.findUnique({
+      where: { shopId_handle: { shopId, handle: currentHandle } },
+    });
+    if (orphan && orphan.productId === null) {
+      existing = await db.mirrorCache.update({
+        where: { id: orphan.id },
+        data: { productId },
+      });
+    }
+  }
+
+  if (!existing) return;
+  if (!isPublished || existing.handle !== currentHandle) {
+    await db.mirrorCache.delete({ where: { id: existing.id } });
+  }
 }
 
 export async function dictionaryFor(shopId: string): Promise<string> {
@@ -149,6 +209,25 @@ export async function extraStopwordsFor(shopId: string): Promise<string[]> {
   });
   if (!row?.value) return [];
   return row.value.split(/[\n,]/).map((w) => w.trim()).filter(Boolean);
+}
+
+// Fixed the same way the webhook path (extractOneProduct) already was: a
+// product whose description no longer yields anything must still flow
+// through writeFacts, because writeFacts's withdrawal branch (not this
+// function) is what retracts stale auto-written facts/summary/questions/
+// fit_for. The check below is only about cost - deciding whether a
+// zero-fact product is worth pushing into the batch write path at all -
+// answered from `product.metafields`, already fetched by fetchAllProducts,
+// so this adds no new Admin API reads.
+const WITHDRAWABLE_KEYS = ["facts", "summary", "questions", "fit_for"] as const;
+
+export function hasWithdrawableAutoValues(product: ProductInput): boolean {
+  const state = parseState(product);
+  return WITHDRAWABLE_KEYS.some((key) => {
+    const value = product.metafields?.find((m) => m.key === key)?.value;
+    if (!value || value === "" || value === "[]" || value === "{}") return false;
+    return state[key]?.source === "auto";
+  });
 }
 
 export type DryRunReport = {
@@ -214,12 +293,29 @@ export async function runBulkExtract(
       report.examples.push({ title: product.title, facts });
     }
 
-    if (!options.dryRun && facts.length > 0) {
+    // Fix: previously guarded by `facts.length > 0` alone, so a full re-run
+    // over a product whose description no longer yields anything skipped
+    // writeFacts entirely and never withdrew stale auto values - the same
+    // bug already fixed on the webhook path (extractOneProduct). Widened to
+    // also enter when this product has something written to withdraw,
+    // checked from metafields already in hand (hasWithdrawableAutoValues),
+    // so a product with genuinely nothing ever written and nothing found
+    // now still costs nothing extra.
+    if (!options.dryRun && (facts.length > 0 || hasWithdrawableAutoValues(product))) {
       // Facts the variants contradict move to the variants (PRD §5.4): a
       // description's "culoare: gri" is false for the beige variant.
       const split = splitFactsByLevel(facts, product.variants ?? []);
       if (product.handle) handleById.set(product.id, product.handle);
-      if (split.productFacts.length > 0) {
+      // Push into the product-level write when there is something to write
+      // (productFacts) OR something already written to withdraw. The old
+      // `facts.length === 0` form missed the all-variant-level case: a
+      // product whose facts all moved to variants has empty productFacts
+      // but nonempty facts, so writeFacts never ran, stale product-level
+      // auto values were never withdrawn, and cacheMirror below (which did
+      // run) diverged from the metafields. A product with empty
+      // productFacts and nothing withdrawable is still never pushed - the
+      // no-op stays free.
+      if (split.productFacts.length > 0 || hasWithdrawableAutoValues(product)) {
         batch.push({
           product,
           facts: split.productFacts,
@@ -237,6 +333,10 @@ export async function runBulkExtract(
           })),
         );
       }
+      // The bulk fetch path (fetchAllProducts) filters eligibility at the
+      // query level and never returns an ineligible product, so - unlike
+      // extractOneProduct - there is no dropStaleMirror branch needed here;
+      // every product reaching this point is mirror-eligible.
       await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
     }
 
@@ -255,22 +355,32 @@ export async function runBulkExtract(
   return report;
 }
 
-/** One product, queued by the products/update webhook. */
+/** One product, queued by the products/create and products/update webhooks. */
 export async function extractOneProduct(shopId: string, productGid: string) {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
+  const empty = { written: [], skipped: [], unchanged: [], removed: [] };
+
   const graphql = await adminGraphql(shop.domain);
   const product = await fetchProduct(graphql, productGid);
-  if (!product) return { written: [], skipped: [], unchanged: [] };
+  if (!product) return empty;
+
+  // Only ACTIVE products published to the Online Store are eligible for the
+  // public mirror and llms.txt. A draft, an archived product, or one active
+  // but not published to any channel is not (fix: these were leaking to the
+  // proxy and the index). Extracted facts/summary/questions are still
+  // written to metafields either way - they render nowhere on an
+  // unpublished product and are harmless there.
+  const isPublished = isEligibleForMirror(product);
+  await dropStaleMirror(shopId, product.id, product.handle ?? null, isPublished);
 
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
-  const shopInfo = await fetchShopInfo(graphql);
+  const shopInfo = isPublished ? await fetchShopInfo(graphql) : null;
   if (shopInfo) await saveShopInfo(shopId, shopInfo);
   const facts = extractProduct(product, dictionary, { extraStopwords });
-  if (facts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
   const split = splitFactsByLevel(facts, product.variants ?? []);
   if (split.perVariant.size > 0) {
@@ -283,14 +393,28 @@ export async function extractOneProduct(shopId: string, productGid: string) {
       })),
     );
   }
-  if (split.productFacts.length === 0) return { written: [], skipped: [], unchanged: [] };
 
+  // The write always happens, even when this pass found nothing to say.
+  // That emptiness is exactly what writeFacts's withdrawal branch is for:
+  // a merchant who rewrites a description to remove the extractable content
+  // must have the stale facts, summary, questions and fit_for retracted,
+  // not left publishing forever because this path returned early before
+  // ever calling writeFacts (the bug). Human-written values are never
+  // touched - writeFacts guards every field on its own provenance.
   const [outcome] = await writeFacts(graphql, [
-    { product, facts: split.productFacts, fields: capsuleFields(product, split.productFacts, business) },
+    {
+      product,
+      facts: split.productFacts,
+      fields: capsuleFields(product, split.productFacts, business),
+    },
   ]);
-  await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
-  if (outcome.written.length > 0 && product.handle) {
-    await pingProducts(shopId, shop.domain, [product.handle]);
+
+  if (isPublished) {
+    await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
+    if (outcome.written.length > 0 && product.handle) {
+      await pingProducts(shopId, shop.domain, [product.handle]);
+    }
   }
+
   return outcome;
 }

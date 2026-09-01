@@ -12,7 +12,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productId = (payload as { admin_graphql_api_id?: string })?.admin_graphql_api_id;
 
   if (shopRow && productId) {
-    await enqueue("extract_product", { shopId: shopRow.id, productGid: productId });
+    // Same jobKey shape poll_changes uses (worker/tasks.ts) - a burst of
+    // update webhooks for one product collapses to one queued job instead
+    // of duplicating.
+    await enqueue(
+      "extract_product",
+      { shopId: shopRow.id, productGid: productId },
+      { jobKey: `extract:${productId}` },
+    );
   }
 
   return new Response();

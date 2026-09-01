@@ -17,7 +17,7 @@ import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
-import { runCrawlerCheck } from "../app/services/crawler-check.server";
+import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
 import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
 import { isSeoUnlocked } from "../app/services/billing.server";
 import {
@@ -27,6 +27,7 @@ import {
 } from "../app/services/theme-scan.server";
 import { diffThemeScans, type SeoWatchChange } from "../app/services/seo-watch";
 import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
+import { crawlerHitCutoff } from "../app/services/retention";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -134,8 +135,8 @@ const FIRST_ONLINE_PRODUCT = `#graphql
 
 /**
  * Ask the storefront, from outside, whether each AI crawler can read it.
- * Runs on the worker because five agents with a retry each can take half a
- * minute, and no admin request should wait that long (PRD §5.2).
+ * Runs on the worker because that many agents with a retry each can take
+ * half a minute, and no admin request should wait that long (PRD §5.2).
  */
 export const crawler_check: Task = async (payload, helpers) => {
   const { shopId, jobRunId } = payload as { shopId: string; jobRunId?: string };
@@ -143,10 +144,14 @@ export const crawler_check: Task = async (payload, helpers) => {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
+  // Derived from the agent list itself, never hardcoded - a hardcoded 5
+  // survived the list growing to 8 and made the progress bar lie.
+  const agentCount = Object.keys(AGENTS).length;
+
   if (jobRunId) {
     await db.jobRun.update({
       where: { id: jobRunId },
-      data: { status: "running", startedAt: new Date(), total: 5 },
+      data: { status: "running", startedAt: new Date(), total: agentCount },
     });
   }
 
@@ -164,7 +169,7 @@ export const crawler_check: Task = async (payload, helpers) => {
         data: {
           status: "done",
           finishedAt: new Date(),
-          progress: 5,
+          progress: agentCount,
           report: result as any,
         },
       });
@@ -319,12 +324,14 @@ export const poll_changes: Task = async (_payload, helpers) => {
 
 /**
  * Layer three. Webhook delivery is not guaranteed — Shopify retries, but a
- * failed endpoint or an app restart can still lose one. Once a day we look for
- * products that carry no attributes yet and queue them, so a merchant never
- * discovers months later that half a season is missing.
+ * failed endpoint or an app restart can still lose one. Once a week (Monday
+ * 03:30 UTC, see worker/index.ts) we look for products that carry no
+ * attributes yet and queue them, so a merchant never discovers months later
+ * that half a season is missing.
  *
  * Cheap by design: it reads through one bulk operation and only writes what is
- * genuinely absent.
+ * genuinely absent. The same catalogue read also feeds the mirror-orphan
+ * cleanup below.
  */
 export const sweep_missing: Task = async (_payload, helpers) => {
   const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
@@ -347,6 +354,22 @@ export const sweep_missing: Task = async (_payload, helpers) => {
       const extraStopwords = await extraStopwordsFor(shop.id);
       const products = await fetchAllProducts(graphql);
 
+      // Mirror-orphan cleanup, piggybacking on the catalogue already read:
+      // MirrorCache rows written before the productId column have NULL
+      // there, so a product deleted before that migration left its mirror
+      // serving forever - products/delete matches by productId and never
+      // found the row. A NULL-productId row whose handle no longer exists
+      // in the catalogue belongs to no product and is deleted here weekly.
+      // Rows whose product still exists are healed on the product's next
+      // update instead (dropStaleMirror adopts them by handle).
+      const liveHandles = products.map((p) => p.handle).filter(Boolean) as string[];
+      const { count: orphaned } = await db.mirrorCache.deleteMany({
+        where: { shopId: shop.id, productId: null, handle: { notIn: liveHandles } },
+      });
+      if (orphaned > 0) {
+        helpers.logger.info(`sweep_missing ${shop.domain}: removed ${orphaned} orphaned mirror(s)`);
+      }
+
       const missing = products.filter(
         (p) => !p.metafields?.some((m) => m.key === "facts" && m.value),
       );
@@ -360,7 +383,9 @@ export const sweep_missing: Task = async (_payload, helpers) => {
         await helpers.addJob(
           "extract_product",
           { shopId: shop.id, productGid: product.id },
-          { maxAttempts: 3 },
+          // Same jobKey the poll uses: a product both polled and swept in
+          // the same window gets one job, not two identical ones.
+          { maxAttempts: 3, jobKey: `extract:${product.id}` },
         );
         queued += 1;
       }
@@ -486,6 +511,24 @@ const MAIN_THEME_ID_SEO = `#graphql
  * FREE-TIER-SPEC §3, plus the seo_unlocked switch: an unpaid shop, or a
  * paid shop without the SEO module, is not scanned.
  */
+/**
+ * Adapt the worker's GraphqlFn (returns parsed data) to the Remix-style
+ * `(query, { variables }) => Response` shape recordThemeScan's metafield
+ * mirror expects - the same shape admin.graphql has in routes. The body is
+ * re-wrapped as `{ data }` because that is what the callers' res.json()
+ * reads.
+ */
+function asResponseGraphql(
+  graphql: (query: string, variables?: Record<string, unknown>) => Promise<any>,
+): (query: string, options?: { variables?: object }) => Promise<Response> {
+  return async (query, options) => {
+    const data = await graphql(query, (options?.variables as Record<string, unknown>) ?? {});
+    return new Response(JSON.stringify({ data }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+}
+
 export const seo_watch: Task = async (_payload, helpers) => {
   const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
 
@@ -530,8 +573,18 @@ export const seo_watch: Task = async (_payload, helpers) => {
 
       // recordThemeScan writes only to our own database and the shop
       // metafield we already mirror the theme scan through - never to the
-      // storefront or to product data.
-      await recordThemeScan(shop.id, String(themeId), { ...current, watchChanges } as any);
+      // storefront or to product data. The graphql adapter is passed so the
+      // shop metafield mirror (theme_scan: hasOrganizationLd/organizationId,
+      // which the storefront block reads at render time) is resynced weekly
+      // too, the same as when the SEO screen's scan runs - without it the
+      // block kept deciding extend-or-emit from a mirror the watch had
+      // stopped refreshing.
+      await recordThemeScan(
+        shop.id,
+        String(themeId),
+        { ...current, watchChanges } as any,
+        asResponseGraphql(graphql),
+      );
 
       if (newChanges.length > 0) {
         helpers.logger.info(
@@ -561,6 +614,30 @@ export const bulk_collections: Task = async (payload, helpers) => {
 
   try {
     const graphql = await adminGraphql(shop.domain);
+
+    // ENTITLEMENT: gated here independently of the route that enqueued it -
+    // collections are a paid feature (FREE-TIER-SPEC §3), and a job already
+    // queued before the shop's access changed must not run anyway. Same
+    // shape as seo_queue_build: checked once, before the (expensive)
+    // catalogue read even starts.
+    if (!(await mayProcessAutomatically(shop, graphql))) {
+      if (jobRunId) {
+        await db.jobRun.update({
+          where: { id: jobRunId },
+          data: {
+            status: "refused",
+            finishedAt: new Date(),
+            report: {
+              refused: true,
+              reason: "This shop has no active subscription, so building collection pages is not available.",
+            } as any,
+          },
+        });
+      }
+      helpers.logger.info(`bulk_collections ${shop.domain}: refused, no active subscription or comp`);
+      return;
+    }
+
     const collections = await fetchCollections(graphql);
 
     if (jobRunId) {
@@ -834,5 +911,19 @@ export const seo_apply: Task = async (payload, helpers) => {
       data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },
     });
     throw error;
+  }
+};
+
+/**
+ * PRIVACY.md promises raw CrawlerHit records are kept 30 days; nothing
+ * pruned them (fix). Cron-registered daily in worker/index.ts. The cutoff
+ * arithmetic lives in retention.ts, pure and unit tested; this task is the
+ * one line of I/O around it.
+ */
+export const prune_crawler_hits: Task = async (_payload, helpers) => {
+  const cutoff = crawlerHitCutoff(new Date());
+  const { count } = await db.crawlerHit.deleteMany({ where: { at: { lt: cutoff } } });
+  if (count > 0) {
+    helpers.logger.info(`prune_crawler_hits: deleted ${count} rows older than ${cutoff.toISOString()}`);
   }
 };

@@ -3,6 +3,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Form,
   Link,
+  useActionData,
   useLoaderData,
   useNavigation,
   useRevalidator,
@@ -31,7 +32,7 @@ import db from "../db.server";
 import { enqueue } from "../services/queue.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import { businessFor } from "../services/business.server";
-import { hasPaidAccess } from "../services/billing.server";
+import { hasPaidAccess, freeProductIds } from "../services/billing.server";
 import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
@@ -47,7 +48,7 @@ const PRODUCTS = `#graphql
         title
         status
         featuredMedia { preview { image { url altText } } }
-        metafields(namespace: "$app", first: 5) { nodes { key value } }
+        metafields(namespace: "$app", first: 10) { nodes { key value } }
       }
     }
   }
@@ -119,7 +120,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // FREE-TIER-SPEC §2, §5: the crawler check and the coverage score (dry
   // run) are free for every shop; a subscribed shop sees none of this.
   const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
-  const freeProductsUsed = shop?.freeProductsUsed ?? 0;
+  // The set of chosen product ids is the authority on the free tier, not the
+  // legacy freeProductsUsed counter: the counter counted writes, so a shop
+  // that reprocessed one free product under the old rule shows a higher
+  // count than products actually chosen, and the two screens would disagree.
+  const freeProductsUsed = shop ? (await freeProductIds(shop.id)).length : 0;
   const freeProductsRemaining = Math.max(0, 3 - freeProductsUsed);
 
   // Is a job stuck? Answered from the row, not from a counter in the browser
@@ -347,6 +352,9 @@ export default function Dashboard() {
     freeProductsRemaining,
     crawlerHits,
   } = useLoaderData<typeof loader>() as any;
+  const actionData = useActionData<typeof action>() as
+    | { ok: boolean; alreadyRunning?: boolean; needsSubscription?: boolean }
+    | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
@@ -395,6 +403,28 @@ export default function Dashboard() {
       subtitle="Make this catalogue readable by ChatGPT, Claude, Gemini and Perplexity"
     >
       <BlockStack gap="500">
+        {actionData?.alreadyRunning ? (
+          <Banner tone="warning" title="A job is already running">
+            <Text as="p">
+              Nothing new was started: one pass runs at a time, so a second
+              would only double the API calls and muddle the report. The
+              running job's progress is saved on our servers - it shows on
+              this screen as it moves.
+            </Text>
+          </Banner>
+        ) : null}
+
+        {actionData?.needsSubscription ? (
+          <Banner tone="critical" title="This needs a subscription">
+            <Text as="p">
+              Nothing was written. Filling the whole catalogue and bulk alt
+              text are subscription features; the crawler check, the coverage
+              preview and your three chosen products stay free. Everything
+              already written stays written.
+            </Text>
+          </Banner>
+        ) : null}
+
         {!hasAccess ? (
           <Banner tone="info" title="Before you subscribe">
             <BlockStack gap="100">

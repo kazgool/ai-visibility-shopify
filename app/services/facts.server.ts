@@ -26,6 +26,13 @@ export type ProductInput = {
   id: string;
   title: string;
   handle?: string | null;
+  // Only present on the single-product fetch path (SINGLE_PRODUCT), used to
+  // decide whether the product is still eligible for the mirror and
+  // llms.txt (fix: draft/unpublished products were being published to the
+  // public mirror). The bulk fetch path filters at the query level instead
+  // and never returns a non-eligible product in the first place, so this is
+  // left undefined there.
+  status?: string;
   descriptionHtml?: string | null;
   vendor?: string | null;
   productType?: string | null;
@@ -44,6 +51,19 @@ export type ProductInput = {
   // app - the SEO screen's field audit reads these to find empty ones.
   seo?: { title: string | null; description: string | null } | null;
 };
+
+/**
+ * Only a product that is ACTIVE and published to the Online Store channel
+ * may keep a public mirror row or a llms.txt entry (fix: draft and
+ * unpublished-but-active products were leaking to both). `status` is only
+ * populated on the single-product fetch path; the bulk fetch path filters
+ * at the query level and never returns an ineligible product at all, so a
+ * product with no `status` field is treated as eligible there.
+ */
+export function isEligibleForMirror(product: ProductInput): boolean {
+  if (product.status === undefined) return true;
+  return product.status === "ACTIVE" && !!product.onlineStoreUrl;
+}
 
 export function parseState(product: ProductInput): ProductState {
   const raw = product.metafields?.find((m) => m.key === "state")?.value;

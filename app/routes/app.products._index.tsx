@@ -20,7 +20,13 @@ import {
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
 import db from "../db.server";
-import { hasPaidAccess, isSeoUnlocked } from "../services/billing.server";
+import {
+  hasPaidAccess,
+  isSeoUnlocked,
+  freeProductIds,
+  addFreeProduct,
+  removeFreeProduct,
+} from "../services/billing.server";
 import { extractOneProduct } from "../services/extract.server";
 // metaColumnState only runs in the loader (it needs parseState), so it is
 // imported from the .server module; the labels below are plain display
@@ -65,7 +71,7 @@ function productsQuery(withSeo: boolean): string {
         status
         featuredMedia { preview { image { url } } }
         images(first: 50) { nodes { id altText } }
-        metafields(namespace: "$app", first: 6) { nodes { key value } }
+        metafields(namespace: "$app", first: 10) { nodes { key value } }
         ${withSeo ? "seo { title description }" : ""}
       }
     }
@@ -89,6 +95,7 @@ type Row = {
   mirrored: boolean;
   /** Only computed when seo_unlocked - see the loader. */
   metaState: MetaColumnState | null;
+  isFreeProduct: boolean;
 };
 
 function parseCount(value: string | undefined): number {
@@ -149,6 +156,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : [];
   const mirroredHandles = new Set(mirrored.map((m) => m.handle));
 
+  // FREE-TIER-SPEC §2, §4: three merchant-chosen products are free without a
+  // subscription. A subscribed shop sees none of this. The set of chosen
+  // product ids, not a bare counter, is the authority - see
+  // billing.server.ts's freeProductIds for why.
+  const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
+  const freeIds = shop ? await freeProductIds(shop.id) : [];
+  const freeProductsRemaining = Math.max(0, 3 - freeIds.length);
+
   const rows: Row[] = (page?.nodes ?? []).map((p: any) => {
     const mf = new Map<string, string>(
       (p.metafields?.nodes ?? []).map((m: any) => [m.key, m.value]),
@@ -184,6 +199,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // seo{} fields were never fetched for this shop, so there is nothing
       // to derive a state from.
       metaState: seoUnlocked ? metaColumnState({ id: p.id, metafields: p.metafields?.nodes, seo: p.seo ?? null }) : null,
+      // Already one of the three free products - reprocessing it is free
+      // regardless of whether the cap is otherwise full.
+      isFreeProduct: freeIds.includes(p.id),
     };
   });
 
@@ -197,12 +215,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (filter === "missing_meta") return seoUnlocked && r.metaState ? metaColumnMissing(r.metaState) : true;
     return true;
   });
-
-  // FREE-TIER-SPEC §2, §4: three merchant-chosen products are free without a
-  // subscription. A subscribed shop sees none of this.
-  const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
-  const freeProductsUsed = shop?.freeProductsUsed ?? 0;
-  const freeProductsRemaining = Math.max(0, 3 - freeProductsUsed);
 
   return {
     rows: filtered,
@@ -229,21 +241,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop) return { ok: false };
 
   const hasAccess = await hasPaidAccess(session.shop, shop.id, admin.graphql);
-  if (!hasAccess && shop.freeProductsUsed >= 3) {
-    return { ok: false, limitReached: true };
+
+  // FREE-TIER-SPEC §4 fix: reserve the slot in the free-product set before
+  // the write runs, not after it succeeds. Reserving first is what closes
+  // the two-overlapping-submissions race - addFreeProduct's check-and-add
+  // happens inside one serializable transaction, so only one of two
+  // concurrent submissions for two different products can observe room and
+  // commit; the loser is refused outright rather than both landing. A
+  // resubmission of a product already in the set is always allowed (that is
+  // the "reprocessing a free product is free" rule) and reserves nothing
+  // new.
+  let reservedNewSlot = false;
+  if (!hasAccess) {
+    const reservation = await addFreeProduct(shop.id, productId);
+    if (!reservation.ok) {
+      return { ok: false, limitReached: true };
+    }
+    reservedNewSlot = !reservation.alreadyMember;
   }
 
   const outcome = await extractOneProduct(shop.id, productId);
   const succeeded = outcome.written.length > 0;
 
-  // Count only writes that succeeded, and only for shops without a
-  // subscription (FREE-TIER-SPEC §4). Increment after the write, never
-  // before.
-  if (!hasAccess && succeeded) {
-    await db.shop.update({
-      where: { id: shop.id },
-      data: { freeProductsUsed: { increment: 1 } },
-    });
+  // A failed write must not consume one of the three (FREE-TIER-SPEC §4).
+  // The reservation above is optimistic - it has to be, to close the race -
+  // so a reservation that turns out to cover a no-op write is given back
+  // here rather than left counted.
+  if (!hasAccess && reservedNewSlot && !succeeded) {
+    await removeFreeProduct(shop.id, productId);
   }
 
   return { ok: true, succeeded };
@@ -304,7 +329,7 @@ function ProcessProductAction({
   productId: string;
   attributes: number;
 }) {
-  const fetcher = useFetcher<{ ok: boolean; succeeded?: boolean }>();
+  const fetcher = useFetcher<{ ok: boolean; succeeded?: boolean; limitReached?: boolean }>();
   const busy = fetcher.state !== "idle";
   const done = fetcher.data?.succeeded;
 
@@ -316,13 +341,32 @@ function ProcessProductAction({
     );
   }
 
+  // Every outcome is said out loud (EXPERIENCE-PRD §6): a button that
+  // silently does nothing reads as broken, and the merchant presses it
+  // again. limitReached: the cap filled between render and submit (another
+  // tab, another person). succeeded false: the write ran and found nothing
+  // to write - the free slot was given back.
   return (
-    <fetcher.Form method="post">
-      <input type="hidden" name="productId" value={productId} />
-      <Button size="slim" submit loading={busy}>
-        {attributes > 0 ? "Process again" : "Process this product"}
-      </Button>
-    </fetcher.Form>
+    <BlockStack gap="050">
+      <fetcher.Form method="post">
+        <input type="hidden" name="productId" value={productId} />
+        <Button size="slim" submit loading={busy}>
+          {attributes > 0 ? "Process again" : "Process this product"}
+        </Button>
+      </fetcher.Form>
+      {fetcher.data?.limitReached ? (
+        <Text as="span" variant="bodySm" tone="critical">
+          All three free products are already chosen - this one was not
+          processed and nothing was counted.
+        </Text>
+      ) : null}
+      {fetcher.data?.ok && fetcher.data.succeeded === false ? (
+        <Text as="span" variant="bodySm" tone="subdued">
+          Nothing extractable found in this description, so nothing was
+          written - and no free slot was used.
+        </Text>
+      ) : null}
+    </BlockStack>
   );
 }
 
@@ -561,6 +605,23 @@ export default function ProductsOverview() {
                       >
                         View
                       </a>
+                    ) : row.status !== "ACTIVE" ? (
+                      // Processed or not, a draft or archived product is
+                      // never mirrored - saying "runs when processed" on
+                      // one that was already processed is false. Publication
+                      // is the missing step, so name it.
+                      <Text as="span" tone="subdued">
+                        Not published to the Online Store, so there is
+                        nothing for AI to read
+                      </Text>
+                    ) : row.readable ? (
+                      // ACTIVE and processed but no mirror row: the product
+                      // is not published to the Online Store channel (the
+                      // mirror only exists for published products).
+                      <Text as="span" tone="subdued">
+                        Not published to the Online Store, so there is
+                        nothing for AI to read
+                      </Text>
                     ) : (
                       <Text as="span" tone="subdued">
                         Not readable yet - runs when processed
@@ -569,7 +630,7 @@ export default function ProductsOverview() {
                   </IndexTable.Cell>
                   {!hasAccess ? (
                     <IndexTable.Cell>
-                      {freeProductsRemaining > 0 ? (
+                      {freeProductsRemaining > 0 || row.isFreeProduct ? (
                         <ProcessProductAction
                           productId={row.id}
                           attributes={row.attributes}

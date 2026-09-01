@@ -29,9 +29,14 @@ const POLL_BULK = `#graphql
   }
 `;
 
-const PRODUCTS_QUERY = `
+// Only products that are ACTIVE and published to the Online Store channel
+// are extracted, mirrored or indexed (fix: draft/unpublished products were
+// leaking to the public mirror and llms.txt). "status:active" excludes DRAFT
+// and ARCHIVED; "published_status:published" excludes a product that is
+// active but not published to any sales channel, including Online Store.
+export const PRODUCTS_QUERY = `
   {
-    products {
+    products(query: "status:active AND published_status:published") {
       edges {
         node {
           id
@@ -76,6 +81,7 @@ const SINGLE_PRODUCT = `#graphql
     product(id: $id) {
       id
       handle
+      status
       title
       descriptionHtml
       vendor
@@ -159,6 +165,7 @@ export async function fetchProduct(
   return {
     id: p.id,
     handle: p.handle,
+    status: p.status,
     title: p.title,
     descriptionHtml: p.descriptionHtml,
     vendor: p.vendor,

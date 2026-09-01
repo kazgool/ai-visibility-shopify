@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useNavigation, useRevalidator } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
 import {
   Page,
@@ -17,6 +17,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
+import { hasPaidAccess } from "../services/billing.server";
 
 // The listing-page half of the product (PRD §4.8). A collection page is where
 // a buyer - or an assistant - asks "what kinds are there and which suits me",
@@ -32,7 +33,7 @@ const COLLECTIONS = `#graphql
         title
         handle
         productsCount { count }
-        metafields(namespace: "$app", first: 6) { nodes { key value } }
+        metafields(namespace: "$app", first: 10) { nodes { key value } }
       }
     }
   }
@@ -92,9 +93,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { ok: false };
+
+  // ENTITLEMENT: collections are a paid feature (FREE-TIER-SPEC §3). The nav
+  // link and any upsell copy only hide the button; a form can still be
+  // posted directly, so the action itself must refuse. Nothing already
+  // written is touched by this refusal.
+  const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+  if (!paid) {
+    return {
+      ok: false,
+      error:
+        "This shop has no active subscription, so building collection pages is not available. Nothing already written is touched.",
+    };
+  }
 
   const active = await db.jobRun.findFirst({
     where: { shopId: shop.id, status: { in: ["queued", "running"] } },
@@ -113,6 +127,9 @@ export default function Collections() {
     rows: Row[];
     job: any;
   };
+  const actionData = useActionData<typeof action>() as
+    | { ok: boolean; error?: string; alreadyRunning?: boolean }
+    | undefined;
   const nav = useNavigation();
   const revalidator = useRevalidator();
   const busy = nav.state !== "idle";
@@ -145,6 +162,28 @@ export default function Collections() {
     >
       <Form method="post" id="build-collections" style={{ display: "none" }} />
       <BlockStack gap="500">
+        {actionData?.error ? <Banner tone="critical">{actionData.error}</Banner> : null}
+
+        {actionData?.alreadyRunning ? (
+          <Banner tone="warning" title="A job is already running">
+            <Text as="p">
+              Nothing new was started - one pass runs at a time. The running
+              job's progress is saved on our servers and shows here as it
+              moves.
+            </Text>
+          </Banner>
+        ) : null}
+
+        {job?.status === "refused" ? (
+          <Banner tone="critical" title="The last build was refused">
+            <Text as="p">
+              {(job.report as any)?.reason ??
+                "This shop has no active subscription, so building collection pages is not available."}{" "}
+              Nothing already written was touched.
+            </Text>
+          </Banner>
+        ) : null}
+
         {running ? (
           <Card>
             <BlockStack gap="300">

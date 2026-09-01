@@ -18,7 +18,11 @@ import db from "../db.server";
 import { isSeoUnlocked } from "../services/billing.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
 import { CRAWLER_INFO } from "../services/crawler-info";
-import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
+import {
+  scanThemeForProductLd,
+  recordNarrowThemeScan,
+  themeRowKey,
+} from "../services/theme-scan.server";
 import {
   preferredSourceEligibilityFor,
   recordPreferredSourceEligibility,
@@ -79,19 +83,47 @@ async function primaryDomainFor(
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  const recent = shop
+
+  // Latest persisted verdict per crawler, so a refresh does not lose the
+  // last "Run the check" result - actionData only lives for one render.
+  const checks = shop
     ? await db.crawlerCheck.findMany({
         where: { shopId: shop.id },
         orderBy: { checkedAt: "desc" },
-        take: 5,
+        take: 25,
       })
     : [];
-  const themeScan = shop
-    ? await db.themeScan.findFirst({
+  const latestByAgent = new Map<string, (typeof checks)[number]>();
+  for (const c of checks) if (!latestByAgent.has(c.agent)) latestByAgent.set(c.agent, c);
+  const persistedCrawlers = Array.from(latestByAgent.values());
+
+  // Pinned to the published theme's own row, not "most recent of anything":
+  // a themes/publish webhook or a scan of a non-main theme must not shadow
+  // the canonical scan. Falls back to the most recent row for shops whose
+  // only scans predate the row-key normalisation (themeRowKey).
+  let themeScan = null;
+  if (shop) {
+    try {
+      const themeRes = await admin.graphql(MAIN_THEME_ID);
+      const themeJson = await themeRes.json();
+      const mainThemeId = themeJson.data?.themes?.nodes?.[0]?.id;
+      if (mainThemeId) {
+        themeScan = await db.themeScan.findUnique({
+          where: {
+            shopId_themeId: { shopId: shop.id, themeId: themeRowKey(String(mainThemeId)) },
+          },
+        });
+      }
+    } catch {
+      themeScan = null;
+    }
+    if (!themeScan) {
+      themeScan = await db.themeScan.findFirst({
         where: { shopId: shop.id },
         orderBy: { scannedAt: "desc" },
-      })
-    : null;
+      });
+    }
+  }
   const preferredSource = shop ? await preferredSourceEligibilityFor(shop.id) : null;
   const domain = await primaryDomainFor(admin.graphql, session.shop);
 
@@ -107,7 +139,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const seoUnlocked = shop ? await isSeoUnlocked(shop.id) : false;
 
   return {
-    recent,
+    persistedCrawlers,
     themeScan,
     domain,
     preferredSource,
@@ -160,7 +192,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const themeJson = await themeRes.json();
     const themeId = themeJson.data?.themes?.nodes?.[0]?.id;
     if (themeId) {
-      await recordThemeScan(shop.id, String(themeId), theme, admin.graphql);
+      // Narrow scan (product page only): merged into the SEO screen's rich
+      // detail, never written over it - see recordNarrowThemeScan.
+      await recordNarrowThemeScan(shop.id, String(themeId), theme, admin.graphql);
     }
   } catch {
     theme = null;
@@ -188,8 +222,16 @@ function toneForStatus(status: number): "success" | "critical" {
 }
 
 export default function Diagnostics() {
-  const { themeScan, domain, preferredSource, crawlerHits, proxyDomain, hitsPageSize, seoUnlocked } =
-    useLoaderData<typeof loader>();
+  const {
+    themeScan,
+    domain,
+    preferredSource,
+    crawlerHits,
+    proxyDomain,
+    hitsPageSize,
+    seoUnlocked,
+    persistedCrawlers,
+  } = useLoaderData<typeof loader>();
   const result = useActionData<typeof action>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -276,6 +318,28 @@ export default function Diagnostics() {
                   </Text>
                 </Banner>
               ) : null}
+            </BlockStack>
+          </Card>
+        ) : persistedCrawlers.length > 0 ? (
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h2" variant="headingMd">
+                Crawler access - last check
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                The most recent recorded verdict per crawler. Press Run the
+                check above for a fresh result.
+              </Text>
+              {persistedCrawlers.map((c: any) => (
+                <InlineStack gap="200" blockAlign="center" key={c.agent}>
+                  <Badge tone={toneFor(c.cause ?? "unknown")}>{c.agent}</Badge>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {c.cause === "ok" ? "Received the page" : (c.cause ?? "unknown")}
+                    {" - checked "}
+                    {new Date(c.checkedAt).toLocaleString()}
+                  </Text>
+                </InlineStack>
+              ))}
             </BlockStack>
           </Card>
         ) : null}

@@ -22,7 +22,17 @@ export async function enqueue(
     | "seo_queue_build"
     | "seo_apply",
   payload: Record<string, unknown>,
+  /**
+   * jobKey de-duplicates: a second addJob with the same key before the first
+   * runs replaces it rather than queuing a second job. `poll_changes` already
+   * passes `extract:${productGid}` for this reason; the webhook handlers
+   * (products/create, products/update) previously did not, so a burst of
+   * updates to one product - a CSV import touching it twice, an app doing
+   * its own writes - queued one extract_product job per webhook delivery
+   * instead of collapsing to one.
+   */
+  options?: { jobKey?: string },
 ) {
   const u = await workerUtils();
-  await u.addJob(task, payload, { maxAttempts: 3 });
+  await u.addJob(task, payload, { maxAttempts: 3, jobKey: options?.jobKey });
 }

@@ -142,14 +142,21 @@ export function extractLdNodes(html: string): LdNode[] {
 
 /**
  * An @id our own block would have set. The extension sets `#product` on the
- * Product node and `#collection` on the CollectionPage node; it never sets
- * an @id on the Organization node it emits itself (only when extending the
- * theme's own). Recognising our suffix is how a conflict can name us as one
- * of the two sources without guessing at the other.
+ * Product node, `#collection` on the CollectionPage node, and
+ * `#organization` on the Organization node it emits itself (when extending
+ * the theme's own node it reuses the theme's @id instead). Recognising our
+ * suffixes is how a conflict can name us as one of the two sources without
+ * guessing at the other - and how the scan keeps our own output from
+ * counting as "the theme emits one".
  */
 export function isOurNodeId(id: string): boolean {
-  return id.endsWith("#product") || id.endsWith("#collection");
+  return id.endsWith("#product") || id.endsWith("#collection") || id.endsWith("#organization");
 }
+
+// The presentation rule for an Organization pair where one node is ours
+// lives in ./conflicts (no ".server" suffix) because the SEO screen's
+// components apply it in the browser. Re-exported here for server callers.
+export { organizationPairIsInformational } from "./conflicts";
 
 /**
  * Resolve an `@id` to the form it actually identifies, so a relative id from
@@ -318,7 +325,16 @@ async function fetchWithPasswordUnlock(
       }),
       redirect: "manual",
     });
-    const cookie = unlock.headers.get("set-cookie");
+    // headers.get("set-cookie") comma-joins multiple Set-Cookie headers into
+    // one string, and splitting that on ";" can hand back a mangled value -
+    // a correct password then still reads as a password wall. getSetCookie()
+    // returns them separately; the storefront_digest cookie is the session
+    // unlock, so it is selected explicitly, with the joined form only as a
+    // fallback for runtimes without getSetCookie.
+    const setCookies =
+      typeof unlock.headers.getSetCookie === "function" ? unlock.headers.getSetCookie() : [];
+    const digest = setCookies.find((c) => c.startsWith("storefront_digest="));
+    const cookie = digest ?? setCookies[0] ?? unlock.headers.get("set-cookie");
     if (cookie) headers.Cookie = cookie.split(";")[0];
   }
 
@@ -372,7 +388,16 @@ export async function scanThemeForProductLd(
   }
 
   const productNodes = page.nodes.filter((n) => n.types.includes("Product"));
-  const orgNodes = page.nodes.filter((n) => n.types.includes("Organization"));
+  // hasOrganizationLd means "the THEME emits an Organization node", so our
+  // own node (recognisable by its #organization @id) is excluded here.
+  // Without this exclusion the flag oscillated: scan 1 finds no theme node,
+  // the block emits ours; scan 2 reads our own node back as the theme's and
+  // the block suppressed itself; scan 3 finds none again - the self-feed
+  // class CLAUDE.md rule 3 names, filling the weekly watch history with
+  // changes this app produced itself.
+  const orgNodes = page.nodes.filter(
+    (n) => n.types.includes("Organization") && !isOurNodeId(n.id),
+  );
 
   return {
     hasProductLd: productNodes.length > 0,
@@ -436,6 +461,16 @@ export type MissingReasonInput = {
   hasDeliveryTime: boolean;
   /** null when the scanned page could not be read at all (e.g. password wall). */
   hasRating: boolean | null;
+  /**
+   * Whether the scanned home page actually carried a WebSite node, and the
+   * scanned product page a BreadcrumbList node - read from the scan's own
+   * node lists, null when that page could not be read. These were once
+   * asserted "emitted" purely because seoUnlocked was true, while the real
+   * nodes sat unconsulted in the same scan result - a guess on the screen
+   * whose subtitle says "never a guess".
+   */
+  hasWebSiteNode: boolean | null;
+  hasBreadcrumbNode: boolean | null;
   hasCollectionQuestions: boolean | null;
   hasSocialProfiles: boolean;
   seoUnlocked: boolean;
@@ -500,29 +535,40 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
         },
   );
 
-  // WebSite + SearchAction, home page only, gated on seo_unlocked.
-  reasons.push(
-    input.seoUnlocked
-      ? { nodeType: "WebSite/SearchAction", emitted: true, reason: null, fixScreen: null }
-      : {
-          nodeType: "WebSite/SearchAction",
-          emitted: false,
-          reason: "This property is part of the operator-configured SEO module, not yet enabled for this shop.",
-          fixScreen: null,
-        },
-  );
-
-  // BreadcrumbList, product page only, gated on seo_unlocked.
-  reasons.push(
-    input.seoUnlocked
-      ? { nodeType: "BreadcrumbList", emitted: true, reason: null, fixScreen: null }
-      : {
-          nodeType: "BreadcrumbList",
-          emitted: false,
-          reason: "This property is part of the operator-configured SEO module, not yet enabled for this shop.",
-          fixScreen: null,
-        },
-  );
+  // WebSite + SearchAction (home page) and BreadcrumbList (product page):
+  // gated on seo_unlocked, but "emitted" is read off what the scan actually
+  // found on the page, never inferred from the gate being open - the same
+  // pattern hasRating uses.
+  const scanned: { nodeType: string; found: boolean | null }[] = [
+    { nodeType: "WebSite/SearchAction", found: input.hasWebSiteNode },
+    { nodeType: "BreadcrumbList", found: input.hasBreadcrumbNode },
+  ];
+  for (const { nodeType, found } of scanned) {
+    if (!input.seoUnlocked) {
+      reasons.push({
+        nodeType,
+        emitted: false,
+        reason: "This property is part of the operator-configured SEO module, not yet enabled for this shop.",
+        fixScreen: null,
+      });
+    } else if (found === true) {
+      reasons.push({ nodeType, emitted: true, reason: null, fixScreen: null });
+    } else if (found === null) {
+      reasons.push({
+        nodeType,
+        emitted: false,
+        reason: "Could not be determined - the last scan could not read this page.",
+        fixScreen: "/app/diagnostics",
+      });
+    } else {
+      reasons.push({
+        nodeType,
+        emitted: false,
+        reason: "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
+        fixScreen: "/app/diagnostics",
+      });
+    }
+  }
 
   // AggregateRating - read directly off the scanned page (it is nested
   // inside the Product node, never a top-level node of its own).
@@ -656,17 +702,109 @@ async function mirrorThemeScanMetafield(
   }
 }
 
+/**
+ * The ThemeScan row is keyed by theme id, and the two writers used two
+ * different spellings of the same theme: admin routes store the GraphQL gid
+ * (gid://shopify/OnlineStoreTheme/123), while the themes/publish webhook
+ * payload carries the bare numeric id. That split the same theme across two
+ * rows, and the SEO loader's "most recent of anything" read then surfaced
+ * whichever was written last. Every writer normalises through this helper so
+ * one theme is one row. A non-numeric, non-gid value (the webhook's "current"
+ * fallback) is left as-is rather than dressed up as a gid it is not.
+ */
+export function themeRowKey(id: string | number): string {
+  const s = String(id);
+  if (s.startsWith("gid://")) return s;
+  if (/^\d+$/.test(s)) return `gid://shopify/OnlineStoreTheme/${s}`;
+  return s;
+}
+
+/**
+ * Merge a narrow scan (product page only - scanThemeForProductLd) into the
+ * rich detail the SEO screen's scanStorefront wrote, updating only the
+ * fields the narrow scan actually measured. Without this, Diagnostics' "Run
+ * the check" and the themes/publish webhook replaced the whole detail JSON,
+ * permanently erasing the home-page scan, robots findings, missingReasons
+ * and the weekly watch history - and the SEO screen then rendered "no
+ * problems" from a scan that never looked at those things.
+ *
+ * Rules:
+ * - No previous detail: the narrow result stands on its own.
+ * - Narrow scan hit the password wall: it measured nothing, so the previous
+ *   detail is returned unchanged (callers skip the write entirely).
+ * - Otherwise: product-page fields are taken from the narrow scan;
+ *   home/homeConflicts/robots/watchChanges/missingReasons/richResultsUrl are
+ *   preserved from the previous detail. hasFAQPage spans both pages, so it
+ *   is recomputed from the fresh product page plus the preserved home page.
+ *
+ * Pure and exported for tests.
+ */
+export function mergeNarrowScanIntoDetail(
+  previous: ThemeScanResult | null,
+  narrow: ThemeScanResult,
+): ThemeScanResult {
+  if (!previous) return narrow;
+  if (narrow.passwordProtected) return previous;
+
+  const homeHasFaq =
+    previous.home && !previous.home.passwordProtected
+      ? previous.home.nodes.some((n) => n.types.includes("FAQPage"))
+      : false;
+
+  return {
+    ...previous,
+    hasProductLd: narrow.hasProductLd,
+    nodeCount: narrow.nodeCount,
+    emitters: narrow.emitters,
+    hasOrganizationLd: narrow.hasOrganizationLd,
+    organizationEmitters: narrow.organizationEmitters,
+    checkedUrl: narrow.checkedUrl,
+    passwordProtected: narrow.passwordProtected,
+    product: narrow.product,
+    productConflicts: narrow.productConflicts,
+    hasAggregateRating: narrow.hasAggregateRating,
+    hasFAQPage: Boolean(narrow.hasFAQPage) || homeHasFaq,
+  };
+}
+
+/**
+ * Persist a narrow (product-page-only) scan without clobbering the canonical
+ * rich detail - the writer Diagnostics and the themes/publish webhook use.
+ * The SEO screen's scanStorefront keeps calling recordThemeScan directly,
+ * because its result is the full detail and IS the canonical row content.
+ */
+export async function recordNarrowThemeScan(
+  shopId: string,
+  themeId: string,
+  narrow: ThemeScanResult,
+  graphql?: (query: string, options?: { variables?: object }) => Promise<Response>,
+) {
+  const key = themeRowKey(themeId);
+  const existing = await db.themeScan.findUnique({
+    where: { shopId_themeId: { shopId, themeId: key } },
+  });
+  const previous = (existing?.detail as unknown as ThemeScanResult) ?? null;
+
+  // A password wall measured nothing; leave the stored detail and the shop
+  // metafield exactly as they were rather than recording an empty result.
+  if (previous && narrow.passwordProtected) return;
+
+  await recordThemeScan(shopId, key, mergeNarrowScanIntoDetail(previous, narrow), graphql);
+}
+
 export async function recordThemeScan(
   shopId: string,
   themeId: string,
   result: ThemeScanResult,
   graphql?: (query: string, options?: { variables?: object }) => Promise<Response>,
 ) {
+  // Normalised so every caller lands on the same row - see themeRowKey.
+  const key = themeRowKey(themeId);
   await db.themeScan.upsert({
-    where: { shopId_themeId: { shopId, themeId } },
+    where: { shopId_themeId: { shopId, themeId: key } },
     create: {
       shopId,
-      themeId,
+      themeId: key,
       hasProductLd: result.hasProductLd,
       detail: result as any,
     },

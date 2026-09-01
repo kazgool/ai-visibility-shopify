@@ -68,6 +68,26 @@ The three products are chosen by the merchant, one at a time, from the Products
 screen. There is no separate selection screen: a "Process this product" action
 on a row, with the remaining count next to it, is enough.
 
+**Note, 1 September 2026 (Marius):** `shop/redact` (the GDPR webhook Shopify
+fires ~48h after uninstall) deletes the entire `Shop` row, including this
+counter, so a shop that is redacted and later reinstalls gets the count back
+at zero. This is a deliberate exception to "survives reinstall," not an
+oversight: the law wins over the free-tier demo experience. Preventing the
+reset would mean retaining shop data specifically past a request to delete
+it, which has no defensible justification here. It is also low cost in
+practice - the three products already written keep their attributes,
+summary, questions and structured data in the merchant's own store metafields
+regardless of what happens to our database, so the demonstration value is
+already spent by the time a redact could reset the counter.
+
+**Note, 1 September 2026:** the authority on the cap is the set of chosen
+product GIDs (the `free_product_ids` Setting row), not the legacy
+`Shop.freeProductsUsed` counter. The counter counted writes, so a shop that
+reprocessed one free product under the old rule carries a counter higher
+than products actually chosen. Such a pre-set shop's counter is ignored
+everywhere: membership in the set is what is free, the set's size is the
+cap, and every screen counts from the set.
+
 **What is written stays written.** If the merchant never subscribes, the three
 products keep their attributes, their summary, their questions and their
 structured data. Taking them back would contradict the rule that merchant data

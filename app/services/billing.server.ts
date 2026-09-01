@@ -365,6 +365,134 @@ export async function recordPlan(shopDomain: string, plan: PlanHandle | "none") 
   await db.shop.updateMany({ where: { domain: shopDomain }, data: { plan } });
 }
 
+const FREE_PRODUCTS_KEY = "free_product_ids";
+const FREE_PRODUCT_CAP = 3;
+
+function parseFreeProductIds(value: string | undefined | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * FREE-TIER-SPEC §2, §4: "three products of their choosing", not three
+ * writes. The chosen product GIDs live in a Setting row (JSON array, no
+ * migration needed) rather than a bare counter, so reprocessing one of the
+ * three free products is free - membership in the set is what is free, and
+ * the set's size is the cap, not a count of attempts.
+ *
+ * `Shop.freeProductsUsed` is still incremented in `addFreeProduct` and
+ * decremented in `removeFreeProduct`, but nothing reads it any more: the
+ * dashboard and the products list both count from this set (the dashboard
+ * tile moved off the counter on 1 Sep 2026). This set is the sole
+ * authority for membership, remaining-count display and cap checks; a shop
+ * whose counter drifted under the old counting rule is judged by the set
+ * alone (FREE-TIER-SPEC §4, note dated 1 Sep 2026). The column can be
+ * dropped in a future migration once nothing has written it for a while.
+ */
+export async function freeProductIds(shopId: string): Promise<string[]> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: FREE_PRODUCTS_KEY } },
+  });
+  return parseFreeProductIds(row?.value);
+}
+
+export async function isFreeProduct(shopId: string, productId: string): Promise<boolean> {
+  return (await freeProductIds(shopId)).includes(productId);
+}
+
+/**
+ * Reserve a slot in the free-tier set before the write happens (see
+ * app.products._index.tsx action) - reserving first, not after the write
+ * succeeds, is what closes the race: two overlapping submissions for two
+ * different products both call this, and only one can observe room and
+ * commit within the same serializable transaction; the other either sees
+ * the first one's product already reserved (if it is a re-submission of the
+ * same product) or sees the set already at the cap and is refused outright.
+ *
+ * If the extraction that follows a successful reservation turns out to
+ * write nothing, the caller must call `removeFreeProduct` to give the slot
+ * back - `addFreeProduct` itself has no way to know whether the write will
+ * succeed, so it cannot enforce "a failed write must not consume one of the
+ * three" on its own.
+ *
+ * Uses a Serializable transaction rather than a raw conditional SQL update:
+ * at the scale of a handful of writes per shop (never a hot table), a
+ * read-check-write inside one transaction is simpler to reason about than
+ * hand-written JSONB array SQL, and Postgres itself detects the conflict a
+ * true race produces and fails the loser's transaction, which is retried
+ * once here so the retry observes the winner's committed set.
+ */
+export async function addFreeProduct(
+  shopId: string,
+  productId: string,
+): Promise<{ ok: boolean; ids: string[]; alreadyMember: boolean }> {
+  const attempt = () =>
+    db.$transaction(
+      async (tx) => {
+        const row = await tx.setting.findUnique({
+          where: { shopId_key: { shopId, key: FREE_PRODUCTS_KEY } },
+        });
+        const ids = parseFreeProductIds(row?.value);
+        if (ids.includes(productId)) {
+          return { ok: true, ids, alreadyMember: true };
+        }
+        if (ids.length >= FREE_PRODUCT_CAP) {
+          return { ok: false, ids, alreadyMember: false };
+        }
+        const next = [...ids, productId];
+        await tx.setting.upsert({
+          where: { shopId_key: { shopId, key: FREE_PRODUCTS_KEY } },
+          create: { shopId, key: FREE_PRODUCTS_KEY, value: JSON.stringify(next) },
+          update: { value: JSON.stringify(next) },
+        });
+        await tx.shop.update({
+          where: { id: shopId },
+          data: { freeProductsUsed: { increment: 1 } },
+        });
+        return { ok: true, ids: next, alreadyMember: false };
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+  try {
+    return await attempt();
+  } catch {
+    // A genuine race triggers Postgres's serialization_failure on the loser;
+    // one retry re-reads the now-committed set from the winning transaction.
+    return attempt();
+  }
+}
+
+/**
+ * Gives a slot back after a reservation whose write produced nothing - the
+ * counterpart that lets `addFreeProduct` reserve optimistically before the
+ * write runs. Removing an id that was never a member is a no-op, so this is
+ * safe to call defensively.
+ */
+export async function removeFreeProduct(shopId: string, productId: string): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const row = await tx.setting.findUnique({
+      where: { shopId_key: { shopId, key: FREE_PRODUCTS_KEY } },
+    });
+    const ids = parseFreeProductIds(row?.value);
+    if (!ids.includes(productId)) return;
+    const next = ids.filter((id) => id !== productId);
+    await tx.setting.update({
+      where: { shopId_key: { shopId, key: FREE_PRODUCTS_KEY } },
+      data: { value: JSON.stringify(next) },
+    });
+    await tx.shop.update({
+      where: { id: shopId },
+      data: { freeProductsUsed: { decrement: 1 } },
+    });
+  });
+}
+
 export type LimitState = {
   count: number;
   limit: number | null;

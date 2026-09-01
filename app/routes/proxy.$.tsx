@@ -29,6 +29,33 @@ function logCrawlerHit(row: {
   db.crawlerHit.create({ data: row }).catch(() => {});
 }
 
+const SHOP_INFO_SETTING_KEY = "shopInfo";
+
+/**
+ * The storefront's real, public domain, for URLs shown to crawlers and
+ * browsers. session.shop is always the .myshopify.com domain, which is a
+ * redirecting duplicate on every store with a connected domain - a
+ * canonical or describedby link built from it points crawlers at the wrong
+ * URL. The primary domain is persisted to Setting the last time extraction
+ * ran (catalogue.server.ts saveShopInfo); this is an indexed read on the
+ * table already keyed by shopId, so it does not add a second query shape to
+ * the proxy path budget. Falls back to session.shop for a shop that has
+ * never run extraction.
+ */
+async function primaryDomain(shopId: string, fallback: string): Promise<string> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SHOP_INFO_SETTING_KEY } },
+  });
+  if (!row?.value) return fallback;
+  try {
+    const info = JSON.parse(row.value) as { url?: string };
+    if (info.url) return new URL(info.url).hostname || fallback;
+  } catch {
+    // fall through
+  }
+  return fallback;
+}
+
 function clientIp(request: Request): string | null {
   const forwarded = request.headers.get("fly-client-ip") ?? request.headers.get("x-forwarded-for");
   if (!forwarded) return null;
@@ -111,7 +138,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // per-product mirror below, never written to a file on a schedule. Both
   // paths serve the same content (see llms-txt.server.ts for why).
   if (handle === "llms.txt" || handle === "agents.md") {
-    const body = await llmsTxtBody(shop.id, session.shop);
+    const domain = await primaryDomain(shop.id, session.shop);
+    const body = await llmsTxtBody(shop.id, domain);
     log(session.shop, 200, null);
     return new Response(body, { status: 200, headers });
   }
@@ -126,16 +154,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   log(session.shop, 200);
+  const domain = await primaryDomain(shop.id, session.shop);
   return new Response(cached.body, {
     status: 200,
     headers: {
       ...headers,
-      // Point crawlers back at the canonical product page, and at the store's
-      // llms.txt. The llms.txt proposal names the Link header as the way to
-      // do this for non-HTML resources, which is what this response is.
+      // Point crawlers back at the canonical product page, and at the
+      // store's llms.txt. The llms.txt proposal names the Link header as
+      // the way to do this for non-HTML resources, which is what this
+      // response is. The llms.txt this app serves lives under the app proxy
+      // path, not at the domain root - the bare /llms.txt this header once
+      // pointed at was a 404 on stores where the platform publishes nothing
+      // there.
       Link:
-        `<https://${session.shop}/products/${handle}>; rel="canonical", ` +
-        `<https://${session.shop}/llms.txt>; rel="describedby"`,
+        `<https://${domain}/products/${handle}>; rel="canonical", ` +
+        `<https://${domain}/apps/ai-visibility/llms.txt>; rel="describedby"`,
       "Last-Modified": cached.updatedAt.toUTCString(),
     },
   });

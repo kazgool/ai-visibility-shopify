@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
+import { scanThemeForProductLd, recordNarrowThemeScan } from "../services/theme-scan.server";
 
 // A theme change can silently introduce or remove a Product node, which is
 // exactly when duplicate structured data appears (PRD §8). Re-scan on publish.
@@ -31,7 +31,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     const result = await scanThemeForProductLd(url, password?.value);
-    await recordThemeScan(shopRow.id, themeId, result, admin.graphql);
+    // Narrow scan (product page only). recordNarrowThemeScan normalises the
+    // payload's numeric theme id to the same gid-keyed row the admin
+    // screens use, and merges into the SEO screen's rich detail rather than
+    // replacing it - a theme publish must not erase the home-page scan,
+    // robots findings or the weekly watch history.
+    await recordNarrowThemeScan(shopRow.id, themeId, result, admin.graphql);
   } catch (error) {
     console.warn(`theme scan failed for ${shop}: ${String(error)}`);
   }

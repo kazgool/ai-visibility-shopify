@@ -14,6 +14,197 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ---
 
+## Unreleased
+
+Seven fixes from a deep audit of the SEO capability. This wave contains
+extension changes (`ai-visibility.liquid`), so shipping it requires
+`npx shopify app deploy`, not only a server deploy.
+
+### Fixed (adversarial QA wave, 1 September 2026)
+
+- **The free-tier product editor was unreachable.** The subscription gate in
+  `app.tsx` matched free routes exactly, so `/app/products/:id` redirected a
+  free shop to Plans and the gated editor never rendered. `/app/products` is
+  now matched as a prefix; the editor's own action keeps enforcing the
+  per-product free-tier rules, so the gate widening changes reachability,
+  not entitlement (FREE-TIER-SPEC section 5).
+- **Diagnostics and theme publishes erased the SEO screen's scan.** Both
+  wrote a narrow, product-page-only scan over the ThemeScan detail the SEO
+  screen's rich scan owns - permanently deleting the home-page scan, robots
+  findings, missingReasons and the weekly watch history, and the webhook
+  additionally wrote under a numeric theme id, a second row the SEO loader's
+  most-recent read then surfaced. Now: theme ids are normalised to one row
+  key (`themeRowKey`), narrow scans merge into the existing detail
+  (`mergeNarrowScanIntoDetail`, updating only what they measured), a
+  password-walled narrow scan writes nothing, and the SEO and Diagnostics
+  loaders pin to the published theme's own row instead of "most recent of
+  anything".
+- **Pre-migration mirror rows (NULL productId) could leak forever.**
+  products/update now adopts a NULL-productId row matching the product's
+  current handle (sets productId, so delete and staleness checks work from
+  then on), and the weekly sweep deletes NULL-productId rows whose handle no
+  longer exists in the catalogue it already reads.
+- **The mirror's describedby links pointed at a 404.** The proxy's Link
+  header and the storefront block's rel="describedby" both pointed at
+  `/llms.txt`; the app serves llms.txt at `/apps/ai-visibility/llms.txt`.
+  Both now point there. (Extension change - needs `npx shopify app deploy`.)
+- **Bulk withdrawal missed the all-variant-facts case.** A product whose
+  facts all moved to variant level (productFacts empty, facts nonempty)
+  skipped writeFacts in the bulk pass, so stale product-level auto values
+  were never withdrawn while the mirror was refreshed and diverged. The
+  write branch now also enters when withdrawable auto values exist.
+- Cleanup: the dashboard's product query fetches 10 metafields instead of 5
+  (the namespace has more than 5 keys, so `state` could fall off and rows
+  misreported); crawler_check derives JobRun total/progress from the agent
+  list instead of a hardcoded 5 (there are 8 agents); the sweep's queued
+  jobs carry the same `extract:{gid}` jobKey the poll uses, and its comment
+  says weekly, matching the cron; the weekly seo_watch resyncs the
+  theme_scan shop metafield the storefront block reads; Diagnostics shows
+  the latest persisted crawler check on load, so a refresh no longer loses
+  the result; refusals are surfaced - Collections shows a refused JobRun
+  and the already-running case, the dashboard shows already-running and
+  needs-subscription outcomes, the products list explains a full free cap
+  and a write that found nothing; the products list no longer says "runs
+  when processed" on a processed-but-unpublished product, saying instead
+  that it is not published to the Online Store;
+  `billing.server.ts`'s counter comment now states the free-product set is
+  the sole authority (FREE-TIER-SPEC carries a dated note).
+
+### Fixed (SEO audit wave, 1 September 2026)
+
+- **The Organization detection oscillated against our own output.** Our own
+  Organization node now carries an `@id` ending `#organization`,
+  `isOurNodeId` recognises it, and the theme scan excludes our nodes when
+  computing `hasOrganizationLd` - the flag now means "the theme emits one".
+  Previously scan 1 found no theme node and the block emitted ours, scan 2
+  read our node back as the theme's and the block suppressed itself, scan 3
+  found none again: weekly flapping, with the seo_watch history filling with
+  changes the loop itself produced.
+- **The sameAs suppression is reversed (Marius's decision, 1 Sep 2026).**
+  When the theme has an id-less Organization node, our node with the
+  merchant's official profiles is now published alongside it instead of
+  being suppressed to keep the conflict counter at zero. The SEO screen
+  reports that pair as informational (never warning or critical), with copy
+  explaining the theme's node has no identifier we can attach to and that
+  adding an @id to it would merge the two.
+- **`itemCondition: NewCondition` was published unconditionally** under
+  seo_unlocked - a false factual claim on shops selling refurbished or
+  second-hand goods. Removed; there is no merchant-stated condition field to
+  derive it from. `priceValidUntil` stays, with a comment recording that it
+  is a synthetic, computed date and why that is accepted.
+- **writeSeo/revertSeo used the deprecated `productUpdate(input:)` form.**
+  Migrated to the documented `productUpdate(product: ProductUpdateInput!)`
+  (verified against shopify.dev). Behaviour unchanged: both seo subfields
+  are still always sent together, same return handling.
+- **WebSite/SearchAction and BreadcrumbList were reported "emitted" purely
+  because seo_unlocked was true**, without reading the scanned nodes.
+  deriveMissingReasons now reads them from what the scan actually found on
+  the home and product pages, with "could not be determined" when the page
+  was unreadable - the same pattern hasRating already used.
+- **The password unlock could mangle the session cookie.** `set-cookie` was
+  read with `headers.get`, which comma-joins multiple cookies; the scan now
+  uses `getSetCookie()` and selects the `storefront_digest` cookie
+  explicitly, with the old form only as a fallback.
+- **Products list read `metafields(first: 6)`** while every other reader
+  uses 10 - one more key written by anyone would push `state` out of the
+  window and make the Meta column read "Outside app" over our own writes.
+  Aligned to 10. The product editor also now renders `actionData.error` as a
+  critical banner; refusal errors from its action were previously invisible.
+
+Previous unreleased notes follow.
+
+Six data-integrity and privacy fixes from an audit of the mirror, the
+webhooks and the retention promise. All verified against the code and, where
+testable without a live store, covered by unit tests.
+
+### Fixed
+
+- **Draft and unpublished products were published to the public mirror and
+  llms.txt.** The bulk fetch now filters to `status:active AND
+  published_status:published`; the single-product fetch path (webhooks) now
+  checks `status` and `onlineStoreUrl` before caching a mirror row or
+  indexing the product. Facts and the capsule fields are still written to
+  metafields either way - they render nowhere on a draft and are harmless
+  there. `isEligibleForMirror` in `facts.server.ts` is the shared decision.
+- **Deleted products kept a live public mirror forever.** The products/delete
+  webhook read `payload.handle`, which that payload never carries (it carries
+  only the numeric `id`). MirrorCache gained a `productId` column
+  (hand-written migration `20260901120000_mirror_cache_product_id`); deletion
+  now matches on the product GID built from that id.
+- **A product's mirror row was never dropped on rename.** If a cached row's
+  handle no longer matches the product's current handle, or the product left
+  the published state, it is deleted on the next products/update pass
+  (`dropStaleMirror` in `extract.server.ts`).
+- **The webhook extraction path never withdrew stale output.** It returned
+  before calling `writeFacts` whenever a re-extraction came back empty, so a
+  description edited down to nothing kept its old facts, summary, questions
+  and mirror live indefinitely. It now always calls `writeFacts`, which
+  withdraws previously auto-written values and leaves human-written ones
+  untouched.
+- **Bulk alt text rewrote every unchanged image on every run.** `writeAltText`
+  now skips the update when the generated alt text equals the existing value,
+  matching the same self-feed guard the metafield writer already has.
+- **CrawlerHit rows were never pruned.** PRIVACY.md promises 30 days; a daily
+  worker task (`prune_crawler_hits`) now deletes rows past that cutoff. The
+  cutoff arithmetic lives in `retention.ts`, pure and unit tested.
+- **`shop/redact` did not delete CrawlerHit.** It is keyed by the shop domain
+  string with no foreign key to `Shop`, so the cascade never reached it; the
+  handler now deletes it explicitly, and its comment no longer claims
+  coverage it did not have.
+- **The proxy's canonical and describedby links, and IndexNow submissions,
+  used the myshopify.com domain.** Both now use the store's primary domain,
+  read from the persisted `shopInfo` Setting row, with `session.shop` as the
+  fallback when no row exists yet.
+
+Six further entitlement and pipeline fixes, from the same standing rule as
+above: a limit checked only where a route starts is not enforced, because a
+Remix action or a worker task can be reached without its parent loader ever
+running.
+
+- **Collections had no billing gate at all.** `app.collections.tsx`'s action
+  enqueued `bulk_collections` for any authenticated shop; the worker task had
+  no check either. Both now require `hasPaidAccess` / `mayProcessAutomatically`
+  - the action before enqueueing, the task again before it starts (queued
+  jobs from before a shop's access changed are refused too). Nothing already
+  built is touched by the refusal.
+- **Only the SEO intents were gated on the product editor.** `capsule`,
+  `capsule_reset`, `reset`, `alt` and the facts save in
+  `app.products.$id.tsx` wrote for any authenticated shop regardless of
+  subscription. FREE-TIER-SPEC §2 calls the three free products "the real
+  write," fully editable, so the new gate allows these intents when the shop
+  has paid access or the product is one of the shop's (at most three) free
+  products, and refuses everything else. `app.business.tsx` and
+  `app.dictionary.tsx` were checked and left ungated on purpose - they are
+  configuration, not processing volume.
+- **A cancelled shop kept webhook extraction forever.**
+  `mayProcessAutomaticallyCached` reads `Shop.plan`, refreshed only when a
+  merchant opens the app; a shop that cancels and never returns kept its last
+  cached plan indefinitely, so every `products/update` webhook still ran a
+  full paid extraction. A new `app_subscriptions/update` webhook handler
+  (topic verified against shopify.dev, 2026-07 API version) now records the
+  plan change - `none` on anything but `ACTIVE`, a fresh live read on
+  `ACTIVE` - as soon as Shopify reports it. Requires `npx shopify app deploy`
+  to take effect (new webhook subscription in `shopify.app.toml`).
+- **The free-tier cap counted writes, not products, and could race.** Two
+  overlapping submissions could both pass a check-then-increment counter, and
+  reprocessing one of the three chosen products consumed a second slot. The
+  counter is replaced by a Setting row holding the chosen product GIDs (no
+  migration needed); membership is what is free, the set's size is the cap,
+  and adding to it runs inside a serializable transaction so two overlapping
+  submissions cannot land four products. `Shop.freeProductsUsed` is kept in
+  sync for the existing dashboard display but is no longer the authority.
+- **A full re-run over an emptied-out product skipped withdrawal in the bulk
+  pass.** `runBulkExtract` guarded its write branch with `facts.length > 0`,
+  so the same bug just fixed on the webhook path was still live on the bulk
+  pass: a description edited down to nothing kept its stale facts, summary,
+  questions and fit_for. It now also enters when the product has previously
+  written auto values to withdraw, checked from metafields already fetched
+  in the bulk export (no new Admin API reads).
+- **Webhook-enqueued extraction jobs had no jobKey.** `products/create` and
+  `products/update` now pass the same `extract:${productGid}` jobKey
+  `poll_changes` already used, so a burst of updates to one product collapses
+  to one queued job instead of duplicating.
+
 ## Version 20 - 1 September 2026
 
 Released as `ai-visibility-all-in-one-20`. The whole of the SEO capability

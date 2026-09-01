@@ -44,7 +44,7 @@ const COLLECTIONS = `#graphql
         handle
         descriptionHtml
         productsCount { count }
-        metafields(namespace: "$app", first: 6) { nodes { key value } }
+        metafields(namespace: "$app", first: 10) { nodes { key value } }
         products(first: $members) {
           nodes {
             id
