@@ -115,6 +115,18 @@ over memory — APIs moved fast in 2025–2026.
 - `check.bat` = install + prisma generate + typecheck + tests. Run it (or
   its steps) before declaring anything done. 65+ tests must stay green.
   (EPERM on prisma generate means dev.bat is running — stop it first.)
+- **`check.bat` passing is not the same as the feature working.** Typecheck,
+  unit tests and the build all inspect code in isolation; none of them opens
+  the screen. For anything with state — a queue, a job, a write, a wizard —
+  the verification is not finished until the *second* render is accounted
+  for: what does the screen show after the action, not merely that the
+  action succeeded. Two bugs shipped this way. The free-tier cap was enforced
+  in the spec and in the route, and bypassed by three background jobs. The
+  SEO queue built correctly and applied correctly, then kept showing the
+  pre-write proposals and computed its headline figures from them, so a
+  store with every field written read "0 of 50". In both cases every test
+  was green. State the post-action state explicitly when reporting work
+  done, and when a browser is available, press the button.
 - `dev.bat` = `shopify app dev`. While it runs, app URLs point at the
   laptop tunnel; the app proxy (mirror) dies when it stops. Production
   serving requires `fly deploy` + `npx shopify app deploy` with dev OFF

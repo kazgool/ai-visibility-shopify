@@ -652,6 +652,41 @@ export const seo_queue_build: Task = async (payload, helpers) => {
     return;
   }
 
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        report: { error: `Unknown shop ${shopId}` } as any,
+      },
+    });
+    return;
+  }
+
+  // Marius's ruling, 31 Aug 2026: seo_unlocked being on is not enough for a
+  // write path - a shop with no active subscription (and no comp) may not
+  // run the bulk pass either, mirroring the per-product write gate below.
+  // Checked once per build, before the (expensive) bulk export, the same
+  // shape poll_changes and sweep_missing use for their own shop-level gate.
+  const graphql = await adminGraphql(shop.domain);
+  if (!(await mayProcessAutomatically(shop, graphql))) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "refused",
+        finishedAt: new Date(),
+        report: {
+          refused: true,
+          reason: "This shop has no active subscription, so the SEO module cannot run.",
+        } as any,
+      },
+    });
+    helpers.logger.info(`seo_queue_build ${shop.domain}: refused, no active subscription or comp`);
+    return;
+  }
+
   await db.jobRun.update({
     where: { id: jobRunId },
     data: { status: "running", startedAt: new Date() },
@@ -682,21 +717,63 @@ export const seo_queue_build: Task = async (payload, helpers) => {
 };
 
 /**
+ * Every "done" queue for this shop must not survive a write - its rows and
+ * counts describe a catalogue state this apply has just made false (bug
+ * caught 1 Sep 2026: a store with all 100 fields written still showed "0 of
+ * 50" and a table offering to write them again, both read straight off the
+ * seo_queue JobRun's build-time report).
+ *
+ * Originally this touched only the single queue named by `queueJobId` - the
+ * one the operator actually reviewed. That under-invalidates: the loader
+ * always reads the shop's most-recently-created seo_queue JobRun, and a
+ * second, newer queue can exist that was also built before this write (a
+ * second "Preview" pressed in another tab, or a re-preview whose apply was
+ * never submitted) and shares no relationship to `queueJobId` at all. Left
+ * "done", that newer queue is exactly as wrong as the one just applied
+ * against, and the loader would present it as current. So every "done"
+ * seo_queue for the shop is marked stale here, not only the reviewed one -
+ * deliberately over-invalidating (a merchant re-reads "Press Preview again"
+ * one extra time) rather than under-invalidating (a screen states a number
+ * known to be wrong), per EXPERIENCE-PRD §2.
+ *
+ * Marks "stale" rather than deleting or rebuilding: rebuilding means
+ * re-reading the whole catalogue, not free enough to fire on every apply,
+ * and the JobRun itself is small evidence worth keeping. "stale" simply
+ * removes it from the set of statuses seo-queue-metrics.ts treats as current
+ * (only "done" qualifies), so the dashboard falls back to "press Preview
+ * again" instead of presenting numbers or rows known to be wrong. The
+ * operator chooses when to pay for a fresh read; nothing rebuilds itself.
+ */
+async function invalidateQueue(shopId: string) {
+  await db.jobRun.updateMany({
+    where: { shopId, kind: "seo_queue", status: "done" },
+    data: { status: "stale" },
+  });
+}
+
+/**
  * Write the operator-approved rows (SEO-WORKSPACE-PRD §3.5, §7). No
  * scheduled job ever calls this - it only runs from an explicit "Apply"
  * submission on `/app/seo`, carrying the exact product ids and field values
- * the operator saw and approved.
+ * the operator saw and approved, plus the id of the queue JobRun those rows
+ * came from.
  *
  * ENTITLEMENT: re-checked inside `runSeoApply` at execution time, not only
  * when the route enqueued it - the queue may sit for a while before an
  * operator presses Apply, and `seo_unlocked` can be switched off in between.
- * A refused run touches nothing and the report says why.
+ * A refused run touches nothing and the report says why - and does not
+ * invalidate the queue, because nothing about it became false.
  */
 export const seo_apply: Task = async (payload, helpers) => {
-  const { shopId, jobRunId, items } = payload as {
+  // queueJobId is accepted for backward compatibility with older enqueued
+  // payloads and for the JobRun report, but no longer drives invalidation -
+  // see invalidateQueue above for why that was the under-invalidating half
+  // of the 1 Sep bug.
+  const { shopId, jobRunId, items, queueJobId } = payload as {
     shopId: string;
     jobRunId: string;
     items: SeoApplyItem[];
+    queueJobId?: string | null;
   };
 
   await db.jobRun.update({
@@ -719,13 +796,21 @@ export const seo_apply: Task = async (payload, helpers) => {
           finishedAt: new Date(),
           report: {
             ...report,
-            reason: "SEO module was disabled for this shop before this job ran",
+            reason: report.reason ?? "SEO module was disabled for this shop before this job ran",
           } as any,
         },
       });
-      helpers.logger.info(`seo_apply ${shopId}: refused, seo_unlocked is off`);
+      helpers.logger.info(
+        `seo_apply ${shopId}: refused, ${report.reason ?? "seo_unlocked is off"} (reviewed queue ${queueJobId ?? "none"})`,
+      );
       return;
     }
+
+    // Invalidate before declaring this job done, and regardless of whether
+    // `written` is nonzero: "already matched" (the exact case that shipped
+    // broken) means an earlier apply already wrote these fields, so this
+    // queue's proposals were already false the moment it printed them.
+    await invalidateQueue(shopId);
 
     // Same self-feed guard bulk_extract and bulk_alt_text use: a mass write
     // makes every touched product look "recently changed" to poll_changes,
@@ -740,6 +825,10 @@ export const seo_apply: Task = async (payload, helpers) => {
       `seo_apply ${shopId}: ${report.written} written, ${report.skipped} skipped, ${report.unchanged} unchanged`,
     );
   } catch (error) {
+    // A thrown error can still follow partial writes (writeSeo runs one
+    // product at a time), so the queue is invalidated here too rather than
+    // left looking trustworthy after a run that may have changed some of it.
+    await invalidateQueue(shopId);
     await db.jobRun.update({
       where: { id: jobRunId },
       data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },

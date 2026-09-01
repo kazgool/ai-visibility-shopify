@@ -435,7 +435,7 @@ export default function Dashboard() {
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
                     {total === 0
-                      ? "Starting up…"
+                      ? "Starting up..."
                       : `${percent}% - ${progress} of ${total} products.`}
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
@@ -493,7 +493,7 @@ export default function Dashboard() {
               <InlineStack gap="200" blockAlign="center">
                 <Spinner size="small" />
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Asking each crawler…
+                  Asking each crawler...
                 </Text>
               </InlineStack>
             ) : crawlers.length === 0 ? (

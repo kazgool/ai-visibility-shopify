@@ -95,6 +95,27 @@ export async function isSeoUnlocked(shopId?: string): Promise<boolean> {
   return Boolean(row?.value);
 }
 
+/**
+ * Turn the switch back off. Until this existed, `grantSeoUnlock` was the
+ * only mechanism that ever touched the `seo_unlocked` Setting row, so the
+ * sole way back was editing the database by hand - not a path anyone
+ * exposed on purpose. Same shape as `grantSeoUnlock`: delete the row rather
+ * than writing a falsy value, so `isSeoUnlocked`'s existing `Boolean(row?.value)`
+ * check needs no change and a deleted row cannot be mistaken for "never
+ * granted" versus "granted, then revoked" in a way that matters - neither
+ * state should unlock anything.
+ *
+ * Callers must also call `syncSeoUnlockMetafield` right after this succeeds,
+ * the same way `grantSeoUnlock` callers already do - the Liquid block reads
+ * the mirrored shop metafield, not this database row, and a revoke that
+ * never resyncs it leaves the storefront believing the module is still on.
+ */
+export async function revokeSeoUnlock(shopId: string) {
+  await db.setting.deleteMany({
+    where: { shopId, key: SEO_UNLOCK_KEY_SETTING },
+  });
+}
+
 const SEO_UNLOCK_SHOP_ID = `#graphql
   query SeoUnlockShopId { shop { id } }
 `;
@@ -111,9 +132,11 @@ const SET_SEO_UNLOCK_METAFIELD = `#graphql
  * Mirror the `seo_unlocked` Setting row to a shop metafield with public
  * storefront read access - the same pattern `business.server.ts` and
  * `theme-scan.server.ts` use to hand a database value to Liquid, which has no
- * way to read our database directly. Called right after `grantSeoUnlock`
- * succeeds; there is no other path that changes this flag, so there is no
- * other place that needs to call it.
+ * way to read our database directly. Called right after `grantSeoUnlock` or
+ * `revokeSeoUnlock` succeeds - both change the flag, so both must resync the
+ * mirror; it reads the current value from the database itself (via
+ * `isSeoUnlocked`) rather than trusting the caller to say which direction it
+ * moved, so grant and revoke can share this one function.
  */
 export async function syncSeoUnlockMetafield(
   shopId: string,

@@ -13,7 +13,7 @@ import { adminGraphql } from "./admin.server";
 import { fetchAllProducts, fetchProduct, fetchShopInfo } from "./catalogue.server";
 import { dictionaryFor, extraStopwordsFor } from "./extract.server";
 import { extractProduct, stopwordSet, type Fact } from "../engine";
-import { isSeoUnlocked } from "./billing.server";
+import { isSeoUnlocked, mayProcessAutomatically } from "./billing.server";
 import {
   buildSeoQueue,
   writeSeo,
@@ -86,8 +86,10 @@ export type SeoApplyReport = {
   written: number;
   skipped: number;
   unchanged: number;
-  /** True when seo_unlocked was off at execution time - nothing was touched. */
+  /** True when seo_unlocked was off, or no paid access, at execution time - nothing was touched. */
   refused: boolean;
+  /** Set when refused, naming the actual cause - read by the SEO screen instead of a generic message. */
+  reason?: string;
 };
 
 /**
@@ -119,12 +121,25 @@ export async function runSeoApply(
   // the exact hole `poll_changes` and `sweep_missing` had before today.
   if (!(await isSeoUnlocked(shopId))) {
     report.refused = true;
+    report.reason = "The SEO module was switched off for this shop before this write ran. Nothing was written.";
     return report;
   }
 
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
   const graphql = await adminGraphql(shop.domain);
+
+  // Marius's ruling, 31 Aug 2026: seo_unlocked being on is not enough for a
+  // write path - a shop with no active subscription (and no comp) may not
+  // write here either, the same rule poll_changes and sweep_missing already
+  // enforce for automatic freshness. mayProcessAutomatically is the
+  // authoritative, live-checked form; this job already has an admin client,
+  // so the cost is one extra Admin API call per apply, not per product.
+  if (!(await mayProcessAutomatically(shop, graphql))) {
+    report.refused = true;
+    report.reason = "This shop has no active subscription, so writes are not available. Nothing was written.";
+    return report;
+  }
 
   const byProduct = new Map<string, SeoApplyItem[]>();
   for (const item of items) {

@@ -3,6 +3,7 @@ import {
   extractLdNodes,
   detectConflicts,
   isOurNodeId,
+  canonicalNodeId,
   deriveMissingReasons,
 } from "../theme-scan.server";
 
@@ -125,6 +126,95 @@ describe("detectConflicts", () => {
     ];
     const conflicts = detectConflicts(nodes);
     expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: false }]);
+  });
+
+  // Extend mode deliberately emits a node carrying the theme's own @id so
+  // the two merge into one node - that merge must never be reported as a
+  // conflict, on any of the five id shapes that can arise.
+  it("does not report a conflict when two nodes share the exact same @id (the merge case)", () => {
+    const nodes = [
+      { types: ["Product"], id: "https://x/products/y#product" },
+      { types: ["Product"], id: "https://x/products/y#product" },
+    ];
+    expect(detectConflicts(nodes, "https://x/products/y")).toEqual([]);
+  });
+
+  it("merges a relative @id from the theme with the absolute form of the same address from us, given the page URL", () => {
+    const nodes = [
+      { types: ["Product"], id: "/products/x#product" }, // theme's own, relative
+      { types: ["Product"], id: "https://shop.example/products/x#product" }, // ours, absolute
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([]);
+  });
+
+  it("without a known page URL, leaves a relative id unresolved and reports the possible conflict rather than guessing", () => {
+    const nodes = [
+      { types: ["Product"], id: "/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/x#product" },
+    ];
+    // No pageUrl passed: the two strings differ, so they are not merged.
+    const conflicts = detectConflicts(nodes);
+    expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: true }]);
+  });
+
+  it("still reports a conflict for two nodes of the same type that both carry no @id", () => {
+    const nodes = [
+      { types: ["Product"], id: "" },
+      { types: ["Product"], id: "" },
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: false }]);
+  });
+
+  it("still reports a conflict when one node has an @id and the other has none - they cannot be proven the same node", () => {
+    const nodes = [
+      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "" },
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: true }]);
+  });
+
+  it("still reports a conflict for two different, unrelated @id values", () => {
+    const nodes = [
+      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/other-app-node" },
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: true }]);
+  });
+
+  it("merges three nodes down to two distinct entities and still counts the survivors", () => {
+    const nodes = [
+      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/x#product" }, // dup of the first
+      { types: ["Product"], id: "https://shop.example/products/other-app-node" },
+    ];
+    const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
+    expect(conflicts).toEqual([{ type: "Product", count: 2, weEmitOne: true }]);
+  });
+});
+
+describe("canonicalNodeId", () => {
+  it("returns null for an empty id", () => {
+    expect(canonicalNodeId("", "https://shop.example/products/x")).toBeNull();
+  });
+
+  it("resolves a relative id against the page URL", () => {
+    expect(canonicalNodeId("/products/x#product", "https://shop.example/products/x")).toBe(
+      "https://shop.example/products/x#product",
+    );
+  });
+
+  it("leaves an already-absolute id unchanged", () => {
+    expect(
+      canonicalNodeId("https://shop.example/products/x#product", "https://shop.example/products/x"),
+    ).toBe("https://shop.example/products/x#product");
+  });
+
+  it("returns the id as-is when no page URL is known", () => {
+    expect(canonicalNodeId("/products/x#product")).toBe("/products/x#product");
   });
 });
 

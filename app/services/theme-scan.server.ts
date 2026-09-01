@@ -152,11 +152,49 @@ export function isOurNodeId(id: string): boolean {
 }
 
 /**
- * Two top-level nodes of the same @type on one page is a real defect: a
- * search engine or assistant has to choose between them. Report every
- * repeated type, and say plainly when one of the repeats is ours.
+ * Resolve an `@id` to the form it actually identifies, so a relative id from
+ * the theme ("/products/x#product") and the absolute form of the same
+ * address from us ("https://shop.example/products/x#product") compare equal
+ * - a real theme produces exactly this pair, and without resolution the
+ * detector would report a conflict against itself in extend mode. `pageUrl`
+ * is the page the ids were read from, needed to resolve a relative id per
+ * IRI rules (RFC 3986): resolution is against the document's own URL, not
+ * some other origin.
+ *
+ * Returns null for an empty id - an empty id carries no identity, so it can
+ * never be said to match another node, empty or not (see detectConflicts).
+ * When `pageUrl` is not known, a relative id is left unresolved rather than
+ * guessed at: two different-looking ids that might be the same node are
+ * reported as a possible conflict instead of being silently merged, because
+ * an unearned merge would hide a real duplicate, which is the worse failure
+ * of the two (DICTIONARY-PORT §10.1: a filter that removes value silently is
+ * worse than noise that stays visible).
  */
-export function detectConflicts(nodes: LdNode[]): ConflictEntry[] {
+export function canonicalNodeId(id: string, pageUrl?: string | null): string | null {
+  if (!id) return null;
+  if (!pageUrl) return id;
+  try {
+    return new URL(id, pageUrl).href;
+  } catch {
+    return id;
+  }
+}
+
+/**
+ * Two top-level nodes of the same @type on one page is a real defect only
+ * when they are actually two nodes. Extend mode deliberately emits a node
+ * carrying the same `@id` as the theme's own, so the two are read as one
+ * node merging, not a conflict - the whole reason extend mode exists. Report
+ * every repeated type that survives id-merging, and say plainly when one of
+ * the repeats is ours.
+ *
+ * `pageUrl` lets two ids that name the same address in different forms
+ * (relative vs. absolute) merge correctly - see canonicalNodeId. Nodes with
+ * no `@id` at all can never be merged with anything, including each other:
+ * two id-less nodes of the same type are still two distinct, unverifiable
+ * nodes and remain a conflict.
+ */
+export function detectConflicts(nodes: LdNode[], pageUrl?: string | null): ConflictEntry[] {
   const byType = new Map<string, LdNode[]>();
   for (const node of nodes) {
     for (const type of node.types) {
@@ -166,12 +204,30 @@ export function detectConflicts(nodes: LdNode[]): ConflictEntry[] {
   }
   const conflicts: ConflictEntry[] = [];
   for (const [type, list] of byType) {
-    if (list.length < 2) continue;
-    conflicts.push({
-      type,
-      count: list.length,
-      weEmitOne: list.some((n) => isOurNodeId(n.id)),
-    });
+    // Merge nodes that share a canonical @id into one entity; an id-less
+    // node never merges with anything, so each counts on its own.
+    const byId = new Map<string, boolean>(); // canonical id -> weEmitOne so far
+    let distinctCount = 0;
+    let weEmitOne = false;
+    for (const node of list) {
+      const canonical = canonicalNodeId(node.id, pageUrl);
+      const emitsOurs = isOurNodeId(node.id);
+      if (canonical === null) {
+        distinctCount += 1;
+        weEmitOne = weEmitOne || emitsOurs;
+        continue;
+      }
+      if (!byId.has(canonical)) {
+        distinctCount += 1;
+        byId.set(canonical, emitsOurs);
+      } else if (emitsOurs) {
+        byId.set(canonical, true);
+      }
+    }
+    weEmitOne = weEmitOne || Array.from(byId.values()).some(Boolean);
+
+    if (distinctCount < 2) continue;
+    conflicts.push({ type, count: distinctCount, weEmitOne });
   }
   return conflicts.sort((a, b) => a.type.localeCompare(b.type));
 }
@@ -326,7 +382,7 @@ export async function scanThemeForProductLd(
     organizationEmitters: orgNodes.map((n) => n.id),
     checkedUrl: productUrl,
     product: page,
-    productConflicts: detectConflicts(page.nodes),
+    productConflicts: detectConflicts(page.nodes, productUrl),
     hasAggregateRating: productNodes.some((n) => n.hasAggregateRating === true),
     hasFAQPage: page.nodes.some((n) => n.types.includes("FAQPage")),
   };
@@ -362,7 +418,7 @@ export async function scanStorefront(
   return {
     ...base,
     home,
-    homeConflicts: home.passwordProtected ? undefined : detectConflicts(home.nodes),
+    homeConflicts: home.passwordProtected ? undefined : detectConflicts(home.nodes, homeUrl),
     hasFAQPage: base.hasFAQPage || home.nodes.some((n) => n.types.includes("FAQPage")),
     robots,
   };

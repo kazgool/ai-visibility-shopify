@@ -26,7 +26,9 @@ import {
   grantComp,
   grantSeoUnlock,
   isComped,
+  isSeoUnlocked,
   planFromName,
+  revokeSeoUnlock,
   startSubscription,
   syncSeoUnlockMetafield,
 } from "../services/billing.server";
@@ -65,6 +67,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const subscription = await activeSubscription(admin.graphql);
   const comped = await isComped(session.shop, shop?.id);
+  const seoUnlocked = await isSeoUnlocked(shop?.id);
 
   return {
     comped,
@@ -78,6 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : null,
     currentPlan: subscription ? planFromName(subscription.name) : null,
     renewsAt: subscription?.currentPeriodEnd ?? null,
+    seoUnlocked,
   };
 };
 
@@ -109,6 +113,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return { seoCodeError: "That code is not valid." };
     }
     await grantSeoUnlock(shop.id, `code:${new Date().toISOString()}`);
+    await syncSeoUnlockMetafield(shop.id, admin.graphql);
+    throw redirect(`/app${new URL(request.url).search}`);
+  }
+
+  // Revoke: the other half of the switch above. Same discreet spot on this
+  // screen, no code needed to turn it off - only to turn it on. Must also
+  // resync the mirrored shop metafield, the same way grant does, or the
+  // storefront block keeps believing the module is on.
+  if (form.get("intent") === "seo_revoke") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return { error: "Shop not found" };
+
+    await revokeSeoUnlock(shop.id);
     await syncSeoUnlockMetafield(shop.id, admin.graphql);
     throw redirect(`/app${new URL(request.url).search}`);
   }
@@ -145,7 +162,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Plans() {
-  const { comped, count, sample, currentPlan, renewsAt } = useLoaderData<
+  const { comped, count, sample, currentPlan, renewsAt, seoUnlocked } = useLoaderData<
     typeof loader
   >() as {
     comped: boolean;
@@ -153,6 +170,7 @@ export default function Plans() {
     sample: { title: string; facts: { k: string; v: string }[] } | null;
     currentPlan: PlanHandle | null;
     renewsAt: string | null;
+    seoUnlocked: boolean;
   };
   const result = useActionData<typeof action>() as
     | {
@@ -406,7 +424,26 @@ export default function Plans() {
         ) : null}
 
         <Box paddingBlockStart="200">
-          {showSeoCode ? (
+          {seoUnlocked ? (
+            <Form method="post">
+              <input type="hidden" name="intent" value="seo_revoke" />
+              <BlockStack gap="100">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Setup code applied.
+                  </Text>
+                  <Button submit variant="plain" tone="critical" loading={busy}>
+                    Revoke
+                  </Button>
+                </InlineStack>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Revoking turns the feature off. Everything already written
+                  stays written, in your own Shopify fields: search listings
+                  are not cleared and nothing is reverted.
+                </Text>
+              </BlockStack>
+            </Form>
+          ) : showSeoCode ? (
             <Card>
               <Form method="post">
                 <input type="hidden" name="intent" value="seo_unlock" />

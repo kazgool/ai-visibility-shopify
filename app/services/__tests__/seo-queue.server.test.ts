@@ -26,13 +26,14 @@ describe("buildSeoQueue", () => {
     expect(queue.missingTitle).toBe(1);
     expect(queue.missingDescription).toBe(1);
     expect(queue.outsideApp).toBe(0);
+    expect(queue.editedByYou).toBe(0);
     expect(queue.protectedRows).toEqual([]);
     expect(queue.rows).toHaveLength(1);
     expect(queue.rows[0].titleSuggestion).toBeTruthy();
     expect(queue.rows[0].descriptionSuggestion).toBeTruthy();
   });
 
-  it("proposes only the description when the title is human-written and non-empty", () => {
+  it("proposes only the description when the title is human-written and non-empty, and counts the title as edited by you, not outside the app", () => {
     const state = { seo_title: { source: "human", at: "2026-01-01", prev: "" } };
     const p = product({
       seo: { title: "Hand-written title", description: "" },
@@ -43,6 +44,12 @@ describe("buildSeoQueue", () => {
 
     expect(queue.missingTitle).toBe(0); // not empty, so not counted as missing
     expect(queue.missingDescription).toBe(1);
+    // The whole point of this fix: a value the merchant edited by hand in
+    // this app's own editor must never be folded into "set outside this
+    // app" - the two are protected for different reasons and the screen
+    // says so in two different sentences.
+    expect(queue.editedByYou).toBe(1);
+    expect(queue.outsideApp).toBe(0);
     expect(queue.protectedRows).toEqual([]); // title is not empty, so it is not a "left blank" case
     expect(queue.rows).toHaveLength(1);
     expect(queue.rows[0].titleSuggestion).toBeNull();
@@ -93,9 +100,24 @@ describe("buildSeoQueue", () => {
     const queue = buildSeoQueue([p], null, stopwords);
 
     expect(queue.outsideApp).toBe(1);
+    expect(queue.editedByYou).toBe(0);
     expect(queue.rows).toHaveLength(1);
     expect(queue.rows[0].titleSuggestion).toBeNull();
     expect(queue.rows[0].descriptionSuggestion).toBeTruthy();
+  });
+
+  it("counts one outside field and one edited-by-you field separately on the same product", () => {
+    const state = { seo_description: { source: "human", at: "2026-01-01", prev: "" } };
+    const p = product({
+      seo: { title: "Set by a previous app", description: "My own handwritten description" },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+
+    const queue = buildSeoQueue([p], null, stopwords);
+
+    expect(queue.outsideApp).toBe(1);
+    expect(queue.editedByYou).toBe(1);
+    expect(queue.rows).toEqual([]); // neither field is empty, so nothing to propose
   });
 
   it("computes the term gap over the same catalogue read, without a second fetch", () => {

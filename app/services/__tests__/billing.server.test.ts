@@ -6,10 +6,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Setting row through isComped, so db.setting is stubbed the same way
 // llms-txt.server.test.ts stubs it.
 const mockSettingFindUnique = vi.fn();
+const mockSettingDeleteMany = vi.fn();
 
 vi.mock("../../db.server", () => ({
   default: {
-    setting: { findUnique: (...args: unknown[]) => mockSettingFindUnique(...args) },
+    setting: {
+      findUnique: (...args: unknown[]) => mockSettingFindUnique(...args),
+      deleteMany: (...args: unknown[]) => mockSettingDeleteMany(...args),
+    },
   },
 }));
 
@@ -17,6 +21,8 @@ import {
   mayProcessAutomatically,
   mayProcessAutomaticallyCached,
   checkSeoUnlockKey,
+  isSeoUnlocked,
+  revokeSeoUnlock,
 } from "../billing.server";
 
 describe("mayProcessAutomatically", () => {
@@ -135,6 +141,35 @@ describe("mayProcessAutomaticallyCached", () => {
     });
 
     expect(allowed).toBe(false);
+  });
+});
+
+// revokeSeoUnlock is the other half of grantSeoUnlock (finding: the flag
+// could be granted but never revoked). It must delete the same Setting row
+// grantSeoUnlock writes, keyed by the same shopId and key, so isSeoUnlocked
+// reads false again afterwards - and it must not require any other database
+// shape than what grant already uses.
+describe("revokeSeoUnlock", () => {
+  beforeEach(() => {
+    mockSettingFindUnique.mockReset();
+    mockSettingDeleteMany.mockReset();
+  });
+
+  it("deletes the seo_unlocked Setting row for this shop", async () => {
+    mockSettingDeleteMany.mockResolvedValue({ count: 1 });
+
+    await revokeSeoUnlock("shop1");
+
+    expect(mockSettingDeleteMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", key: "seo_unlocked" },
+    });
+  });
+
+  it("leaves the shop reading as not unlocked afterwards", async () => {
+    // isSeoUnlocked reads the row back; after a delete there is none.
+    mockSettingFindUnique.mockResolvedValue(null);
+    const unlocked = await isSeoUnlocked("shop1");
+    expect(unlocked).toBe(false);
   });
 });
 

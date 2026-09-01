@@ -116,7 +116,7 @@ export default function DictionaryPage() {
           <BlockStack gap="300">
             <Select
               label="Start from a trade preset"
-              options={[{ label: "Choose a trade…", value: "" }, ...presets]}
+              options={[{ label: "Choose a trade...", value: "" }, ...presets]}
               value={preset}
               onChange={loadPreset}
               helpText="A preset is a starting point. Edit the terms into the language your descriptions are actually written in - a term only matches text in its own language."

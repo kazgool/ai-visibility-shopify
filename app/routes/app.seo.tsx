@@ -28,7 +28,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
-import { isSeoUnlocked } from "../services/billing.server";
+import { isSeoUnlocked, hasPaidAccess } from "../services/billing.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import {
   scanStorefront,
@@ -42,6 +42,7 @@ import { diffThemeScans, formatSeoWatchLine, type SeoWatchChange } from "../serv
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
 import type { SeoApplyReport } from "../services/seo-bulk.server";
+import { isQueueStale, isQueueUsable, seoFieldMetric } from "../services/seo-queue-metrics";
 
 // A dashboard, not a diagnostics report - this mirrors app._index.tsx on
 // purpose (see SEO-WORKSPACE-PRD.md and the brief that rebuilt this screen a
@@ -166,6 +167,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return redirect(`/app/seo`);
   }
 
+  // ENTITLEMENT (Marius's ruling, 31 Aug 2026): seo_unlocked being on is not
+  // enough for either write path here - a shop with no active subscription
+  // (and no comp) may run neither the bulk preview pass nor the apply.
+  // admin.graphql is already at hand on this route, so this is the
+  // hasPaidAccess form, not the job-loop mayProcessAutomatically form (that
+  // one re-runs inside the worker tasks themselves, since a queue can sit
+  // for a while between being built and being applied). Read paths (the
+  // loader, the scan intent, the password settings) are unaffected.
+  if (intent === "seo_build_queue" || intent === "seo_apply") {
+    const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+    if (!paid) {
+      return {
+        error:
+          "This shop has no active subscription, so writing search listings is not available. Everything already written stays written; nothing is cleared or reverted.",
+      };
+    }
+  }
+
   if (intent === "seo_build_queue") {
     const active = await db.jobRun.findFirst({
       where: { shopId: shop.id, kind: "seo_queue", status: { in: ["queued", "running"] } },
@@ -193,13 +212,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (items.length === 0) return { error: "Nothing was selected." };
 
+    // The queue JobRun these items were reviewed against, so the worker can
+    // mark it stale once this apply finishes - see seo_apply in
+    // worker/tasks.ts and seo-queue-metrics.ts. Optional only because a very
+    // old client without this field must not fail to apply; the invalidation
+    // simply does not fire for it.
+    const queueJobId = String(form.get("queueJobId") ?? "").trim() || null;
+
+    // The UI hides every row once its queue goes stale, so this only fires
+    // on a race - a second tab, or a click landing between an earlier
+    // apply's write and this page's next revalidation. The write itself
+    // would still be safe either way (runSeoApply re-reads each product
+    // fresh right before writing), but the review the operator saw is no
+    // longer current, so the apply is refused rather than run on stale
+    // consent.
+    if (queueJobId) {
+      const reviewedQueue = await db.jobRun.findUnique({ where: { id: queueJobId } });
+      if (!reviewedQueue || reviewedQueue.status !== "done") {
+        return { error: "This preview is out of date. Press Preview again before writing." };
+      }
+    }
+
     const active = await db.jobRun.findFirst({
       where: { shopId: shop.id, kind: "seo_apply", status: { in: ["queued", "running"] } },
     });
     if (active) return { error: "An apply is already running." };
 
     const jobRun = await db.jobRun.create({ data: { shopId: shop.id, kind: "seo_apply" } });
-    await enqueue("seo_apply", { shopId: shop.id, jobRunId: jobRun.id, items });
+    await enqueue("seo_apply", { shopId: shop.id, jobRunId: jobRun.id, items, queueJobId });
     return { applied: true };
   }
 
@@ -776,6 +816,7 @@ function TermGapCard({ report }: { report: SeoQueue | null }) {
 }
 
 type JobRunLike = {
+  id: string;
   status: string;
   progress: number;
   total: number;
@@ -810,7 +851,14 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
     return () => clearInterval(id);
   }, [building, applying, revalidator]);
 
-  const report = queueJob?.status === "done" ? (queueJob.report as SeoQueue) : null;
+  // A queue's report is only trustworthy in status "done" - see
+  // seo-queue-metrics.ts. "stale" means an apply reviewed against this exact
+  // queue has since finished, so every row and count below is presented as
+  // null rather than as data known to be wrong (this is the fix for the bug
+  // where a store with all 100 fields written still saw "0 of 50" and rows
+  // offering to write already-written fields).
+  const report = isQueueUsable(queueJob) ? (queueJob!.report as SeoQueue) : null;
+  const queueStale = isQueueStale(queueJob);
   const queueTrouble =
     queueJob && (queueJob.status === "failed" || queueJob.status === "refused")
       ? ((queueJob.report as { error?: string; reason?: string } | null) ?? null)
@@ -900,12 +948,13 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
           <Form method="post">
             <input type="hidden" name="intent" value="seo_build_queue" />
             <Button submit loading={busy && !building} disabled={building || applying}>
-              {report ? "Preview again" : "Preview"}
+              {queueJob ? "Preview again" : "Preview"}
             </Button>
           </Form>
 
           <Form method="post">
             <input type="hidden" name="intent" value="seo_apply" />
+            <input type="hidden" name="queueJobId" value={queueJob?.id ?? ""} />
             {selectedItems.map((item) => (
               <input
                 key={`${item.id}:${item.field}`}
@@ -932,8 +981,12 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
 
         {report ? (
           <Text as="p" variant="bodySm" tone="subdued">
-            {`${report.checked} products checked. ${report.missingTitle} have no meta title, ${report.missingDescription} have no meta description. ${report.outsideApp} field${report.outsideApp === 1 ? "" : "s"} set outside this app; those are never touched.`}
+            {`${report.checked} products checked. ${report.missingTitle} have no meta title, ${report.missingDescription} have no meta description. ${report.outsideApp} field${report.outsideApp === 1 ? "" : "s"} set outside this app; ${report.editedByYou} field${report.editedByYou === 1 ? "" : "s"} edited by you here; neither is ever touched by a bulk pass.`}
           </Text>
+        ) : queueStale ? (
+          <Banner tone="info">
+            {`The last preview is out of date${queueJob?.finishedAt ? ` (checked ${new Date(queueJob.finishedAt).toLocaleString()})` : ""} - a write completed since it ran, so its proposals and counts are no longer shown. Press Preview again to see what still needs writing.`}
+          </Banner>
         ) : (
           <Text as="p" variant="bodySm" tone="subdued">
             Preview reads the whole catalogue and proposes a value for every
@@ -1126,33 +1179,19 @@ export default function Seo() {
 
   const stored = data.themeScan?.detail as any as ThemeScanResult | undefined;
   const queueJob = data.queueJob as any as JobRunLike;
-  const report = queueJob?.status === "done" ? (queueJob.report as SeoQueue) : null;
+  const report = isQueueUsable(queueJob) ? (queueJob!.report as SeoQueue) : null;
   const scanDate = data.themeScan?.scannedAt
     ? new Date(data.themeScan.scannedAt).toLocaleDateString()
     : null;
 
   // Metric row (SEO-WORKSPACE-PRD dashboard rebuild): four fractions, each
   // with its method beneath. A missing or failed read never prints as a
-  // zero - the tile states what happened instead.
-  const metaDescriptionMetric = report
-    ? {
-        value: `${report.checked - report.missingDescription} of ${report.checked}`,
-        hint: "Products with a meta description, from the last catalogue check.",
-      }
-    : {
-        value: "Not checked yet",
-        hint: "Press Preview on the listing below to check your catalogue.",
-      };
-
-  const metaTitleMetric = report
-    ? {
-        value: `${report.checked - report.missingTitle} of ${report.checked}`,
-        hint: "Products with a meta title, from the last catalogue check.",
-      }
-    : {
-        value: "Not checked yet",
-        hint: "Press Preview on the listing below to check your catalogue.",
-      };
+  // zero - the tile states what happened instead. seoFieldMetric also covers
+  // "stale" (a write consumed this queue since it was built) so the fraction
+  // is never shown as current when it is known to be wrong - see
+  // seo-queue-metrics.ts.
+  const metaDescriptionMetric = seoFieldMetric(queueJob, "description");
+  const metaTitleMetric = seoFieldMetric(queueJob, "title");
 
   let schemaMetric: { value: string; hint: string; tone?: "success" | "critical" | "subdued" };
   let conflictMetric: { value: string; hint: string; tone?: "success" | "critical" | "subdued" };

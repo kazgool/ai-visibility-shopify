@@ -281,6 +281,137 @@ Everything above this note in the section is server-only, as before.
     the theme's own node gets an `@id`. No option here was clean; this is
     the least-bad one, not a fix that removes the cost.
 
+### Fixed
+- The `/app/seo` review-and-apply queue kept showing pre-write proposals
+  after an apply had already written them, caught on the live screen 1 Sep
+  2026 (not by any test): the apply result correctly read "Written: 0, left
+  alone (protected): 0, already matched: 100" on a store where every field
+  was in fact written, but the review table below still listed all 50
+  products with both fields ticked and labelled "Meta title - not set", and
+  the four dashboard tiles still read "Meta titles 0 of 50" - both read
+  straight off the `seo_queue` JobRun's report from when the queue was
+  built, with nothing to say a completed apply had since made it false.
+  Root cause: the tiles and the row table both trusted a queue's report as
+  current for as long as its status stayed "done", and nothing ever moved a
+  queue off "done" once an apply consumed it.
+  Fix: `worker/tasks.ts`'s `seo_apply` task now marks the exact `seo_queue`
+  JobRun it was reviewed against (its id travels with the apply form as
+  `queueJobId`) as `status: "stale"` the moment the apply finishes without
+  being refused - on success and on failure, since `writeSeo` runs one
+  product at a time and a thrown error can follow partial writes; not on
+  refusal, since a refused run touches nothing and the queue's numbers still
+  hold. `app/services/seo-queue-metrics.ts` (new, pure, no ".server" suffix
+  so the client component can import it) is now the one place that decides
+  whether a queue's report may be shown as current: only `status: "done"`
+  qualifies. A stale queue shows no rows (so nothing offers to rewrite an
+  already-written field) and its tiles read "Recheck needed" with the date
+  of the last valid check, instead of a number known to be wrong. The
+  `seo_apply` action route also refuses to run against a `queueJobId` that
+  is not `status: "done"`, closing the same-tab-race case where a click
+  lands between an earlier apply's write and this page's next revalidation.
+  Considered and rejected: rebuilding the queue automatically after every
+  apply, which would re-read the whole catalogue and is not free on a large
+  shop - marking the JobRun stale costs nothing and the operator chooses
+  when to pay for a fresh read by pressing Preview again.
+  Added `app/services/__tests__/seo-queue-metrics.test.ts` covering the
+  derivation of the tile figures and the usable/stale predicates as pure
+  functions, including the exact regression case (a stale queue reporting
+  0 of 50 must not render as "0 of 50").
+- Seven findings from two independent audits of the SEO capability, 1 Sep 2026.
+  - **Conflict detection counted a merging node as a conflict.** `detectConflicts`
+    (`theme-scan.server.ts`) grouped JSON-LD nodes by `@type` alone, so Extend
+    mode - which deliberately emits a Product node sharing the theme's own
+    `@id` so the two merge into one node - fired a false conflict on
+    essentially every processed product on any theme that emits its own
+    Product node, and the screen told the merchant to switch to Extend mode
+    while already in it. Fix: nodes that resolve to the same `@id` now merge
+    into one entity before counting; an id-less node never merges with
+    anything, including another id-less node of the same type, since two
+    unidentifiable nodes cannot be proven the same. New `canonicalNodeId`
+    resolves a relative `@id` (the theme's own form, e.g. `/products/x#product`)
+    against the absolute form of the same address (ours) using the scanned
+    page's own URL, per IRI resolution rules - both call sites now pass the
+    product/home page URL through. Without a known page URL a relative id is
+    left unresolved rather than guessed at, so two differently-shaped ids that
+    might be the same node are reported as a possible conflict instead of
+    silently merged - an unearned merge would hide a real duplicate, the worse
+    failure of the two. New tests in `theme-scan.server.test.ts` cover all five
+    id shapes: same absolute id, relative-vs-absolute (merges), no pageUrl
+    known (does not merge), both nodes id-less, one id-less, and two different
+    ids.
+  - **Subscription was not checked on the SEO write paths.** The parent
+    loader's subscription gate (`app.tsx`) does not run before a child route's
+    action in Remix, so `app.seo.tsx`'s action and `app.products.$id.tsx`'s
+    seo intents, plus the `seo_queue_build` and `seo_apply` worker tasks, only
+    ever checked `seo_unlocked` - a shop that was unlocked but had no active
+    subscription could still run the bulk pass and the per-product write.
+    Marius's ruling: both entitlements must hold. Added `hasPaidAccess`
+    (already existing, live-checked) alongside `isSeoUnlocked` on every write
+    path: `app.seo.tsx`'s action for the `seo_build_queue` and `seo_apply`
+    intents, `app.products.$id.tsx`'s action for the `seo`/`seo_revert`/
+    `seo_reset` intents (both routes already had `admin.graphql` at hand), and
+    `mayProcessAutomatically` in the `seo_queue_build` and `seo_apply` worker
+    tasks (mirroring `poll_changes`/`sweep_missing`'s shape) plus inside
+    `runSeoApply` itself, which already re-checks `isSeoUnlocked` at execution
+    time. `SeoApplyReport` gained a `reason` field so a refusal states its
+    actual cause (module off vs. no subscription) instead of a hardcoded
+    string. Read paths (loaders, the scan) are unchanged.
+  - **`seo_unlocked` could be granted but never revoked.** New
+    `revokeSeoUnlock` (`billing.server.ts`), same shape as `grantSeoUnlock` -
+    deletes the `Setting` row rather than writing a falsy value. New
+    `seo_revoke` intent on `/app/plans`, same discreet spot as the grant form:
+    when unlocked, the screen now shows "Setup code applied." with a plain
+    "Revoke" button instead of the code entry field. Both grant and revoke
+    call `syncSeoUnlockMetafield` afterwards, so its doc comment no longer
+    claims to have only one caller.
+  - **"Set outside this app" folded in the merchant's own edits.**
+    `buildSeoQueue` counted any non-empty, unwritable field as `outsideApp`,
+    conflating a value with no state entry (genuinely set elsewhere) with a
+    value the merchant edited by hand inside this app's own editor (labelled
+    "Edited by you" everywhere else). Split into `outsideApp` and a new
+    `editedByYou` count, both reusing `classifyMetaField` instead of a second
+    classification. The workspace sentence now reads "N fields set outside
+    this app; M fields edited by you here; neither is ever touched by a bulk
+    pass." New tests in `seo-queue.server.test.ts`.
+  - **The product editor's source badge could lie.** `seoSource`
+    (`app.products.$id.tsx`) returned the state entry's source without
+    checking whether the live value was actually present, so a field this app
+    once wrote that was later cleared outside it (Shopify's native
+    search-listing editor, an import) still showed "Edited by you" or
+    "Automatic" over a blank, and (for a stale "human" entry) a disabled
+    field, with the empty-field guidance never showing because it was gated on
+    a "missing" state the stale entry never returned. Fix: the badge now uses
+    `classifyMetaField`, reordered to check the live value before the state
+    entry (a live empty value now reads "missing" regardless of what the state
+    entry says - covered by new `classifyMetaField` tests in
+    `seo.server.test.ts`). `titleCanWrite`/`descriptionCanWrite` in the loader
+    now also allow writing whenever the live field is empty, on top of
+    `mayWriteSeo`'s stricter bulk-pass rule, so Generate is reachable in the
+    per-product editor regardless of a stale marker; the action applies the
+    matching change with `clearSeoHumanFlag` (drops the human flag, keeps
+    `prev`) before writing, so Save actually succeeds rather than silently
+    skipping, and a genuine pre-app value still survives for revert. This
+    widening is scoped to the per-product editor only - `mayWriteSeo` itself,
+    and therefore the bulk queue's "left blank on purpose" protection, is
+    unchanged.
+  - **A second, newer queue could be shown as current after an apply.**
+    `invalidateQueue` (`worker/tasks.ts`) marked only the exact `seo_queue`
+    JobRun named by the apply's `queueJobId` as stale. Applying against an
+    older queue left a newer queue - built before the same write, from a
+    second "Preview" or an earlier unsubmitted re-preview - still `status:
+    "done"`, and the loader always reads the shop's most-recently-created
+    queue, so that newer-but-still-wrong queue was rendered as current: the
+    exact "0 of 50 with rows offering to rewrite already-written fields" bug
+    this table's own staleness mechanism exists to prevent. Fix:
+    `invalidateQueue` now marks every `status: "done"` `seo_queue` JobRun for
+    the shop stale, not only the reviewed one - deliberately over-invalidating
+    (an extra "Press Preview again") rather than under-invalidating (a number
+    known to be wrong shown as current).
+  - Four plain-character fixes (ellipsis character, curly quotes): two in
+    `app._index.tsx`, one in `app.dictionary.tsx`, one in
+    `app.products.$id.tsx`; a fifth found by a repo-wide grep in
+    `crawler-check.server.ts`'s "unreachable" cause text (em dash).
+
 ## Version 14 - 31 August 2026
 
 Released as `ai-visibility-all-in-one-14`. Server changes in this entry went

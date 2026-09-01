@@ -61,7 +61,7 @@ const CAUSE_TEXT: Record<Cause, string> = {
   robots_disallow: "robots.txt tells this crawler not to read the page.",
   server_error: "The store returned a server error for this crawler.",
   unreachable:
-    "The request could not be completed. This is not the same as being blocked — it may be a timeout or a DNS problem.",
+    "The request could not be completed. This is not the same as being blocked; it may be a timeout or a DNS problem.",
   unknown: "The response was unexpected and could not be classified.",
 };
 

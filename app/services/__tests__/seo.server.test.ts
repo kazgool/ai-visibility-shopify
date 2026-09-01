@@ -6,6 +6,7 @@ import {
   metaColumnState,
   metaColumnLabel,
   metaColumnMissing,
+  classifyMetaField,
   type ProductSeoInput,
 } from "../seo.server";
 
@@ -56,6 +57,61 @@ describe("mayWriteSeo", () => {
       metafields: [{ key: "state", value: JSON.stringify(state) }],
     });
     expect(mayWriteSeo(p, "seo_title")).toBe(true);
+  });
+});
+
+describe("classifyMetaField", () => {
+  // The bug this guards: a stale state entry must never outrank the live
+  // value. A field this app (or a person, inside this app) once marked
+  // "human" or "auto" that is now empty - cleared by Shopify's native
+  // search-listing editor, an import, anything outside this app's own
+  // writer - must read as "missing", not as a badge claiming a value is
+  // there when the box is empty.
+
+  it("reads a live empty value as missing even when the state entry says human", () => {
+    const state = { seo_title: { source: "human", at: "2026-01-01", prev: "Old title" } };
+    const p = product({
+      seo: { title: "", description: null },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    expect(classifyMetaField(p, "seo_title")).toBe("missing");
+  });
+
+  it("reads a live empty value as missing even when the state entry says auto", () => {
+    const state = { seo_title: { source: "auto", at: "2026-01-01", prev: "" } };
+    const p = product({
+      seo: { title: "", description: null },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    expect(classifyMetaField(p, "seo_title")).toBe("missing");
+  });
+
+  it("still reads human when the value is present", () => {
+    const state = { seo_title: { source: "human", at: "2026-01-01", prev: "" } };
+    const p = product({
+      seo: { title: "Hand-written title", description: null },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    expect(classifyMetaField(p, "seo_title")).toBe("human");
+  });
+
+  it("still reads auto when the value is present", () => {
+    const state = { seo_title: { source: "auto", at: "2026-01-01", prev: "" } };
+    const p = product({
+      seo: { title: "Generated title", description: null },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    expect(classifyMetaField(p, "seo_title")).toBe("auto");
+  });
+
+  it("reads outside when a value is present with no state entry at all", () => {
+    const p = product({ seo: { title: "Set by a previous app", description: null } });
+    expect(classifyMetaField(p, "seo_title")).toBe("outside");
+  });
+
+  it("reads missing when there is no value and no state entry", () => {
+    const p = product({ seo: { title: "", description: null } });
+    expect(classifyMetaField(p, "seo_title")).toBe("missing");
   });
 });
 

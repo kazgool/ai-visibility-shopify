@@ -29,8 +29,15 @@ import {
 } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
-import { isSeoUnlocked } from "../services/billing.server";
-import { writeSeo, revertSeo, mayWriteSeo, type SeoKey } from "../services/seo.server";
+import { isSeoUnlocked, hasPaidAccess } from "../services/billing.server";
+import {
+  writeSeo,
+  revertSeo,
+  mayWriteSeo,
+  classifyMetaField,
+  clearSeoHumanFlag,
+  type SeoKey,
+} from "../services/seo.server";
 
 // The editor pattern the WordPress module got right, and the reason human work
 // survives: the extracted value is shown as the starting point, the merchant
@@ -205,25 +212,32 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const currentSeoTitle = product.seo?.title ?? "";
   const currentSeoDescription = product.seo?.description ?? "";
 
-  function seoSource(key: SeoKey, current: string): "human" | "auto" | "outside" | "missing" {
-    const entry = state[key] as { source: "auto" | "human" } | undefined;
-    if (entry) return entry.source;
-    if (current !== "") return "outside";
-    return "missing";
-  }
-
+  // Badge and writability (finding: the source badge can lie). Both now go
+  // through classifyMetaField/mayWriteSeo's live-value check rather than a
+  // local reimplementation that trusted the state entry over the field
+  // Shopify actually holds today. A field this app (or the merchant, inside
+  // this app) once marked "human" but that is now empty - cleared by
+  // Shopify's native search-listing editor, an import, anything outside
+  // this app - reads as "missing" here, not as a stale "Edited by you" over
+  // a blank box, and stays reachable by Generate: `|| current === ""` widens
+  // canWrite beyond mayWriteSeo's stricter bulk-pass rule specifically for
+  // this per-product screen, where the merchant is looking straight at the
+  // empty field and choosing to fill it themselves. The action below applies
+  // the matching write-time change so Save actually succeeds, not just the
+  // button.
   const seo = {
     unlocked: seoUnlocked,
     title: currentSeoTitle,
     description: currentSeoDescription,
     titleSuggestion,
     descriptionSuggestion,
-    titleSource: seoSource("seo_title", currentSeoTitle),
-    descriptionSource: seoSource("seo_description", currentSeoDescription),
+    titleSource: classifyMetaField(seoProductLike, "seo_title"),
+    descriptionSource: classifyMetaField(seoProductLike, "seo_description"),
     titleCanRevert: Boolean((state.seo_title as any)?.prev !== undefined),
     descriptionCanRevert: Boolean((state.seo_description as any)?.prev !== undefined),
-    titleCanWrite: mayWriteSeo(seoProductLike, "seo_title"),
-    descriptionCanWrite: mayWriteSeo(seoProductLike, "seo_description"),
+    titleCanWrite: mayWriteSeo(seoProductLike, "seo_title") || currentSeoTitle === "",
+    descriptionCanWrite:
+      mayWriteSeo(seoProductLike, "seo_description") || currentSeoDescription === "",
   };
 
   return {
@@ -273,12 +287,20 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
 
   // Entitlement (ENTITLEMENT rule): the card being hidden in the loader does
   // not stop a form being posted directly, so every seo intent is checked
-  // again here.
+  // again here. Two entitlements, both required (Marius's ruling, 31 Aug
+  // 2026): seo_unlocked opens the capability, but a shop with no active
+  // subscription (and no comp) may still not write here - the same rule
+  // app.seo.tsx enforces for the bulk pass. admin.graphql is already at
+  // hand on this route, so this is the hasPaidAccess form.
   if (intent === "seo" || intent === "seo_revert" || intent === "seo_reset") {
     const shop = await db.shop.findUnique({ where: { domain: session.shop } });
     const unlocked = await isSeoUnlocked(shop?.id);
     if (!unlocked) {
       return { error: "The search listing capability is not enabled for this shop." };
+    }
+    const paid = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
+    if (!paid) {
+      return { error: "This shop has no active subscription, so writing search listings is not available." };
     }
   }
 
@@ -287,7 +309,22 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
     const json = await res.json();
     const productData = json.data?.product;
     const metafields = (productData?.metafields?.nodes ?? []) as { key: string; value: string }[];
-    const productLike = { id, metafields, seo: productData?.seo ?? null };
+
+    // Mirrors the loader's canWrite widening: a live field that is
+    // currently empty has nothing left to protect, so a stale "human" flag
+    // must not silently turn this Save into a no-op skip after the editor
+    // already showed the field as fillable. clearSeoHumanFlag only drops the
+    // flag - it keeps `prev`, so a genuine pre-app value is still there to
+    // revert to; it never deletes the entry outright.
+    const stateForWrite = parseState({ id, title: "", metafields });
+    if ((productData?.seo?.title ?? "") === "") clearSeoHumanFlag(stateForWrite, "seo_title");
+    if ((productData?.seo?.description ?? "") === "")
+      clearSeoHumanFlag(stateForWrite, "seo_description");
+    const metafieldsForWrite = [
+      ...metafields.filter((m) => m.key !== "state"),
+      { key: "state", value: JSON.stringify(stateForWrite) },
+    ];
+    const productLike = { id, metafields: metafieldsForWrite, seo: productData?.seo ?? null };
 
     const title = String(form.get("title") ?? "").trim();
     const description = String(form.get("description") ?? "").trim();
@@ -880,7 +917,7 @@ export default function ProductEditor() {
                           {img.source !== "written" && img.suggestion ? (
                             <InlineStack gap="200" blockAlign="center" wrap>
                               <Text as="span" variant="bodySm" tone="subdued">
-                                We would write: “{img.suggestion}”
+                                We would write: "{img.suggestion}"
                               </Text>
                               <Button
                                 size="micro"

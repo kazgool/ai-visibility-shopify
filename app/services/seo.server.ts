@@ -72,8 +72,17 @@ export function classifyMetaField(product: ProductSeoInput, key: SeoKey): MetaFi
   const current = key === "seo_title" ? product.seo?.title : product.seo?.description;
   const hasValue = Boolean(current && current !== "");
 
-  if (entry?.source === "human") return "human";
+  // Live value wins over a stale state entry: an empty field is "missing"
+  // even when the state metafield still carries a human or auto marker from
+  // before something outside this app's writer cleared it (the merchant's
+  // own edit inside this app, Shopify's native search-listing editor, an
+  // import - the state entry cannot tell these apart, and only the field's
+  // current presence is something this app can actually verify). Checked
+  // before "human" on purpose: a badge or count that keeps claiming
+  // "Edited by you" over a box with nothing in it is the exact
+  // EXPERIENCE-PRD §2 failure ("if we did not fetch it, we do not say").
   if (!hasValue) return "missing";
+  if (entry?.source === "human") return "human";
   if (!entry) return "outside";
   return "auto";
 }
@@ -315,6 +324,14 @@ export type SeoQueue = {
   missingDescription: number;
   /** Non-empty fields with no state entry - set by someone else, never touched. */
   outsideApp: number;
+  /**
+   * Non-empty fields a person edited by hand inside this app's own editor -
+   * distinct from outsideApp (SEO-WORKSPACE-PRD §3.5's "41 have one written
+   * outside this app" line must not fold in the merchant's own edits, which
+   * the product editor already labels "Edited by you"; the two are protected
+   * for different reasons and read differently on screen).
+   */
+  editedByYou: number;
   rows: SeoQueueRow[];
   protectedRows: SeoProtectedRow[];
   /**
@@ -336,6 +353,7 @@ export function buildSeoQueue(
   let missingTitle = 0;
   let missingDescription = 0;
   let outsideApp = 0;
+  let editedByYou = 0;
 
   for (const product of products) {
     const seoLike: ProductSeoInput = {
@@ -352,11 +370,24 @@ export function buildSeoQueue(
 
     if (titleEmpty) missingTitle += 1;
     if (descriptionEmpty) missingDescription += 1;
-    // A non-empty field this app is not allowed to write is either
-    // human-marked or, more commonly here, unattributed - came from the
-    // merchant, an import, or a previous app. Either way it is "outside".
-    if (!titleEmpty && !titleWritable) outsideApp += 1;
-    if (!descriptionEmpty && !descriptionWritable) outsideApp += 1;
+    // A non-empty, protected field is protected for one of two different
+    // reasons, and the count (and the sentence built from it) must not fold
+    // them together: classifyMetaField's "outside" is a value with no state
+    // entry - set by the merchant directly, an import, or a different app,
+    // never touched by this app at all; "human" is a value a person edited
+    // by hand inside this app's own editor, which the editor itself labels
+    // "Edited by you". Reusing classifyMetaField here rather than a second
+    // classification keeps the two counts and the badge in agreement.
+    if (!titleEmpty) {
+      const titleStatus = classifyMetaField(seoLike, "seo_title");
+      if (titleStatus === "outside") outsideApp += 1;
+      else if (titleStatus === "human") editedByYou += 1;
+    }
+    if (!descriptionEmpty) {
+      const descriptionStatus = classifyMetaField(seoLike, "seo_description");
+      if (descriptionStatus === "outside") outsideApp += 1;
+      else if (descriptionStatus === "human") editedByYou += 1;
+    }
 
     if (titleEmpty && !titleWritable) {
       protectedRows.push({
@@ -423,6 +454,7 @@ export function buildSeoQueue(
     missingTitle,
     missingDescription,
     outsideApp,
+    editedByYou,
     rows,
     protectedRows,
     termGap,
