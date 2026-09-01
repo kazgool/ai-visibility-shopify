@@ -15,9 +15,13 @@ export type MetaInput = {
   title: string;
   descriptionHtml?: string | null;
   facts: Fact[];
-  /** Appended to the title when it fits, e.g. "Oak Dining Table - Acme". */
+  /**
+   * Not used by buildMetaTitle (see the function's own comment for why).
+   * Kept on the type because buildMetaDescription's callers build one
+   * shared MetaInput object for both functions.
+   */
   vendor?: string | null;
-  /** Fallback suffix when there is no vendor, e.g. the shop name. */
+  /** Not used by buildMetaTitle either, same reason. */
   shopName?: string | null;
 };
 
@@ -49,20 +53,30 @@ function truncateAtBoundary(text: string, maxLen: number): string {
 }
 
 /**
- * A meta title condensed from the product title, with the vendor or shop
- * name appended when it fits (SEO-WORKSPACE-PRD §3.3). Aims for around 60
+ * A meta title condensed from the product title. Aims for around 60
  * characters; a title that alone exceeds the target is truncated at a word
  * boundary, never mid-word, never with an ellipsis character.
+ *
+ * This used to append the vendor (or the shop name) as a " - Suffix" tail.
+ * That produced a doubled brand in the rendered browser title: a Shopify
+ * theme's own <title> tag appends the shop name to whatever seo.title we
+ * write - not conditionally, not something we can detect from here, just
+ * appends it - so "Viborg Bathroom Shelf with Mirror - Nordwood" became
+ * "Viborg Bathroom Shelf with Mirror - Nordwood - MRDigital-dev" once the
+ * theme was done with it (found reading a live storefront's page source,
+ * 31 Aug 2026). Shortening the suffix or skipping it only when the title
+ * already names the vendor both leave that example untouched - "Nordwood"
+ * is not in the product title and the combined length was 45 characters,
+ * comfortably under the 60 target - so neither rule would have prevented
+ * the bug that was actually observed. The only rule that removes the
+ * doubling unconditionally is to never add a second brand token ourselves:
+ * we do not control, and cannot see, what the theme does after we hand
+ * back a title, so the one thing guaranteed not to collide with it is
+ * nothing at all.
  */
 export function buildMetaTitle(input: MetaInput, maxLength = TITLE_TARGET): string {
   const title = cleanOutput(input.title ?? "");
   if (title === "") return "";
-
-  const suffix = input.vendor?.trim() || input.shopName?.trim() || "";
-  if (suffix) {
-    const withSuffix = cleanOutput(`${title} - ${suffix}`);
-    if (withSuffix.length <= maxLength) return withSuffix;
-  }
 
   if (title.length <= maxLength) return title;
   return truncateAtWord(title, maxLength);

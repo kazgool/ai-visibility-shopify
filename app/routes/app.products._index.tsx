@@ -20,8 +20,19 @@ import {
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
 import db from "../db.server";
-import { hasPaidAccess } from "../services/billing.server";
+import { hasPaidAccess, isSeoUnlocked } from "../services/billing.server";
 import { extractOneProduct } from "../services/extract.server";
+// metaColumnState only runs in the loader (it needs parseState), so it is
+// imported from the .server module; the labels below are plain display
+// logic the client component also uses, so they come from a module with no
+// ".server" suffix - see meta-column.ts for why that split matters.
+import { metaColumnState } from "../services/seo.server";
+import {
+  metaColumnLabel,
+  metaColumnMissing,
+  META_FIELD_LABEL,
+  type MetaColumnState,
+} from "../services/meta-column";
 
 // Results nobody can see do not exist (Marius, 3 Aug 2026). The dashboard
 // says how much of the catalogue is covered; this screen says which products
@@ -37,7 +48,13 @@ const COLLECTIONS = `#graphql
   }
 `;
 
-const PRODUCTS = `#graphql
+// The Meta column needs Product.seo, which no other card on this screen
+// reads. Fetching it costs nothing extra when the SEO module is off for
+// this shop - the whole field is left out of the query rather than fetched
+// and ignored (SEO-WORKSPACE-PRD §4: the loader must not do the extra work
+// either, not just hide the column).
+function productsQuery(withSeo: boolean): string {
+  return `#graphql
   query ProductsOverview($cursor: String, $before: String, $query: String) {
     products(first: 25, after: $cursor, before: $before, query: $query, sortKey: UPDATED_AT, reverse: true) {
       pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
@@ -49,10 +66,12 @@ const PRODUCTS = `#graphql
         featuredMedia { preview { image { url } } }
         images(first: 50) { nodes { id altText } }
         metafields(namespace: "$app", first: 6) { nodes { key value } }
+        ${withSeo ? "seo { title description }" : ""}
       }
     }
   }
 `;
+}
 
 type Row = {
   id: string;
@@ -68,6 +87,8 @@ type Row = {
   edited: boolean;
   readable: boolean;
   mirrored: boolean;
+  /** Only computed when seo_unlocked - see the loader. */
+  metaState: MetaColumnState | null;
 };
 
 function parseCount(value: string | undefined): number {
@@ -100,8 +121,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (collection !== "") clauses.push(`collection_id:${collection}`);
   const query = clauses.length > 0 ? clauses.join(" AND ") : null;
 
+  // ENTITLEMENT: read once, before the products query is even built, so an
+  // unlocked shop never pays for the seo{} fields and a non-SEO merchant's
+  // loader does no extra work at all - not just a hidden column.
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  const seoUnlocked = shop ? await isSeoUnlocked(shop.id) : false;
+
   const [res, colRes] = await Promise.all([
-    admin.graphql(PRODUCTS, { variables: { cursor, before, query } }),
+    admin.graphql(productsQuery(seoUnlocked), { variables: { cursor, before, query } }),
     admin.graphql(COLLECTIONS),
   ]);
   const json = await res.json();
@@ -114,8 +141,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }));
 
   const handles: string[] = (page?.nodes ?? []).map((p: any) => p.handle);
-  const shop = handles.length > 0 ? await db.shop.findUnique({ where: { domain: session.shop } }) : null;
-  const mirrored = shop
+  const mirrored = shop && handles.length > 0
     ? await db.mirrorCache.findMany({
         where: { shopId: shop.id, handle: { in: handles } },
         select: { handle: true },
@@ -154,6 +180,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // Whether the plain text mirror exists for this handle, so the link
       // never points to a 404.
       mirrored: mirroredHandles.has(p.handle),
+      // ENTITLEMENT: null (not computed) when the SEO module is off - the
+      // seo{} fields were never fetched for this shop, so there is nothing
+      // to derive a state from.
+      metaState: seoUnlocked ? metaColumnState({ id: p.id, metafields: p.metafields?.nodes, seo: p.seo ?? null }) : null,
     };
   });
 
@@ -161,6 +191,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (filter === "no_attributes") return r.attributes === 0;
     if (filter === "edited") return r.edited;
     if (filter === "missing_alt") return r.images > 0 && r.described < r.images;
+    // ENTITLEMENT: only reachable when unlocked and metaState was actually
+    // computed - a hand-typed filter=missing_meta on a locked shop falls
+    // through to "all" rather than doing anything with data it never fetched.
+    if (filter === "missing_meta") return seoUnlocked && r.metaState ? metaColumnMissing(r.metaState) : true;
     return true;
   });
 
@@ -181,6 +215,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     domain: session.shop,
     hasAccess,
     freeProductsRemaining,
+    seoUnlocked,
   };
 };
 
@@ -220,6 +255,47 @@ const FILTERS = [
   { key: "edited", label: "Edited by hand" },
   { key: "missing_alt", label: "Missing image descriptions" },
 ];
+
+// ENTITLEMENT: appended only when the SEO module is on for this shop - see
+// the render, not this constant, since that decision needs the loader flag.
+const SEO_FILTER = { key: "missing_meta", label: "Missing meta fields" };
+
+const META_TONE: Record<string, "success" | "attention" | "info" | undefined> = {
+  auto: "success",
+  human: "attention",
+  outside: "info",
+  missing: undefined,
+};
+
+/**
+ * Reads honestly when the two fields disagree (SEO-WORKSPACE-PRD §4): a
+ * human title with an empty description never collapses into one badge that
+ * would claim more, or less, than what is actually true of each field.
+ */
+function MetaCell({ state }: { state: MetaColumnState }) {
+  if (state.title === state.description) {
+    return (
+      <BlockStack gap="050">
+        <Badge tone={META_TONE[state.title]}>{metaColumnLabel(state)}</Badge>
+        {state.title === "missing" ? (
+          <Text as="span" variant="bodySm" tone="subdued">
+            Not generated yet - run the queue on the SEO screen.
+          </Text>
+        ) : null}
+      </BlockStack>
+    );
+  }
+  return (
+    <BlockStack gap="050">
+      <Text as="span" variant="bodySm">
+        {`Title: ${META_FIELD_LABEL[state.title]}`}
+      </Text>
+      <Text as="span" variant="bodySm">
+        {`Description: ${META_FIELD_LABEL[state.description]}`}
+      </Text>
+    </BlockStack>
+  );
+}
 
 function ProcessProductAction({
   productId,
@@ -262,6 +338,7 @@ export default function ProductsOverview() {
     domain,
     hasAccess,
     freeProductsRemaining,
+    seoUnlocked,
   } = useLoaderData<typeof loader>() as {
     rows: Row[];
     total: number;
@@ -273,11 +350,16 @@ export default function ProductsOverview() {
     domain: string;
     hasAccess: boolean;
     freeProductsRemaining: number;
+    seoUnlocked: boolean;
   };
   const [term, setTerm] = useState(search);
   const [params, setParams] = useSearchParams();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  // ENTITLEMENT: the filter chip and the column below only exist in this
+  // list when the module is on - absent, not merely empty, for a shop that
+  // never subscribed to it.
+  const filters = seoUnlocked ? [...FILTERS, SEO_FILTER] : FILTERS;
 
   const setFilter = (key: string) => {
     const next = new URLSearchParams(params);
@@ -371,7 +453,7 @@ export default function ProductsOverview() {
         </Card>
 
         <InlineStack gap="200" wrap>
-          {FILTERS.map((f) => (
+          {filters.map((f) => (
             <Button
               key={f.key}
               pressed={filter === f.key}
@@ -405,6 +487,7 @@ export default function ProductsOverview() {
                 { title: "Summary" },
                 { title: "Image text" },
                 { title: "State" },
+                ...(seoUnlocked ? [{ title: "Meta" }] : []),
                 { title: "What AI reads" },
                 ...(!hasAccess ? [{ title: "Free processing" }] : []),
               ]}
@@ -463,6 +546,11 @@ export default function ProductsOverview() {
                       )}
                     </InlineStack>
                   </IndexTable.Cell>
+                  {seoUnlocked ? (
+                    <IndexTable.Cell>
+                      {row.metaState ? <MetaCell state={row.metaState} /> : null}
+                    </IndexTable.Cell>
+                  ) : null}
                   <IndexTable.Cell>
                     {row.mirrored ? (
                       <a

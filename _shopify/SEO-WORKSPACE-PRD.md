@@ -449,6 +449,76 @@ behaviour is tested on a Markets-enabled development store.
 - Whether the handover export ships as HTML-for-print only in v1. Assumed
   yes; PDF tooling is not worth a dependency before the content is right.
 
+## 9d. The two-axis screen, and the snapshot it depends on
+
+Decided in a working session with Marius, 31 August 2026, after the fourth
+version of this screen was rejected. It supersedes the screen layout in §5.
+
+**The problem was misdiagnosed.** Every earlier attempt treated "the client
+will think he paid for two clicks" as a density problem and answered it with
+more panels. It is not. Nobody complains that a dishwasher has one button.
+The client complains when he cannot tell what changed - and this app cannot
+tell him, because it only ever knows *now*. Nothing captures the state of the
+store before the engagement, so a month later a correct store looks like a
+store that was always correct.
+
+**The deliverable is the app itself, not a report.** Marius's call: the client
+gets a link, not a PDF. That raises the bar rather than lowering it. A
+document has to convince once; a link has to survive being opened in month
+three, on a day when nothing has changed for weeks. A screen that only says
+"100 fields written on 31 August" reads like a museum by October.
+
+So the screen carries two axes of time.
+
+**Axis one, the anchor: since setup.** Stated as before-and-after pairs, never
+as lone numbers - a single figure explains nothing, a pair explains itself.
+Products with a search listing 0 to 50. Schema types published 6 to 9.
+Conflicts on the page 2 to 0. A pair also stays honest: a number that did not
+move is visibly a number that did not move. Beneath it, one control: see a
+product's Google result before and after. That preview needs no new storage -
+the pre-app value is already captured in the `prev` field of the `state`
+entry (§3.1), kept there so revert can be exact. It is rendering, not data.
+
+**Axis two, the pulse: is it still true.** The weekly watch, already built.
+Date of the last check, and one line. This band is meant to be boring almost
+always, and that is the argument for it: what an annual maintenance fee buys
+is not a feature, it is a dull health line read once a month - and the one day
+the merchant changes theme and loses the app embed, this band is the only
+thing in the whole store that tells him before a traffic drop tells him three
+months later.
+
+**Third band: what is left, and who fixes it.** Permanent, and specifically
+including the things this app will not do. Because the client has a link, he
+will see them anyway: products with no image, the theme's Organization node
+with no `@id`, an empty returns window. Written as a division of labour rather
+than an excuse, each line naming where it is fixed, this is the part that
+makes the app look like it is still working for him a year later.
+
+**The machinery goes below all three.** The audience order inverts the day the
+engagement ends: during setup the operator wants Preview and Write at the top;
+afterwards the client wants evidence at the top. One screen, two audiences,
+and the client opens it a hundred times to the operator's three. Order it for
+the client; the operator can scroll.
+
+### The snapshot, and the way it fails silently
+
+Everything above rests on one record: **the state of the store frozen at the
+moment `seo_unlocked` is set, before any write.**
+
+- Taken automatically as part of granting the unlock, not as a separate button
+  somebody can forget.
+- Never overwritten. A second unlock, a re-scan, a re-run of the queue: none of
+  them touch it. It is the only row in this feature that is written once.
+- Captures at minimum: products with a meta title, products with a meta
+  description, the JSON-LD node types found on a product page and the home
+  page, the conflicts found, and the date.
+
+**The failure mode is silence.** Snapshot after the first write and every pair
+reads 50 to 50 - no error, no warning, just a screen that says nothing
+happened. There is no second chance at a first state, and for the first client
+(republicabio, app not yet installed as of 31 August 2026) it will be taken
+exactly once. Whatever else is loosely tested here, this is tested.
+
 ## 10. Build order, smallest useful increment first
 
 1. **Engine: `meta.ts` with tests.** Pure, no UI, no writes; everything else

@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { mayWriteSeo, writeSeo, revertSeo, type ProductSeoInput } from "../seo.server";
+import {
+  mayWriteSeo,
+  writeSeo,
+  revertSeo,
+  metaColumnState,
+  metaColumnLabel,
+  metaColumnMissing,
+  type ProductSeoInput,
+} from "../seo.server";
 
 function product(overrides: Partial<ProductSeoInput> = {}): ProductSeoInput {
   return {
@@ -48,6 +56,53 @@ describe("mayWriteSeo", () => {
       metafields: [{ key: "state", value: JSON.stringify(state) }],
     });
     expect(mayWriteSeo(p, "seo_title")).toBe(true);
+  });
+});
+
+describe("metaColumnState", () => {
+  it("both auto: written by the app", () => {
+    const state = {
+      seo_title: { source: "auto", at: "2026-01-01", prev: "" },
+      seo_description: { source: "auto", at: "2026-01-01", prev: "" },
+    };
+    const p = product({
+      seo: { title: "App title", description: "App description" },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    const result = metaColumnState(p);
+    expect(result).toEqual({ title: "auto", description: "auto" });
+    expect(metaColumnLabel(result)).toBe("Auto");
+    expect(metaColumnMissing(result)).toBe(false);
+  });
+
+  it("both empty: missing", () => {
+    const p = product({ seo: { title: null, description: null } });
+    const result = metaColumnState(p);
+    expect(result).toEqual({ title: "missing", description: "missing" });
+    expect(metaColumnLabel(result)).toBe("Missing");
+    expect(metaColumnMissing(result)).toBe(true);
+  });
+
+  it("a human title with an empty description: disagreement is not collapsed", () => {
+    const state = {
+      seo_title: { source: "human", at: "2026-01-01", prev: "" },
+    };
+    const p = product({
+      seo: { title: "Hand-written title", description: null },
+      metafields: [{ key: "state", value: JSON.stringify(state) }],
+    });
+    const result = metaColumnState(p);
+    expect(result).toEqual({ title: "human", description: "missing" });
+    expect(metaColumnLabel(result)).toBe("Title: Yours, description: Missing");
+    expect(metaColumnMissing(result)).toBe(true);
+  });
+
+  it("a value set outside this app: outside", () => {
+    const p = product({ seo: { title: "Imported title", description: "Imported description" } });
+    const result = metaColumnState(p);
+    expect(result).toEqual({ title: "outside", description: "outside" });
+    expect(metaColumnLabel(result)).toBe("Outside app");
+    expect(metaColumnMissing(result)).toBe(false);
   });
 });
 

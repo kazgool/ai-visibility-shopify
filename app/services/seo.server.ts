@@ -19,6 +19,7 @@ import { NAMESPACE, ENGINE_VERSION, parseState, type ProductState } from "./fact
 import type { Fact } from "../engine";
 import { buildMetaTitle, buildMetaDescription, type MetaInput } from "../engine/meta";
 import { computeTermGap, type TermGapRow } from "../engine/term-gap";
+import type { MetaFieldStatus, MetaColumnState } from "./meta-column";
 
 export type SeoKey = "seo_title" | "seo_description";
 
@@ -54,6 +55,49 @@ export function mayWriteSeo(product: ProductSeoInput, key: SeoKey): boolean {
 
   return true;
 }
+
+// --- Products list "Meta" column (SEO-WORKSPACE-PRD §4) ------------------
+//
+// Four states, derived from the same facts mayWriteSeo already reads - never
+// a separate source of truth:
+//  - "auto"    written by this app (a state entry, source auto)
+//  - "human"   written by a person through this app, then protected
+//  - "outside" a non-empty value with no state entry: set by the merchant
+//              directly, an import, or a different app - never touched
+//  - "missing" empty and available for the SEO queue to propose
+
+export function classifyMetaField(product: ProductSeoInput, key: SeoKey): MetaFieldStatus {
+  const state = parseState({ id: product.id, title: "", metafields: product.metafields });
+  const entry = state[key] as SeoFieldState | undefined;
+  const current = key === "seo_title" ? product.seo?.title : product.seo?.description;
+  const hasValue = Boolean(current && current !== "");
+
+  if (entry?.source === "human") return "human";
+  if (!hasValue) return "missing";
+  if (!entry) return "outside";
+  return "auto";
+}
+
+/** Both fields classified together, so a caller never has to reimplement the pairing. */
+export function metaColumnState(product: ProductSeoInput): MetaColumnState {
+  return {
+    title: classifyMetaField(product, "seo_title"),
+    description: classifyMetaField(product, "seo_description"),
+  };
+}
+
+// Labels, the disagreement rule and the "still needs doing" filter live in
+// ./meta-column (no ".server" suffix) - the products list component reads
+// them directly, and a value import from a .server file used outside a
+// loader/action fails the client build. Re-exported here so existing
+// imports of these three names from seo.server keep working.
+export {
+  META_FIELD_LABEL,
+  metaColumnLabel,
+  metaColumnMissing,
+  type MetaFieldStatus,
+  type MetaColumnState,
+} from "./meta-column";
 
 const PRODUCT_UPDATE_SEO = `#graphql
   mutation UpdateProductSeo($input: ProductInput!) {

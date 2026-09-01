@@ -15,6 +15,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { isSeoUnlocked } from "../services/billing.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
 import { CRAWLER_INFO } from "../services/crawler-info";
 import { scanThemeForProductLd, recordThemeScan } from "../services/theme-scan.server";
@@ -99,6 +100,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // crawler-hits.server.ts.
   const crawlerHits = await recentHitsForDiagnostics(session.shop);
 
+  // The storefront password is entered on the SEO screen, not here - one
+  // Setting row, one writer (CLAUDE.md rule 3 territory: two screens writing
+  // the same row is a bug waiting to happen). This only decides whether the
+  // link below points somewhere reachable.
+  const seoUnlocked = shop ? await isSeoUnlocked(shop.id) : false;
+
   return {
     recent,
     themeScan,
@@ -107,6 +114,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     crawlerHits,
     proxyDomain: session.shop,
     hitsPageSize: DIAGNOSTICS_HITS_PAGE_SIZE,
+    seoUnlocked,
   };
 };
 
@@ -180,7 +188,7 @@ function toneForStatus(status: number): "success" | "critical" {
 }
 
 export default function Diagnostics() {
-  const { themeScan, domain, preferredSource, crawlerHits, proxyDomain, hitsPageSize } =
+  const { themeScan, domain, preferredSource, crawlerHits, proxyDomain, hitsPageSize, seoUnlocked } =
     useLoaderData<typeof loader>();
   const result = useActionData<typeof action>() as any;
   const nav = useNavigation();
@@ -356,7 +364,16 @@ export default function Diagnostics() {
               {theme.passwordProtected ? (
                 <Banner tone="warning">
                   The storefront answered with the password page, so nothing
-                  could be read. Development stores always have this on.
+                  could be read. Development stores always have this on.{" "}
+                  {seoUnlocked ? (
+                    <>
+                      Enter the storefront password on the{" "}
+                      <a href="/app/seo">SEO screen</a> so scans here can read
+                      a password-protected store.
+                    </>
+                  ) : (
+                    "The storefront password is entered on the SEO screen."
+                  )}
                 </Banner>
               ) : theme.hasProductLd ? (
                 <BlockStack gap="100">

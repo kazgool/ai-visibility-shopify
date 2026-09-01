@@ -23,6 +23,7 @@ import {
   Spinner,
   Box,
   Collapsible,
+  TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -95,6 +96,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
     : null;
 
+  // Storefront password: only report whether one is saved, never the value
+  // itself - it is a merchant credential and never belongs in a loader
+  // payload that reaches the browser.
+  const passwordRow = shop
+    ? await db.setting.findUnique({
+        where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+      })
+    : null;
+  const hasStorefrontPassword = Boolean(passwordRow?.value);
+
   const embed = await checkAppEmbed(admin.graphql);
 
   // The two bulk-pass jobs this screen can start (SEO-WORKSPACE-PRD §3.5):
@@ -115,6 +126,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     embedLink: embedDeepLink(session.shop),
     queueJob,
     applyJob,
+    hasStorefrontPassword,
   };
 };
 
@@ -131,6 +143,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "scan");
+
+  // Storefront password: a credential belonging to the merchant, stored in
+  // the same Setting row scanStorefront/scanPage already read (and always
+  // read, never once written - that gap is what this intent closes). Never
+  // logged, never echoed back in a response body.
+  if (intent === "seo_save_password") {
+    const password = String(form.get("storefront_password") ?? "").trim();
+    if (!password) return { error: "Enter a password before saving." };
+    await db.setting.upsert({
+      where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+      create: { shopId: shop.id, key: "storefront_password", value: password },
+      update: { value: password },
+    });
+    return redirect(`/app/seo`);
+  }
+
+  if (intent === "seo_clear_password") {
+    await db.setting.deleteMany({
+      where: { shopId: shop.id, key: "storefront_password" },
+    });
+    return redirect(`/app/seo`);
+  }
 
   if (intent === "seo_build_queue") {
     const active = await db.jobRun.findFirst({
@@ -621,6 +655,76 @@ function FindingsCard({
   );
 }
 
+/**
+ * Storefront password entry. scanStorefront/scanPage already know how to
+ * post it to /password and unlock a session - they just never had anywhere
+ * to read a saved value from, so every scan on a password-protected store
+ * reported the password wall. A Shopify development store cannot turn
+ * password protection off at all (Shopify does not offer that toggle on
+ * dev stores), so this is the only way this app can ever scan one; a store
+ * that has not launched yet carries the same wall on purpose, and this
+ * field does not suggest removing it.
+ *
+ * The value never comes back from the loader and is never set as the
+ * input's value - only whether one is saved is shown, the same way any
+ * other password field works.
+ */
+function StorefrontPasswordCard({
+  hasPassword,
+  busy,
+}: {
+  hasPassword: boolean;
+  busy: boolean;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <Text as="h2" variant="headingMd">
+          Storefront password
+        </Text>
+        <Text as="p" tone="subdued" variant="bodySm">
+          A store that has not launched yet is behind a password, and
+          without it we cannot see what the store publishes.
+        </Text>
+        <Text as="p" variant="bodySm">
+          {hasPassword ? "A password is saved." : "No password saved yet."}
+        </Text>
+        <Form method="post" onSubmit={() => setValue("")}>
+          <input type="hidden" name="intent" value="seo_save_password" />
+          <InlineStack gap="200" blockAlign="end" wrap>
+            <div style={{ minWidth: 260 }}>
+              <TextField
+                label="Storefront password"
+                labelHidden
+                name="storefront_password"
+                type="password"
+                autoComplete="off"
+                value={value}
+                onChange={setValue}
+                placeholder={
+                  hasPassword ? "Replace the saved password" : "Enter the storefront password"
+                }
+              />
+            </div>
+            <Button submit loading={busy} disabled={value.trim() === ""}>
+              {hasPassword ? "Replace" : "Save"}
+            </Button>
+          </InlineStack>
+        </Form>
+        {hasPassword ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="seo_clear_password" />
+            <Button submit variant="plain" tone="critical" loading={busy}>
+              Clear saved password
+            </Button>
+          </Form>
+        ) : null}
+      </BlockStack>
+    </Card>
+  );
+}
+
 function TermGapCard({ report }: { report: SeoQueue | null }) {
   const rows = report?.termGap ?? [];
   return (
@@ -763,6 +867,8 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
     return out;
   });
 
+  const selectedProductCount = new Set(selectedItems.map((item) => item.id)).size;
+
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
@@ -814,9 +920,12 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
               loading={busy && !applying}
               disabled={!report || selectedItems.length === 0 || applying || building}
             >
+              {/* Count fields, and name the products separately. A listing has
+                  two fields, so labelling fields as "listings" doubles the
+                  number the merchant expects to see. */}
               {report
-                ? `Write ${selectedItems.length} listing${selectedItems.length === 1 ? "" : "s"}`
-                : "Write listings"}
+                ? `Write ${selectedItems.length} field${selectedItems.length === 1 ? "" : "s"} on ${selectedProductCount} product${selectedProductCount === 1 ? "" : "s"}`
+                : "Write fields"}
             </Button>
           </Form>
         </InlineStack>
@@ -1091,6 +1200,8 @@ export default function Seo() {
         <SeoListingsCard queueJob={queueJob} applyJob={data.applyJob as any as JobRunLike} />
 
         <TermGapCard report={report} />
+
+        <StorefrontPasswordCard hasPassword={data.hasStorefrontPassword} busy={busy} />
 
         <FindingsCard
           themeScan={data.themeScan}

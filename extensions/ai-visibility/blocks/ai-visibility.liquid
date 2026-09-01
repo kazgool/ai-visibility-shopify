@@ -16,8 +16,17 @@
   {%- assign av_facts = product.metafields['$app'].facts.value -%}
   {%- assign av_summary = product.metafields['$app'].summary.value -%}
   {%- assign av_fit = product.metafields['$app'].fit_for.value -%}
+  {%- assign av_questions = product.metafields['$app'].questions.value -%}
   {%- assign av_business = shop.metafields['$app'].business.value -%}
   {%- assign av_org_id = shop.metafields['$app'].theme_scan.value.organizationId -%}
+  {%- comment -%}
+    Whether the theme scan found the theme emitting its own Organization
+    node at all, regardless of whether that node carried a usable @id. Used
+    below to tell "no Organization node on the page" (fine, we add ours)
+    apart from "the theme has one but we cannot reference it" (not fine -
+    see the comment where av_same_as_list is emitted).
+  {%- endcomment -%}
+  {%- assign av_theme_has_org = shop.metafields['$app'].theme_scan.value.hasOrganizationLd -%}
   {%- comment -%}
     Operator-only switch, set during a paid setup engagement (never a
     merchant-facing toggle). Gates a handful of extra schema.org properties
@@ -50,6 +59,20 @@
     has but that carries no @id of its own, is an orphan fragment - worse
     than no node - so every other case gets our own complete minimal node
     instead.
+
+    One case needs its own rule: a theme that emits an Organization node
+    with a name and a url but no @id (seen on a live storefront, 31 Aug
+    2026). We cannot extend it - there is nothing to reference - and
+    emitting our own complete node alongside it produces two top-level
+    nodes of @type Organization, which is exactly the conflict the SEO
+    screen's own scan flags as a defect. Two options were weighed and
+    rejected: publishing our node anyway keeps today's duplicate; publishing
+    only "sameAs" with no name or url is still a second node of @type
+    Organization, so the conflict count is unchanged, it only shrinks what
+    is duplicated. Publishing nothing is the only option that removes the
+    conflict, so that is what this case does - at the cost that the
+    merchant's sameAs profiles do not appear in structured data on this
+    page at all until the theme's own node gets an @id we can reference.
   {%- endcomment -%}
   {%- assign av_social = av_business.socialProfiles -%}
   {%- assign av_same_as = "" -%}
@@ -60,9 +83,21 @@
   {%- if av_social.linkedin != blank -%}{% assign av_same_as = av_same_as | append: av_social.linkedin | append: "|" %}{%- endif -%}
   {%- if av_social.x != blank -%}{% assign av_same_as = av_same_as | append: av_social.x | append: "|" %}{%- endif -%}
   {%- if av_social.pinterest != blank -%}{% assign av_same_as = av_same_as | append: av_social.pinterest | append: "|" %}{%- endif -%}
-  {%- assign av_same_as_list = av_same_as | split: "|" -%}
+  {%- comment -%}
+    uniq, because the same profile can legitimately be typed into more than
+    one field, and a sameAs listing one address five times tells a search
+    engine less than one listing it once. Seen in production on 31 August
+    2026: five identical Facebook URLs on a live product page.
+  {%- endcomment -%}
+  {%- assign av_same_as_list = av_same_as | split: "|" | uniq -%}
 
-  {%- if av_same_as_list.size > 0 -%}
+  {%- if av_same_as_list.size > 0 and av_org_id == blank and av_theme_has_org -%}
+    {%- comment -%}
+      Theme has an Organization node we cannot reference (no @id) - publish
+      nothing rather than a second node of the same @type. See the comment
+      above av_same_as.
+    {%- endcomment -%}
+  {%- elsif av_same_as_list.size > 0 -%}
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -222,6 +257,43 @@
             {%- endfor -%}
           ]
           {%- endif %}
+        }
+      </script>
+    {%- endif -%}
+
+    {%- if av_questions and av_questions.size > 0 -%}
+      {%- comment -%}
+        Product buyer questions, published as FAQPage - the app's headline
+        output, generated per product and already reaching the plain text
+        mirror and llms.txt, but never structured data until now.
+
+        Google removed FAQ rich results for every site on 7 May 2026.
+        FAQPage is still valid schema.org and assistants still read it to
+        understand the page; publishing it produces no search-result
+        appearance, so no user-facing string anywhere in this app may imply
+        one. The reason to emit this is the assistant reading the page, not
+        Google's SERP.
+
+        Not a second Product node: FAQPage is its own @type, so it never
+        competes with whichever Product node this page already carries
+        (full mode's own node, extend mode's partial node, or the theme's
+        node alone when neither of ours is emitted). Same shape, same
+        escaping and same "publish nothing when empty" rule as the
+        collection FAQPage below.
+      {%- endcomment -%}
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {%- for qa in av_questions -%}
+              {
+                "@type": "Question",
+                "name": {{ qa.q | json }},
+                "acceptedAnswer": { "@type": "Answer", "text": {{ qa.a | json }} }
+              }{% unless forloop.last %},{% endunless %}
+            {%- endfor -%}
+          ]
         }
       </script>
     {%- endif -%}

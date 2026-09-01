@@ -14,17 +14,41 @@ const base = {
 };
 
 describe("buildMetaTitle", () => {
-  it("appends the vendor when it fits", () => {
-    const title = buildMetaTitle(base);
-    expect(title).toBe("Set Masa extensibila & 6 Scaune - GlobalMobila");
+  it("never appends the vendor, even when the combined length would fit", () => {
+    // Reproduces the reported bug: "Viborg Bathroom Shelf with Mirror" (34
+    // chars) plus " - Nordwood" (11 chars) is 45 chars, well under the 60
+    // target, so the old code appended it - and the theme then appended the
+    // shop name on top, doubling the brand. The title alone must come back
+    // untouched.
+    const title = buildMetaTitle({
+      title: "Viborg Bathroom Shelf with Mirror",
+      descriptionHtml: null,
+      facts: [],
+      vendor: "Nordwood",
+      shopName: null,
+    });
+    expect(title).toBe("Viborg Bathroom Shelf with Mirror");
+    expect(title).not.toContain("Nordwood");
   });
 
-  it("falls back to the shop name when there is no vendor", () => {
+  it("never appends the vendor even when the product title already contains it", () => {
+    const title = buildMetaTitle({
+      title: "Nordwood Oak Dining Table",
+      descriptionHtml: null,
+      facts: [],
+      vendor: "Nordwood",
+      shopName: null,
+    });
+    expect(title).toBe("Nordwood Oak Dining Table");
+  });
+
+  it("never falls back to the shop name either", () => {
     const title = buildMetaTitle({ ...base, vendor: null, shopName: "Acme Store" });
-    expect(title).toContain("Acme Store");
+    expect(title).not.toContain("Acme Store");
+    expect(title).toBe("Set Masa extensibila & 6 Scaune");
   });
 
-  it("drops the suffix when it would not fit, keeping the title whole", () => {
+  it("ignores a vendor that would push the title past the limit, keeping the title whole", () => {
     const title = buildMetaTitle({ ...base, vendor: "A Very Long Vendor Name Indeed" });
     expect(title).toBe("Set Masa extensibila & 6 Scaune");
     expect(title.length).toBeLessThanOrEqual(60);

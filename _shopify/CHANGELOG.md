@@ -16,8 +16,11 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
-Server changes only - no extension changes, so this does not require
-`shopify app deploy`.
+This entry now includes extension changes (three fixes to
+`extensions/ai-visibility/blocks/ai-visibility.liquid` and
+`app/engine/meta.ts`, see below) and therefore requires
+`npx shopify app deploy` in addition to the usual server-side push to main.
+Everything above this note in the section is server-only, as before.
 
 ### Added
 - New `/app/seo` screen, gated on the existing `seo_unlocked` Setting flag
@@ -199,6 +202,84 @@ Server changes only - no extension changes, so this does not require
     descriptions only, a term already in a title, a term only in a meta
     field, a stopword that must never appear, an empty catalogue, phrase
     survival, and ranking by product count).
+- Storefront password: `scanStorefront`/`scanPage` already knew how to sign
+  in through a store's password page, but nothing ever wrote the `Setting`
+  row they read it from, so every scan on a password-protected store reported
+  the password wall. `/app/seo` now has a "Storefront password" card - a
+  password-type field with no default value (never renders a saved value
+  back, only whether one is saved), a save action and a clear action, both
+  writing the same `storefront_password` Setting row the readers already
+  used. Diagnostics does not get its own field; when its last scan hit the
+  password wall it links to the SEO screen instead, so the credential has one
+  writer. Gated behind `seo_unlocked` because the field lives on the
+  entitlement-gated `/app/seo` route.
+- Products list: a "Meta" column, gated on `seo_unlocked` (absent from the
+  headings and the row cells entirely when off, and the loader does not fetch
+  `Product.seo` for a locked shop either - two separate query strings,
+  chosen before the request is made). States: Auto (written by this app),
+  Yours (written by a person, protected), Outside app (a non-empty value
+  with no state entry - set by the merchant, an import, or another app), and
+  Missing (empty, with what has to happen to fix it, never a bare dash). When
+  title and description disagree - a human title with an empty description,
+  the case that must never collapse into one label - the cell reports each
+  field separately instead of picking one. New filter, "Missing meta fields".
+  Classification (`classifyMetaField`, `metaColumnState`) lives in
+  `seo.server.ts` next to `mayWriteSeo`, which it reuses the same state read
+  from; the labels, the disagreement rule and the filter predicate
+  (`metaColumnLabel`, `metaColumnMissing`, `META_FIELD_LABEL`) were split into
+  a new `app/services/meta-column.ts` with no `.server` suffix, because the
+  products list component needs them too and a value import from a `.server`
+  module used outside loader/action fails the client build (the fourth time
+  this exact failure has hit this repo - see CLAUDE.md). New tests in
+  `seo.server.test.ts`: both fields auto, both empty, a human title with an
+  empty description, and a value set outside the app.
+- Three fixes found reading a live storefront's page source, 31 Aug 2026.
+  **Extension change - requires `shopify app deploy`.**
+  - Product pages now emit `FAQPage` from the product's own `questions`
+    metafield (the app's headline output - already reaching the plain text
+    mirror and llms.txt, never structured data until now), same shape and
+    escaping as the existing collection `FAQPage`, nothing published when
+    there are no questions. Google removed FAQ rich results for every site
+    on 7 May 2026; this is read by assistants, not for a search-result
+    appearance, and no user-facing string may imply one.
+  - `buildMetaTitle` (`app/engine/meta.ts`) no longer appends the vendor or
+    the shop name. It used to append " - Vendor" whenever the combined
+    length fit; Shopify themes then append the shop name to whatever
+    `seo.title` is written, unconditionally and undetectably from the
+    engine, so the two together doubled the brand in the rendered title
+    ("Viborg Bathroom Shelf with Mirror - Nordwood - MRDigital-dev").
+    Shortening the suffix or skipping it only when the vendor already
+    appears in the title were both considered and rejected - neither would
+    have prevented the observed case. `buildMetaTitle` now returns only the
+    condensed, truncated product title. New tests cover a vendor already
+    present in the title and a vendor that would have exceeded the length
+    target - the vendor is not appended in either case, or any other.
+    **Migration**: about fifty meta titles were already written to a live
+    store under the old rule. This change does not touch them and no
+    migration runs automatically. To bring an already-written auto title in
+    line with the new rule, the operator regenerates it: on `/app/seo`,
+    "Write the missing search listings" only proposes titles that are empty,
+    so it will not touch these; a title carrying an old-rule `- Vendor` tail
+    is not "missing", it is a live value with a `state` entry marked `auto`.
+    It has to be cleared first (Revert, or manually blank the field) before
+    the queue will offer a fresh one, or regenerated one at a time from the
+    product editor's own "Generate" button, which always overwrites an
+    `auto` value. Titles a human already edited (`state` marked `human`) are
+    never touched by either path, per the existing protection rule.
+  - The storefront block's Organization node no longer duplicates a theme's
+    own Organization node when that theme node has no `@id` for us to
+    extend (name and url present, no id - seen on a live storefront, 31 Aug
+    2026). `theme-scan.server.ts` already mirrors `hasOrganizationLd` to a
+    shop metafield the block can read at render time; the block now checks
+    it and, in exactly this case, publishes nothing rather than a second
+    top-level node of `@type` `Organization` - the same conflict the SEO
+    screen's own scan flags. A `sameAs`-only node (no name, no url) was
+    considered and rejected: it is still a second node of the same `@type`,
+    so the conflict count is unchanged. Cost: on a shop whose theme emits an
+    unreferenceable Organization node, the merchant's `sameAs` social
+    profile URLs do not appear in this page's structured data at all, until
+    the theme's own node gets an `@id`. No option here was clean; this is
+    the least-bad one, not a fix that removes the cost.
 
 ## Version 14 - 31 August 2026
 
