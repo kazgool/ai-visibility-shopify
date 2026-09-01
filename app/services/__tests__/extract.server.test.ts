@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { hasWithdrawableAutoValues } from "../extract.server";
+// Imported from facts.server, not extract.server: importing it from
+// extract.server pulls in db.server and admin.server, and admin.server calls
+// shopifyApp() at module load, which throws without SHOPIFY_APP_URL. That is
+// green locally, where .env supplies it, and red in CI, where nothing does.
+import { hasWithdrawableAutoValues } from "../facts.server";
 import { AGENTS } from "../crawler-check.server";
 import type { ProductInput } from "../facts.server";
 

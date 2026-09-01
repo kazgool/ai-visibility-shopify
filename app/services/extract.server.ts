@@ -29,7 +29,7 @@ import {
   writeFacts,
   writeVariantFacts,
   isEligibleForMirror,
-  parseState,
+  hasWithdrawableAutoValues,
   type ProductInput,
 } from "./facts.server";
 import { renderMirror } from "./mirror.server";
@@ -211,24 +211,13 @@ export async function extraStopwordsFor(shopId: string): Promise<string[]> {
   return row.value.split(/[\n,]/).map((w) => w.trim()).filter(Boolean);
 }
 
-// Fixed the same way the webhook path (extractOneProduct) already was: a
-// product whose description no longer yields anything must still flow
-// through writeFacts, because writeFacts's withdrawal branch (not this
-// function) is what retracts stale auto-written facts/summary/questions/
-// fit_for. The check below is only about cost - deciding whether a
-// zero-fact product is worth pushing into the batch write path at all -
-// answered from `product.metafields`, already fetched by fetchAllProducts,
-// so this adds no new Admin API reads.
-const WITHDRAWABLE_KEYS = ["facts", "summary", "questions", "fit_for"] as const;
-
-export function hasWithdrawableAutoValues(product: ProductInput): boolean {
-  const state = parseState(product);
-  return WITHDRAWABLE_KEYS.some((key) => {
-    const value = product.metafields?.find((m) => m.key === key)?.value;
-    if (!value || value === "" || value === "[]" || value === "{}") return false;
-    return state[key]?.source === "auto";
-  });
-}
+// `hasWithdrawableAutoValues` lives in facts.server.ts, next to the state
+// semantics it reads, and is re-exported here because this module is where
+// the two call sites below are. It moved out because a test that imports it
+// from here also loads db.server and admin.server, and admin.server calls
+// shopifyApp() at module load, which throws without SHOPIFY_APP_URL - green
+// locally where .env exists, red in CI where it does not.
+export { hasWithdrawableAutoValues } from "./facts.server";
 
 export type DryRunReport = {
   sampled: number;

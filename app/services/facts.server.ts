@@ -75,6 +75,25 @@ export function parseState(product: ProductInput): ProductState {
   }
 }
 
+// A product whose description no longer yields anything must still flow
+// through writeFacts, because writeFacts's withdrawal branch is what retracts
+// stale auto-written facts/summary/questions/fit_for. This check is only about
+// cost - deciding whether a zero-fact product is worth pushing into the batch
+// write path at all - answered from `product.metafields`, already fetched, so
+// it adds no new Admin API reads. It lives here rather than in
+// extract.server.ts so a test can reach it without loading db.server and
+// admin.server, which need environment variables CI does not have.
+const WITHDRAWABLE_KEYS = ["facts", "summary", "questions", "fit_for"] as const;
+
+export function hasWithdrawableAutoValues(product: ProductInput): boolean {
+  const state = parseState(product);
+  return WITHDRAWABLE_KEYS.some((key) => {
+    const value = product.metafields?.find((m) => m.key === key)?.value;
+    if (!value || value === "" || value === "[]" || value === "{}") return false;
+    return state[key]?.source === "auto";
+  });
+}
+
 /**
  * May we write this key? No, if a human wrote it. No, if a value exists but
  * we have no record of writing it — that value came from somewhere else.

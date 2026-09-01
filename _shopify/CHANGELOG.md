@@ -69,6 +69,15 @@ extension changes (`ai-visibility.liquid`), so shipping it requires
   that it is not published to the Online Store;
   `billing.server.ts`'s counter comment now states the free-product set is
   the sole authority (FREE-TIER-SPEC carries a dated note).
+- **CI red on the audit commit: the new test needed environment variables.**
+  `extract.server.test.ts` imported `hasWithdrawableAutoValues` from
+  `extract.server.ts`, which pulls in `admin.server.ts`, which calls
+  `shopifyApp()` at module load and throws on an empty `appUrl`. Locally
+  `.env` supplies it and the suite is green; CI has no `.env` and the whole
+  file failed to collect. The function moved to `facts.server.ts`, next to
+  the state semantics it reads and importable without the Shopify runtime;
+  `extract.server.ts` re-exports it, so no call site changed. Verified by
+  running the full suite with `.env` removed: 323 tests, 27 files, green.
 
 ### Fixed (SEO audit wave, 1 September 2026)
 
