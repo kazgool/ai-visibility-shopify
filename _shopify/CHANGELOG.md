@@ -20,6 +20,154 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Added (the Report screen, 2 September 2026)
+
+A new read-only screen at `/app/report`, "Reporting at a glance"
+(`PRD-REPORT-SCREEN.md`), and a nav item second after Dashboard. It starts no
+job and writes nothing. The existing dashboard is untouched: replacing it here
+would mix two changes and make a revert expensive. Paid or comped, the same
+gate as Collections, enforced in the loader as well as at the route entrance.
+
+- **Eight panels, each naming its own source in the same card as its number.**
+  How much of the shop is readable, as a dial and a ready / partly ready /
+  nothing-to-read bar; the attribute values published and how they are spread
+  across the catalogue; one real product with its own description beside the
+  values that description produced; what the descriptions already say, family
+  by family; requests to the app's text pages, grouped into AI assistants,
+  search engines, and names that cannot make requests; what to do, worst
+  first; the ten products producing the fewest kinds of detail; print and two
+  CSV exports. The charts are inline SVG, each carrying an `aria-label`
+  stating the same figure the sighted reader sees. No new dependency.
+- **A failed pass renders as a named failure, never as a measurement of
+  zero.** A failed JobRun's report is `{ error }`, which is truthy, and this
+  screen only ever reads a report through `readPass()` in
+  `report-metrics.ts`, which yields figures in status "done" and in no other.
+  Never run, still running, failed, and finished-without-figures are four
+  different states and each says which one it is.
+- **`coverage()` now returns `depth`**, one entry per product: how many
+  distinct attribute families that product produced. It is arithmetic over
+  data the function already walked, the engine stays pure, and `DryRunReport`
+  carries it through. The bulk pass also records the ten weakest products by
+  the same measure. Reports written before these fields say so rather than
+  rendering an empty list as a finding. The weakest list carries each product's
+  id, so a row opens the product instead of naming one the merchant then has to
+  go and find.
+- **`coverage()` also returns `byAttrProducts`**, one entry per product per
+  family. It is the tally whose denominator is the product count, so
+  "Dimensions on 306 of 355" is true of it (`EXPERIENCE-PRD` section 5). It was
+  introduced against a `byAttr` believed to count values and to be able to
+  exceed the product count; it cannot. `extract.ts` emits one Fact per family
+  per product and joins the readings it found inside it, so the two arrays are
+  identical entry for entry - measured on 189 and on 355 real products, with no
+  product anywhere producing two values under one name. The screen therefore
+  reads `byAttrProducts` where it has it and the same figure under `byAttr`
+  where the pass predates the field, instead of relabelling one as the other.
+  `byAttr` is kept because the dashboard, the dictionary screen,
+  `detailSummary` and `missingFamilies` all still read it.
+- **Two method lines and one UI branch that described arithmetic this engine
+  does not do are gone.** The details card said "This is a count of values, not
+  of products: one product stating two sizes contributes two"; it contributes
+  one. The families card carried a "(N values)" bracket that only rendered when
+  the two tallies differed, so it could never render, and the CSV carried a
+  "Values found" column holding the same number as "Products stating it" in
+  every row. The bracket and the column are removed and both method lines now
+  say what the figure is. The engine is unchanged: making it emit one Fact per
+  value is a separate decision with its own blast radius.
+- **The CSV export is a resource route**, `/app/report/export/:table`, with no
+  default export. A loader on a route that renders a component cannot return a
+  file: Remix hands whatever it returns to that component as loader data. The
+  paid gate is repeated in that route, because Remix serves a resource route by
+  running that route's loader alone and nothing above it in the tree runs.
+- **A crawler the check could not reach is not called blocked.** The causes
+  `unreachable` and `unknown` are the check reaching no verdict, which
+  `crawler-check.server.ts` says in its own comment; they render as "could not
+  tell" and are excluded from the blocked-while-others-allowed finding, so the
+  app no longer hands a merchant a message to send their host about a timeout
+  of ours. Each row shows the reason under its badge.
+- **The shop's own settings are not called a block either.** `robots_disallow`
+  is written on a check whose request succeeded - the page came back in full
+  and robots.txt separately names the crawler - and `password_page` is a
+  Shopify preference every crawler and every logged-out visitor meets. Both
+  used to render as "blocked", under the sentence "The last check did not get
+  the page", with a paste asking the host to stop returning an error. They now
+  read "no, your setting", say where to change it (`robots.txt.liquid` in the
+  theme code editor; Online Store, Preferences), and carry no paste, because
+  there is nobody to send one to. They are excluded from the critical
+  blocked-while-others-allowed finding, which is not a comparison between
+  crawlers when robots.txt simply names one of them, and get their own
+  "Your setting" finding instead so a password-walled shop is not told there is
+  nothing to act on. `bot_protection`, `cloudflare`, `redirect_loop` and
+  `server_error` are the causes imposed by something in front of the store and
+  are the only ones that keep the host paste.
+- **The row detail is the sentence, not the database enum.** It rendered
+  `cause.replace(/_/g, " ")`, so a merchant read "password page" and "bot
+  protection" while `crawler-check.server.ts` already held a written sentence
+  for each cause. That map moves to `crawler-info.ts`, which is not a `.server`
+  module and which both the check and the screen import, so there is one source
+  of truth rather than two copies to drift.
+- **The crawler card no longer draws fourteen zero rows.** Its empty guard also
+  required that no robots.txt control token had been seen, so a shop whose only
+  logged requests carried `Google-Extended` got both tables rendered with every
+  row reading "0 in 30 days". The guard is now the request total alone, and the
+  token block renders under the explanatory sentence when there are tokens.
+- **A catalogue where nothing extracts gets sentences, not zero denominators.**
+  Reachable on a real shop whose descriptions are images. The weakest-products
+  table used to print "0 of 0" in every row with a bare dash for what is
+  missing; it is a sentence now. A pass that read no product at all sends the
+  families card to the same "read no active, published products" wording the
+  readability card already had, instead of "found no kind of detail anywhere in
+  0 descriptions".
+- **The histogram carries its shape and its numbers.** Single values to nine
+  and one "10+" tail put 169 of Republica BIO's 189 products in one bar and
+  left ten empty. Buckets are now single values to five - keeping an exact edge
+  at the four-family readiness threshold - then 6-7, 8-9, 10-12, 13-15, 16-19
+  and 20+, chosen from that catalogue and from a 355-product furniture
+  catalogue whose depths all fall between 0 and 4. The counts are printed above
+  the bars as well as stated in the `aria-label`, where they used to be only.
+- **Both CSV exports start with a UTF-8 byte order mark.** Family names come
+  from the merchant's own dictionary and product titles from their own
+  catalogue, so Romanian diacritics are the normal case; without the mark Excel
+  on Windows opens the file in the system code page and mangles them. The
+  content type is unchanged.
+- **The reachability check covers AI crawlers only, and the card says so.**
+  The six search-engine names in the table are not in `AGENTS`, so their "Can
+  it get in" column would have read "not checked" for ever with nothing to
+  explain it. They are listed for their request counts, and the card states
+  that Search Console and Bing Webmaster Tools answer the reachability
+  question from the inside with better evidence than one request of ours.
+  `AGENTS` is unchanged, so the check still makes 8 outbound requests and the
+  job's duration is unchanged.
+- **Every crawler figure carries its window in its own label** ("61 in 30
+  days"), and the method line says the dashboard's card uses 7 days. The two
+  screens legitimately show different numbers for the same crawler and nothing
+  used to say why. The dashboard itself is untouched.
+- **A pass refused for want of a subscription is not a failure.** The worker
+  writes status "refused" with a reason; the screen gives it its own wording
+  and a link to the plans, rather than "The last pass failed".
+- **Dates are written out in English in UTC** ("31 August 2026") instead of
+  `toLocaleDateString()`, whose output depends on the locale of whichever
+  container happened to boot. With no usable timestamp the sentence names no
+  date at all rather than printing "an unknown date".
+- **Four search-engine crawlers added to `KNOWN_BOTS`**: `bingbot`,
+  `Storebot-Google`, `GoogleOther`, `Google-InspectionTool`, in specificity
+  order so a looser name never absorbs a more specific one. Checked against
+  Google Search Central's crawler list and Bing's own documentation on
+  2 September 2026, not from memory. Until now every one of them was grouped
+  as "other" and dropped.
+- **Robots.txt control tokens are counted apart and never inside a total.**
+  `Google-Extended` and `Applebot-Extended` have no user agent of their own,
+  so a request carrying one is something else borrowing the name.
+  `normalizeBot` now returns "other" for both before the crawler list is
+  consulted, which also stops `Applebot-Extended` being counted as a real
+  Applebot read, and `nonCrawlerTokenHits()` asks for them separately.
+- **The window is 30 days everywhere on the screen**, because
+  `CRAWLER_HIT_RETENTION_DAYS` is 30 and a longer one would show deletion as a
+  fall in traffic. No control offers a longer one.
+- No score history, no verified-versus-unproven split, no "Google AI Mode" or
+  "Copilot" line, and no sorting by sales. The crawler card says in as many
+  words why the first three cannot be built honestly today, and the last one
+  needs order data this app does not ask for.
+
 ### Fixed (engine safety wave, 2 September 2026)
 
 Everything in this section is engine or gate work (`PRD-FIX-WAVE-1.md`),

@@ -89,6 +89,7 @@ export default function App() {
         <Link to="/app" rel="home">
           Dashboard
         </Link>
+        <Link to="/app/report">Report</Link>
         <Link to="/app/products">Products</Link>
         <Link to="/app/collections">Collections</Link>
         <Link to="/app/business">Business</Link>

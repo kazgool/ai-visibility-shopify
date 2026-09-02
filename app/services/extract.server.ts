@@ -219,12 +219,34 @@ export async function extraStopwordsFor(shopId: string): Promise<string[]> {
 // locally where .env exists, red in CI where it does not.
 export { hasWithdrawableAutoValues } from "./facts.server";
 
+/** One product on the "worth ten minutes of writing" list: its title and the
+ * attribute families its own description produced. The families are kept as
+ * names, not a count, so the screen can say which ones are missing by
+ * comparing against the families the rest of the catalogue does state - no
+ * second pass, and no list of families invented for the purpose.
+ *
+ * The product id travels with the title so the row can be opened. A title on
+ * its own names a product the merchant then has to go and find, and after a
+ * rename or a deletion it names something that no longer exists; the id is
+ * what still resolves. It is absent on reports written before this field, and
+ * the screen renders those rows as plain text rather than as a dead link. */
+export type WeakProduct = { title: string; families: string[]; id?: string };
+
 export type DryRunReport = {
   sampled: number;
   none: number;
   byAttr: [string, number][];
+  /** One entry per PRODUCT per family - see coverage(). This is the tally that
+   * has `sampled` as its denominator; `byAttr` counts values and does not. */
+  byAttrProducts: [string, number][];
+  /** One entry per product, distinct families each produced - see coverage(). */
+  depth: number[];
   wouldSkip: number;
   examples: { title: string; facts: Fact[] }[];
+  /** The ten products that produced the fewest distinct families, fewest
+   * first. Absent on reports written before this field existed, which the
+   * Report screen states rather than rendering as an empty list. */
+  weakest: WeakProduct[];
 };
 
 export async function runBulkExtract(
@@ -255,7 +277,13 @@ export async function runBulkExtract(
     ...coverage(products, dictionary, engineOptions),
     wouldSkip: 0,
     examples: [],
+    weakest: [],
   };
+
+  // Collected across the whole pass and cut to ten at the end, so the list is
+  // the catalogue's ten weakest and not the ten weakest of whatever happened
+  // to come first. Held as names, written as ten rows.
+  const perProductFamilies: WeakProduct[] = [];
 
   const batch: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[] = [];
   let done = 0;
@@ -281,6 +309,11 @@ export async function runBulkExtract(
     if (report.examples.length < 20 && facts.length > 0) {
       report.examples.push({ title: product.title, facts });
     }
+    perProductFamilies.push({
+      title: product.title,
+      id: product.id,
+      families: Array.from(new Set(facts.map((f) => f.k))),
+    });
 
     // Fix: previously guarded by `facts.length > 0` alone, so a full re-run
     // over a product whose description no longer yields anything skipped
@@ -337,6 +370,12 @@ export async function runBulkExtract(
 
   if (!options.dryRun && batch.length > 0) await flush();
   if (options.onProgress) await options.onProgress(products.length, products.length);
+
+  // Fewest families first, then by title so two products with the same count
+  // do not swap places between two passes of the same catalogue.
+  report.weakest = [...perProductFamilies]
+    .sort((a, b) => a.families.length - b.families.length || a.title.localeCompare(b.title))
+    .slice(0, 10);
 
   // Best effort, after the writes: indexing is a bonus, never a failure.
   if (!options.dryRun) await pingProducts(shopId, shop.domain, changed);

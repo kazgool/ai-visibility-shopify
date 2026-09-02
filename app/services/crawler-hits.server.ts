@@ -15,13 +15,20 @@
 //     must say "requested", never "visited your store" or "read by AI".
 
 import db from "../db.server";
+import { NON_CRAWLER_TOKENS } from "./crawler-info";
 
-/** Recognised AI crawlers, matched by substring against the raw user agent.
+/** Recognised crawlers, matched by substring against the raw user agent.
  * Order matters: more specific names come first so "OAI-SearchBot" is never
  * absorbed by a looser match. Anything not on this list is grouped as
- * "other" and never shown as an AI crawler - a user agent is a claim, not a
+ * "other" and never shown as a named crawler - a user agent is a claim, not a
  * fact (CRAWLER-HITS-SPEC §5), and this app only names crawlers it
- * recognises. */
+ * recognises.
+ *
+ * The four search-engine names below were added on 2 September 2026 for the
+ * Report screen, checked against Google Search Central's crawler list and
+ * Bing's webmaster documentation rather than from memory. Placed above
+ * "Googlebot" for the same specificity reason as the rest: they carry their
+ * own names and must never be folded into it. */
 const KNOWN_BOTS: readonly string[] = [
   "OAI-SearchBot",
   "ChatGPT-User",
@@ -32,11 +39,24 @@ const KNOWN_BOTS: readonly string[] = [
   "DeepSeekBot",
   "Applebot",
   "Google-CloudVertexBot",
+  "Google-InspectionTool",
+  "Storebot-Google",
+  "GoogleOther",
   "Googlebot",
+  "bingbot",
 ];
 
 export function normalizeBot(agent: string): string {
   const lower = agent.toLowerCase();
+  // Google-Extended and Applebot-Extended are robots.txt control tokens; no
+  // request is ever made under either name, so one that claims to be is not
+  // the crawler whose name it borrows. Checked before the list because
+  // "Applebot-Extended" contains "Applebot" and would otherwise be counted as
+  // a real Applebot read. These are surfaced separately, by their own query,
+  // and never inside a crawler total.
+  for (const token of NON_CRAWLER_TOKENS) {
+    if (lower.includes(token.toLowerCase())) return "other";
+  }
   for (const name of KNOWN_BOTS) {
     if (lower.includes(name.toLowerCase())) return name;
   }
@@ -97,6 +117,62 @@ export async function crawlerHitsForDashboard(
   });
   const byBot = summarizeHits(rows);
   return { days, total: byBot.reduce((sum, b) => sum + b.count, 0), byBot };
+}
+
+export type TokenCount = { token: string; count: number };
+
+/**
+ * Requests that arrived carrying a robots.txt control token as their user
+ * agent - Google-Extended, Applebot-Extended. Its own query on purpose:
+ * normalizeBot deliberately returns "other" for these, so summarizeHits drops
+ * them, and that is correct - they are not crawler reads and must never join a
+ * crawler total. The row exists only to say the name was seen and what the
+ * name actually is.
+ *
+ * Successful requests only, on the same rule as summarizeHits: a miss is not
+ * a read, whatever name it gave.
+ */
+export async function nonCrawlerTokenHits(
+  shopDomain: string,
+  days: number,
+): Promise<TokenCount[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db.crawlerHit.findMany({
+    where: {
+      shopId: shopDomain,
+      at: { gte: since },
+      status: 200,
+      // Case-insensitive on purpose: `contains` is case-SENSITIVE on
+      // Postgres, while countTokens below lowercases both sides. Without this
+      // the query and the counter disagreed - a request calling itself
+      // "google-extended" was invisible to the query and would have been
+      // counted by the pure half, so the row simply never appeared.
+      OR: NON_CRAWLER_TOKENS.map((token) => ({
+        agent: { contains: token, mode: "insensitive" as const },
+      })),
+    },
+    select: { agent: true },
+  });
+  return countTokens(rows.map((r) => r.agent));
+}
+
+/** The counting half of nonCrawlerTokenHits, kept pure so the shape can be
+ * checked without a database. */
+export function countTokens(agents: string[]): TokenCount[] {
+  const counts = new Map<string, number>();
+  for (const agent of agents) {
+    const lower = agent.toLowerCase();
+    for (const token of NON_CRAWLER_TOKENS) {
+      if (lower.includes(token.toLowerCase())) {
+        counts.set(token, (counts.get(token) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  return NON_CRAWLER_TOKENS.filter((t) => counts.has(t)).map((token) => ({
+    token,
+    count: counts.get(token) ?? 0,
+  }));
 }
 
 export type DiagnosticsHitRow = {

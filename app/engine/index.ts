@@ -84,24 +84,59 @@ export function extractProduct(
   return extractFromText(text, dictionary, { ...options, casedText });
 }
 
-/** Coverage report for the dry run (DICTIONARY-PORT §9). */
+/** Coverage report for the dry run (DICTIONARY-PORT §9).
+ *
+ * `depth` carries one entry per product, in the order the products were
+ * given: how many *distinct* attribute families that product produced. Two
+ * dimensions on one product are one family, not two, because the question the
+ * Report screen asks of this array is "how many different kinds of detail does
+ * this product state", and a product stating its width twice has not become
+ * twice as readable. The array's length always equals `sampled`, including the
+ * products that produced nothing - they are the zeros, and dropping them would
+ * silently change the denominator of everything computed from it.
+ *
+ * Two family tallies come back, and they are different numbers:
+ *
+ * - `byAttr` counts VALUES, one per extracted fact. A product stating three
+ *   dimensions adds three. It has no denominator: it can exceed the number of
+ *   products and must never be rendered as a fraction of them.
+ * - `byAttrProducts` counts PRODUCTS, one per product per family, using the
+ *   same `families` set the depth figure is built from. This is the one that
+ *   reads as "Dimensions on 306 of 355" (EXPERIENCE-PRD section 5), because it
+ *   is bounded by `sampled`.
+ *
+ * Both are sorted by their own count, descending, so each is ordered by the
+ * quantity it actually states.
+ */
 export function coverage(
   products: { title: string; descriptionHtml?: string | null }[],
   dictionaryText: string,
   options: ExtractOptions = {},
 ) {
   const counts: Record<string, number> = {};
+  const productCounts: Record<string, number> = {};
+  const depth: number[] = [];
   let none = 0;
 
   for (const product of products) {
     const facts = extractProduct(product, dictionaryText, options);
     if (facts.length === 0) {
       none += 1;
+      depth.push(0);
       continue;
     }
-    for (const fact of facts) counts[fact.k] = (counts[fact.k] ?? 0) + 1;
+    const families = new Set<string>();
+    for (const fact of facts) {
+      counts[fact.k] = (counts[fact.k] ?? 0) + 1;
+      families.add(fact.k);
+    }
+    for (const family of families) {
+      productCounts[family] = (productCounts[family] ?? 0) + 1;
+    }
+    depth.push(families.size);
   }
 
   const byAttr = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  return { sampled: products.length, none, byAttr };
+  const byAttrProducts = Object.entries(productCounts).sort((a, b) => b[1] - a[1]);
+  return { sampled: products.length, none, byAttr, byAttrProducts, depth };
 }

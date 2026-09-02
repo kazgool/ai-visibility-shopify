@@ -27,18 +27,16 @@ export const AGENTS: Record<string, string> = {
     "Mozilla/5.0 (compatible; Google-CloudVertexBot; +https://cloud.google.com/generative-ai-app-builder/docs/prepare-data#website)",
 };
 
+import { CAUSE_TEXT, type Cause } from "./crawler-info";
+
 export { CRAWLER_INFO, NON_CRAWLER_TOKENS } from "./crawler-info";
 
-export type Cause =
-  | "ok"
-  | "password_page"
-  | "bot_protection"
-  | "cloudflare"
-  | "redirect_loop"
-  | "robots_disallow"
-  | "server_error"
-  | "unreachable"
-  | "unknown";
+// The cause taxonomy and its English both live in crawler-info.ts, which is not
+// a .server module. The Report screen renders the same sentences in its own
+// component and cannot import this file; keeping a second copy here is how the
+// two drifted, and how the screen ended up printing "password page" beside a
+// sentence that already existed. One map, imported by both sides.
+export type { Cause } from "./crawler-info";
 
 export type AgentResult = {
   agent: string;
@@ -46,23 +44,6 @@ export type AgentResult = {
   cause: Cause;
   detail: string;
   ms: number;
-};
-
-const CAUSE_TEXT: Record<Cause, string> = {
-  ok: "Reachable. The page was served in full.",
-  password_page:
-    "The store is password protected, so every crawler sees the password page instead of your products.",
-  bot_protection:
-    "A bot-protection layer refused the request. This is usually a security app, or Cloudflare Bot Fight Mode on a custom domain.",
-  cloudflare:
-    "Cloudflare answered instead of your store. Bot Fight Mode blocks AI crawlers by default.",
-  redirect_loop:
-    "The request bounced between redirects and never reached a product page. A redirect app is the usual cause.",
-  robots_disallow: "robots.txt tells this crawler not to read the page.",
-  server_error: "The store returned a server error for this crawler.",
-  unreachable:
-    "The request could not be completed. This is not the same as being blocked; it may be a timeout or a DNS problem.",
-  unknown: "The response was unexpected and could not be classified.",
 };
 
 export function explain(cause: Cause): string {
@@ -177,6 +158,11 @@ export async function runCrawlerCheck(shopId: string, targetUrl: string) {
     const result = await checkAgent(targetUrl, name, agent);
     // robots.txt is advisory, but if it disallows the agent that is the
     // finding the merchant can actually act on.
+    //
+    // Note what this cause does NOT mean: the request above succeeded and the
+    // page came back in full. Nothing refused anything. Anywhere this cause is
+    // rendered it has to read as the shop's own rule, never as a block - see
+    // OWN_SETTING_CAUSES in crawler-info.ts.
     if (result.cause === "ok" && disallowed.includes(name)) {
       result.cause = "robots_disallow";
       result.detail = explain("robots_disallow");

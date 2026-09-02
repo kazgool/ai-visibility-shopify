@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { normalizeBot, summarizeHits, type HitRow } from "../crawler-hits.server";
+import {
+  countTokens,
+  normalizeBot,
+  summarizeHits,
+  type HitRow,
+} from "../crawler-hits.server";
 
 function hit(over: Partial<HitRow> = {}): HitRow {
   return {
@@ -29,6 +34,55 @@ describe("normalizeBot", () => {
   it("groups anything unrecognised as other, never as a named crawler", () => {
     expect(normalizeBot("curl/8.4.0")).toBe("other");
     expect(normalizeBot("")).toBe("other");
+  });
+
+  it("recognises the four search-engine names the Report screen lists", () => {
+    expect(
+      normalizeBot("Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)"),
+    ).toBe("bingbot");
+    expect(normalizeBot("Mozilla/5.0 (compatible; Storebot-Google/1.0)")).toBe("Storebot-Google");
+    expect(normalizeBot("Mozilla/5.0 (compatible; GoogleOther)")).toBe("GoogleOther");
+    expect(normalizeBot("Mozilla/5.0 (compatible; Google-InspectionTool/1.0)")).toBe(
+      "Google-InspectionTool",
+    );
+  });
+
+  it("keeps Googlebot distinct from the more specific Google names", () => {
+    expect(normalizeBot("Mozilla/5.0 (compatible; Googlebot/2.1)")).toBe("Googlebot");
+  });
+
+  it("never names a robots.txt control token as a crawler", () => {
+    // No request is ever made under either name, and "Applebot-Extended"
+    // contains "Applebot", so without this it would be counted as a real
+    // Applebot read.
+    expect(normalizeBot("Google-Extended")).toBe("other");
+    expect(normalizeBot("Applebot-Extended")).toBe("other");
+  });
+});
+
+describe("countTokens", () => {
+  it("counts the control tokens on their own, never inside a crawler total", () => {
+    const agents = [
+      "Google-Extended",
+      "Google-Extended",
+      "Mozilla/5.0 (compatible; GPTBot/1.1)",
+      "Applebot-Extended",
+    ];
+    expect(countTokens(agents)).toEqual([
+      { token: "Google-Extended", count: 2 },
+      { token: "Applebot-Extended", count: 1 },
+    ]);
+
+    // The same rows summarised as crawler reads contribute nothing from the
+    // tokens: only the GPTBot request survives.
+    const rows: HitRow[] = agents.map((agent) => hit({ agent, status: 200 }));
+    expect(summarizeHits(rows)).toEqual([
+      { bot: "GPTBot", count: 1, lastSeen: "2026-08-20T10:00:00.000Z" },
+    ]);
+  });
+
+  it("returns nothing when no request carried a token", () => {
+    expect(countTokens(["curl/8.4.0"])).toEqual([]);
   });
 });
 
