@@ -20,6 +20,173 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Fixed (engine safety wave, 2 September 2026)
+
+Everything in this section is engine or gate work (`PRD-FIX-WAVE-1.md`),
+provable without Shopify and measured against the 189 real Republica BIO
+products with their own dictionary.
+
+- **A denial was published as a claim.** A plain or prefix term matched with
+  no look-behind, so `nu contine gluten` published `Alergeni: contine
+  gluten` on 21 of 189 products - the merchant's own text saying the
+  opposite of ours. A match is now dropped when a negator stands in the
+  three tokens before it, read from the start of the clause. The negator
+  list (`nu`, `fara`, `no`, `without`, `free`, and the rest) is per shop: a
+  `negators:` line in the dictionary replaces it, `negators+:` adds to it,
+  and a keyword line is never read as an attribute family. Two traps had to
+  be handled to avoid trading one silent loss for another: a term that opens
+  with a negator is not suppressed by its own wording (`fara gluten`), nor
+  by the one before it in a list (`fara coloranti, fara arome`), and the
+  window ends at the clause, so `ovaz fara gluten, Bio (Avena sativa)` still
+  publishes the species.
+- **Dotted abbreviations lost everything but the first letter.**
+  `notificat de S.N.P.M.A.P.S. 1378/2023` published `notificat de s` on 39
+  products and `notificat de m` on 9. A run of single letters each followed
+  by a dot is now collapsed into one word before matching (`M.S.` becomes
+  `ms`), decimals and domains untouched, and a capture that is nothing but a
+  single character is rejected.
+- **Decimal and thousands separators were cut out of quantities.** The count
+  pattern read only the digits after the separator, so `60 capsule (29,7 g)`
+  published `Gramaj: 7 g` and `7.000mg` published `Concentratie: 0 mg`. The
+  number now carries its separators exactly as the merchant wrote them, and
+  a match can no longer start in the middle of a number.
+- **A prefix capture ran past the end of its value.** `produs in Franta per
+  portie` was published as one origin on 9 products. The capture now stops
+  at a connector once a word has been captured, keeping the part that is a
+  value and dropping the part that is prose (DICTIONARY-PORT section 10.1)
+  instead of discarding the phrase whole. What survives the truncation has to
+  be a value: when one word is left, it is not itself a term, and a plain
+  term of the same family stands immediately in front of the label word, the
+  capture is dropped. That is the `square neckline finished with delicate
+  lace` shape, where the value is written before the label and the rest is
+  the sentence carrying on; publishing `neckline finished` would be prose
+  where the old code published nothing.
+- **One junk signal was enough to overwrite a human alt text.** Any run of
+  eight digits counted as machine output, so `Masa extensibila, cod
+  20260527, stejar natural` was replaced. A digit run now needs a second
+  signal - nothing else in the value that reads as a word. Filenames, UUIDs
+  and HTML entities still count on their own; they never appear in a
+  sentence a person typed.
+- **Two write actions had no entitlement check.** Business info
+  (`app.business.tsx`) and the dictionary (`app.dictionary.tsx`) wrote
+  without asking whether the shop has access; hiding a screen is not a gate,
+  because the form can be posted directly. Both now refuse with the same
+  banner the collections screen uses, and nothing already written is
+  touched.
+- **Two worker tasks had no entitlement check at execution.**
+  `bulk_extract` and `bulk_alt_text` trusted the check made where the job
+  was enqueued, so a job queued while a shop was paid ran after access was
+  gone. Both now check before the catalogue read and record the job as
+  `refused`, exactly as `bulk_collections` does: inside the task's `try`,
+  after the row is marked `running`, so a throwing Admin call ends as
+  `failed` rather than stranding the row.
+- **A product's values and its state could land in different calls.**
+  Metafield writes were sliced every 24 entries with no regard to product
+  boundaries; a failure between the two calls left a value with no
+  provenance, which every later pass reads as human and never corrects.
+  Slices are now built per product (`sliceByOwner`). A product with more
+  fields than one call holds - which no dictionary produces today - is
+  chunked rather than emitted as an oversized slice the API would reject,
+  and its `state` entry rides in the first chunk. State without its value is
+  recomputed on the next pass; a value without its state never is.
+
+Five defects found reviewing the wave, fixed before it shipped:
+
+- **A capture whose first word was one character was discarded.** The rule
+  was written for the `S.N.P.M.A.P.S.` remnant, which the dot collapse
+  already removes at source, and what it actually deleted was every value a
+  letter carries: `vitamina C 1000`, `marime M`, grades. Only a capture that
+  is nothing but that one character is rejected now.
+- **A family whose label ended in `+` was silently deleted.** The `+` was
+  read as proof of a directive on its own, so `Extras+: gift box, engraving`
+  vanished from the dictionary without a word. A label is a directive only
+  when the keyword before the `+` is one we know; `negators+` still is.
+- **A value can carry a comma, and two consumers split on a bare one.**
+  Extraction joins values with `", "`, but the comparison table and alt text
+  split on `","`, so `Gramaj: 29,7 g, 390 g` became `29`, `7 g` and `390 g`.
+  A label then looked like it varied when every product said the same thing,
+  the collection summary a crawler reads printed the halves, and alt text
+  took `29` as a descriptor. Both consumers now split on the joiner.
+- **A negator inside a neighbouring term suppressed the next one.** English
+  writes a free-from claim backwards, so in `dairy free and gluten free` the
+  first `free` filled the window and only `dairy free` was published. A
+  negator that is the tail of a term this dictionary carries belongs to that
+  term. `free of gluten` and `nu contine gluten` are unaffected: `produsul
+  nu` is no term.
+- **Truncation published a prose fragment.** See the prefix capture entry
+  above.
+
+Corpus check, the same 189 products before and after:
+
+| | before | after |
+|---|---|---|
+| products publishing `Alergeni: contine gluten` | 21 | 0 |
+| shortest `Notificare` value | `notificat de s` | `notificat de ms` |
+| `Gramaj` or `Concentratie` values starting with `0 ` | 3 | 3 |
+| total facts | 2587 | 2576 |
+| median facts per product | 14 | 13 |
+
+Every remaining `0 ` value is the merchant's own `din care sodiu 0 mg`, not
+the `7.000mg` artefact, which is gone. The eleven net facts lost are false
+ones: 21 gluten claims the text denies, 21 `de origine animala` on products
+that say `fara ingrediente de origine animala`, 8 `prajite` on products that
+say `coapte, nu prajite`, and 10 `zaharuri adaugate` on products that say
+`fara zaharuri adaugate`. Against them, 31 origins that used to be dropped
+whole are now published, and quantities like `29,7 g` and `46,75 g` are
+right for the first time. One loss is worth a second opinion: 40 products no
+longer publish `Ambalaj: doza` and 15 no longer publish `Portie de
+referinta: doza zilnica recomandata`, because their only occurrence sits in
+`a nu se depasi doza zilnica recomandata` - a negated instruction, correctly
+detected, whose value was arguably worth keeping.
+
+The five corrections above leave every one of those numbers where it was:
+2576 facts, median 13, no gluten claim, shortest `Notificare` still
+`notificat de ms`, and every label count identical, `Origine geografica`
+included. That is the intended result. Four of the five are shapes this
+catalogue does not contain - it is Romanian, and it carries no single-letter
+values, no `+` label and no postfix free-from claim - and the fifth is
+consumer-side, so it never reaches the fact count. Getting there took two
+attempts on the truncation rule: keyed on any family it deleted `produs in
+italia` on twelve products, because `ecologic` stands before it, and keyed
+on wildcard terms it deleted ten more, because the merchant writes `origine
+produs in Spania`.
+
+Three further defects, found by re-running the wave and fixed before it
+shipped. The corpus numbers above are the state after all three: 2576 facts,
+median 13, no gluten claim, `Gramaj`/`Concentratie` values starting with
+`0 ` still 3 and still only the merchant's own `din care sodiu 0 mg`,
+shortest `Notificare` still `notificat de ms`, and every label count
+identical on both catalogues - the 189 Republica BIO products and the 355
+furniture products with the default dictionary.
+
+- **A negator that opened the window dropped the next attribute.** The tail
+  test started its look-back inside the three-token window, so a negator
+  standing first had nothing in front of it and could never be recognised as
+  part of a phrase. `Free shipping and email support` published no support
+  at all, and every English `Free returns and ...` lost the same way. The
+  tail test now reads the whole clause, the window for accepting a negator
+  stays at three tokens, and a negator stops reaching forward at a
+  coordinator that follows a word belonging to no term of this dictionary -
+  the point where the sentence has moved on to a second thing the merchant
+  offers. `fara ingrediente de origine animala` and `fara gluten si lactoza`
+  are unaffected, because every word between the negator and the match is a
+  term word.
+- **Truncation revived the connector-led form of a value.** With the capture
+  stopping at a connector, `with retinol` came back as a hit, and being
+  longer than `retinol` it subsumed it: `Key ingredients: with retinol,
+  ceramides` where the clean value had been `retinol, ceramides`. Same shape
+  for `contains salmon` over `salmon` and `compatible with ios` over `iOS`,
+  which also lost the term's capitals. Two hits differing by nothing but a
+  leading connector now resolve to the shorter one.
+- **A worker entitlement check could strand its job at `queued`.** The two
+  new checks in `bulk_extract` and `bulk_alt_text` ran before the row was
+  marked `running` and outside the `try`, and both call the Admin API. An
+  expired token, an uninstall, a 429 or a network blip threw there, so once
+  graphile-worker gave up retrying the row stayed `queued` for ever - and
+  the dashboard refuses every button while a queued row exists, locking the
+  merchant out with no explanation. Both checks moved inside the `try`,
+  after the `running` update, matching `bulk_collections`.
+
 ### Fixed (adversarial QA wave, 1 September 2026)
 
 - **The free-tier product editor was unreachable.** The subscription gate in

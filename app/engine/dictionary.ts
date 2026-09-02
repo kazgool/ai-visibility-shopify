@@ -7,12 +7,75 @@ export type DictionaryGroup = {
   fallback: string;
 };
 
+/**
+ * Words a dictionary line can carry instead of an attribute family. A line
+ * whose label is one of these - either plainly, or with the "+" suffix that
+ * means "add to the default" - is a directive and never becomes a family.
+ * That is what lets a keyword introduced in a later version land in a
+ * dictionary written today without publishing an attribute group called
+ * "negators".
+ *
+ * The "+" alone proves nothing. A merchant is free to call a family "Extras+"
+ * or "Bonus+", and a rule that read every trailing "+" as a directive deleted
+ * those families without a word. The keyword has to be one we know.
+ */
+const KEYWORDS = new Set(["negators"]);
+
+type Directive = { name: string; add: boolean };
+
+function directiveOf(label: string): Directive | null {
+  const raw = label.trim().toLowerCase();
+  const add = raw.endsWith("+");
+  const name = (add ? raw.slice(0, -1) : raw).trim();
+  if (!/^[a-z][a-z0-9_-]*$/.test(name)) return null;
+  if (!KEYWORDS.has(name)) return null;
+  return { name, add };
+}
+
+/** The default negation words, used unless a dictionary says otherwise. */
+export const DEFAULT_NEGATORS: string[] = [
+  "nu", "fara", "nu contine", "no", "not", "without", "free", "free of",
+  "sans", "ohne", "sin", "zonder", "bez",
+];
+
+export type DictionaryOptions = { negators: string[] };
+
+/**
+ * Read the directive lines out of a dictionary. `negators: x, y` replaces the
+ * default list for the shop, `negators+: x, y` adds to it; absent means the
+ * default. Unknown keywords are read and dropped, not applied.
+ */
+export function parseDictionaryOptions(raw: string): DictionaryOptions {
+  let negators = DEFAULT_NEGATORS;
+
+  for (const rawLine of String(raw ?? "").split(/\r\n|\r|\n/)) {
+    const line = rawLine.trim();
+    const colon = line.indexOf(":");
+    if (line === "" || colon === -1) continue;
+
+    const directive = directiveOf(line.slice(0, colon));
+    if (!directive || directive.name !== "negators") continue;
+
+    const values = line
+      .slice(colon + 1)
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v) => v !== "");
+    if (values.length === 0) continue;
+
+    negators = directive.add ? [...negators, ...values] : values;
+  }
+
+  return { negators };
+}
+
 export function parseDictionary(raw: string): DictionaryGroup[] {
   const out = new Map<string, DictionaryGroup>();
 
   for (const rawLine of String(raw ?? "").split(/\r\n|\r|\n/)) {
     let line = rawLine.trim();
     if (line === "" || !line.includes(":")) continue;
+    if (directiveOf(line.slice(0, line.indexOf(":")))) continue;
 
     // Optional "| default: value" at the end of the line.
     let fallback = "";

@@ -97,4 +97,37 @@ describe("looksLikeMachineAlt", () => {
   it("leaves our own current output alone", () => {
     expect(looksLikeMachineAlt("Set Masa & 6 Scaune - Negru - lucios, negru, view 2")).toBe(false);
   });
+
+  // PRD-FIX-WAVE-1 E5. A digit run on its own was permission to overwrite a
+  // human description that happened to carry a product code. One junk signal
+  // is not evidence; two are.
+  it("keeps a description that merely carries a product code", () => {
+    expect(looksLikeMachineAlt("Masa extensibila, cod 20260527, stejar natural")).toBe(false);
+  });
+
+  it("keeps a plain human description", () => {
+    expect(looksLikeMachineAlt("Fotoliu gri, vedere laterala")).toBe(false);
+  });
+
+  it("still replaces a camera filename", () => {
+    expect(looksLikeMachineAlt("IMG_20260527_120033.jpg")).toBe(true);
+  });
+
+  it("still replaces a bare timestamp", () => {
+    expect(looksLikeMachineAlt("20260527120033")).toBe(true);
+  });
+
+  it("still replaces a tool-generated filename", () => {
+    expect(looksLikeMachineAlt("photoroom_1748.png")).toBe(true);
+  });
+});
+
+describe("descriptors are cut on the joiner, not on a decimal comma", () => {
+  it("takes the whole first value when it carries a decimal comma", () => {
+    const alt = buildAltText({ title: "Pachet" }, [{ k: "Size", v: "29,7 g, 390 g" }]);
+    expect(alt).toContain("29,7 g");
+    // "29" alone is not a descriptor of anything, and it was what a screen
+    // reader used to be handed.
+    expect(alt).not.toBe("Pachet - 29");
+  });
 });

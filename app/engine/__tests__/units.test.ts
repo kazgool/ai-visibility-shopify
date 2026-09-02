@@ -96,6 +96,27 @@ describe("counted", () => {
   it("ignores a number inside a longer word", () => {
     expect(counted("6 scaunelor", "scaune")).toEqual([]);
   });
+
+  // PRD-FIX-WAVE-1 E3. Romanian writes a decimal comma, so reading only the
+  // digits after the separator published "7 g" for a 29,7 g pack and "0 mg"
+  // for 7.000mg. Inputs verbatim from the Republica BIO catalogue.
+  it("keeps a decimal comma, and does not start mid-number", () => {
+    expect(counted("60 capsule (29,7 g)", "g")).toEqual(["29,7 g"]);
+    expect(counted("60 capsule (29,7 g)", "g")).not.toContain("7 g");
+  });
+
+  it("keeps a decimal comma after a count", () => {
+    expect(counted("90 tablete, 40,5 g", "g")).toEqual(["40,5 g"]);
+  });
+
+  it("never reads a thousands separator as the whole number", () => {
+    expect(counted("7.000mg", "mg")).toEqual([]);
+    expect(counted("7.000 mg", "mg")).toEqual(["7.000 mg"]);
+  });
+
+  it("still reads a plain count", () => {
+    expect(counted("60 capsule", "capsule")).toEqual(["60 capsule"]);
+  });
 });
 
 describe("extractProduct measurements case preservation", () => {
@@ -144,6 +165,55 @@ describe("phrase hygiene", () => {
   });
   it("accepts a clean phrase", () => {
     expect(isUsablePhrase("blat sticla", stops)).toBe(true);
+  });
+});
+
+// PRD-FIX-WAVE-1 E4. A capture that runs past a connector glues a second
+// statement onto the value: "produs in Franta per portie" published as one
+// origin on nine products. Truncating keeps the part that is a value and
+// drops the part that is prose (DICTIONARY-PORT §10.1).
+describe("prefix captures stop at a connector", () => {
+  function valuesOf(text: string, dictionary: string) {
+    return Object.fromEntries(
+      extractFromText(prepareText("", text), dictionary).map((f) => [f.k, f.v]),
+    );
+  }
+
+  it("stops at the preposition that starts the next statement", () => {
+    const values = valuesOf(
+      "produs in Franta per portie, de origine bovina",
+      "Origine geografica: produs in *",
+    );
+    expect(values["Origine geografica"]).toBe("produs in franta");
+  });
+
+  it("does not truncate a plain term that contains connectors", () => {
+    const values = valuesOf(
+      "faina din seminte de dovleac coapte",
+      "Ingrediente: faina din seminte de dovleac",
+    );
+    expect(values.Ingrediente).toBe("faina din seminte de dovleac");
+  });
+
+  it("publishes something where the connector used to drop the whole phrase", () => {
+    const values = valuesOf(
+      "square neckline finished with delicate lace",
+      "Neckline: neckline *, V-neck, sweetheart, square, boat, halter",
+    );
+    expect(values.Neckline).toBeDefined();
+    expect(values.Neckline).toContain("square");
+  });
+
+  // Truncation is only right when what it keeps is a value. Here it kept a
+  // verb: the label word was used attributively, with the value in front of
+  // it, so everything after it is the sentence carrying on.
+  it("does not publish the prose left over after a truncation", () => {
+    const values = valuesOf(
+      "square neckline finished with delicate lace",
+      "Neckline: neckline *, square",
+    );
+    expect(values.Neckline).toBe("square");
+    expect(values.Neckline).not.toContain("finished");
   });
 });
 

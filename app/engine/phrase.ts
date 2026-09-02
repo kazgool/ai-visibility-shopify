@@ -62,7 +62,18 @@ export function isUsablePhrase(phrase: string, stops: Set<string>): boolean {
   if (value === "") return false;
   if (/^[\d\s.,-]+$/u.test(value)) return false; // bare number, no unit
 
-  for (const word of value.split(/\s+/u)) {
+  // A capture that is nothing but a single character is the remains of
+  // something the text abbreviated ("notificat de S.N.P.M.A.P.S." leaving
+  // "s"). One letter alone is never an attribute value, and published it
+  // reads as a typo. The dot collapse in normalize.ts already removes the
+  // abbreviation case at source, so the test can be this narrow - and it has
+  // to be: vitamin letters, size letters and grades are single characters
+  // that carry the value ("vitamina C 1000", "marime M", "clasa A"), and a
+  // rule keyed on the first word alone threw all of them away.
+  const words = value.split(/\s+/u);
+  if (words.length === 1 && words[0].length === 1) return false;
+
+  for (const word of words) {
     if (stops.has(normalize(word))) return false;
     if (looksLikeIdentifier(word)) return false;
   }

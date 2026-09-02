@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCollectionCapsule,
+  buildCollectionCriteria,
+  buildCollectionSummary,
   buildComparisonTable,
   comparableLabels,
   type CollectionMember,
@@ -60,6 +62,25 @@ describe("comparableLabels", () => {
 
   it("returns nothing for an empty collection", () => {
     expect(comparableLabels([])).toEqual([]);
+  });
+
+  // extract.ts joins values with ", ", and a value can now carry a Romanian
+  // decimal comma inside it. Splitting on a bare comma turned one weight into
+  // two, so a label looked like it varied when every product said the same
+  // thing, and the summary a crawler reads printed "29, 7 g".
+  it("splits a value on the joiner, not on a decimal comma", () => {
+    const products = [
+      member("a", "Pachet mic", [["Gramaj", "29,7 g, 390 g"]]),
+      member("b", "Pachet mare", [["Gramaj", "29,7 g, 390 g"]]),
+    ];
+
+    // Two parts, not three: "29" and "7 g" are halves of one weight.
+    expect(buildCollectionCriteria({ title: "Pachete", products })).toEqual([
+      "Gramaj: 29,7 g, 390 g",
+    ]);
+
+    const summary = buildCollectionSummary({ title: "Pachete", products });
+    expect(summary).not.toContain("29, 7 g");
   });
 });
 

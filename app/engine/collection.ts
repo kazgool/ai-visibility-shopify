@@ -44,11 +44,18 @@ export type CollectionCapsule = {
 /**
  * Label -> distinct values for prose, in order of first appearance.
  *
- * Values are split on commas first: one product says "burete", another says
- * "textil, burete", and joining those unsplit into a comma-separated sentence
- * reads as "burete, textil, burete" - a duplicate that is really a composite.
- * The comparison table keeps composite values whole; this list is for
- * sentences, where the components are what a person would name.
+ * Values are split back into their parts first: one product says "burete",
+ * another says "textil, burete", and joining those unsplit into a
+ * comma-separated sentence reads as "burete, textil, burete" - a duplicate
+ * that is really a composite. The comparison table keeps composite values
+ * whole; this list is for sentences, where the components are what a person
+ * would name.
+ *
+ * The split has to match the join in extract.ts, which is ", " and never a
+ * bare comma: a Romanian decimal comma sits inside a single value ("29,7 g"),
+ * and splitting on it turned one weight into "29" and "7 g" - two values
+ * where the merchant wrote one, so a label looked like it varied when it did
+ * not, and the collection summary a crawler reads printed the halves.
  */
 function valuesByLabel(products: CollectionMember[]): Map<string, string[]> {
   const seen = new Map<string, Set<string>>();
@@ -61,7 +68,7 @@ function valuesByLabel(products: CollectionMember[]): Map<string, string[]> {
         seen.set(label, new Set());
         order.set(label, []);
       }
-      for (const part of fact.v.split(",")) {
+      for (const part of fact.v.split(/,\s/)) {
         // Compared case-insensitively with whitespace and trailing
         // punctuation normalised, kept as written: the merchant's casing is
         // what buyers recognise.

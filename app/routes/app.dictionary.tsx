@@ -24,6 +24,7 @@ import {
   extractProduct,
   collidingTerms,
 } from "../engine";
+import { hasPaidAccess } from "../services/billing.server";
 
 // The dictionary is the product. This screen is where a merchant decides what
 // "comparable" means for their trade - and, just as importantly, in which
@@ -62,6 +63,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { error: "Shop not found" };
+
+  // ENTITLEMENT: the dictionary decides what the app writes to every product
+  // (FREE-TIER-SPEC §3), and the test intent reads the catalogue through the
+  // Admin API. A hidden button is not a gate, so the action refuses.
+  const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+  if (!paid) {
+    return {
+      error:
+        "This shop has no active subscription, so the dictionary cannot be saved or tested. Nothing already written is touched.",
+    };
+  }
 
   if (intent === "save") {
     await db.setting.upsert({
@@ -111,6 +123,11 @@ export default function DictionaryPage() {
     <Page title="Dictionary" subtitle="What counts as a comparable attribute in your trade">
       <BlockStack gap="400">
         {result?.saved ? <Banner tone="success">Dictionary saved.</Banner> : null}
+        {result?.error ? (
+          <Banner tone="critical">
+            <Text as="p">{result.error}</Text>
+          </Banner>
+        ) : null}
 
         <Card>
           <BlockStack gap="300">

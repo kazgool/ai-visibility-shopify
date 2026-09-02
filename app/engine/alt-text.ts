@@ -72,12 +72,24 @@ export function looksLikeMachineAlt(value: string): boolean {
   if (looksLikeFilename(v)) return true;
   // Encoded entities survive only when no human has looked at the text.
   if (/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(v)) return true;
-  for (const token of v.split(/[\s,]+/)) {
+
+  const tokens = v.split(/[\s,]+/);
+  for (const token of tokens) {
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(token)) return true; // UUID
     if (/^(photoroom|img|dsc|pxl|screenshot|whatsapp)[_-]?\d/i.test(token)) return true;
-    if (/\d{8,}/.test(token)) return true; // timestamps, serials
   }
-  return false;
+
+  // A long digit run on its own is not enough. "Masa extensibila, cod
+  // 20260527, stejar natural" is a description a person typed that happens to
+  // carry a product code, and overwriting it breaks the one promise the app
+  // makes. A second signal is required: nothing around the run that reads as
+  // a word. Filenames, UUIDs and entities above need no second signal - they
+  // never appear in a sentence a person typed.
+  const serial = tokens.find((token) => /\d{8,}/.test(token));
+  if (!serial) return false;
+  return !tokens.some(
+    (token) => token !== serial && /\p{L}{4,}/u.test(token.replace(/\d/g, " ")),
+  );
 }
 
 function visualFacts(facts: Fact[]): Fact[] {
@@ -113,7 +125,10 @@ export function buildAltText(
   // Rotate which attributes lead, so gallery images do not read identically.
   const rotated = visual.slice(position % visual.length).concat(visual.slice(0, position % visual.length));
   const descriptors = rotated
-    .map((f) => f.v.split(",")[0].trim())
+    // Split on the ", " that extract.ts joins with, never on a bare comma: a
+    // Romanian decimal comma lives inside one value ("29,7 g"), and cutting
+    // there put "29" into the alt text as if it were a descriptor.
+    .map((f) => f.v.split(/,\s/)[0].trim())
     // A stray SKU or migration UUID in an attribute value must not reach alt
     // text: a screen reader would read it out character by character. Values
     // can also be human-written, so this guard cannot live only in extraction.

@@ -52,12 +52,43 @@ export const bulk_extract: Task = async (payload, helpers) => {
     jobRunId: string;
   };
 
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+
   await db.jobRun.update({
     where: { id: jobRunId },
     data: { status: "running", startedAt: new Date() },
   });
 
   try {
+    // ENTITLEMENT: re-checked here, not only where the job was enqueued. A job
+    // queued while the shop was paid can execute after access is gone, and a
+    // full catalogue pass is exactly what the free tier does not include
+    // (FREE-TIER-SPEC §3). Same shape as bulk_collections.
+    //
+    // Inside the try, and after the row is marked running, on purpose: the
+    // check calls the Admin API, so an expired token, an uninstall or a 429
+    // throws. Outside the try that throw left the row at "queued" for ever
+    // once graphile-worker gave up retrying, and the dashboard refuses every
+    // button while a queued row exists - the merchant is locked out with no
+    // explanation. Here the catch marks the row failed and the screen recovers.
+    if (!(await mayProcessAutomatically(shop, await adminGraphql(shop.domain)))) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "refused",
+          finishedAt: new Date(),
+          report: {
+            refused: true,
+            reason:
+              "This shop has no active subscription, so the catalogue pass is not available.",
+          } as any,
+        },
+      });
+      helpers.logger.info(`bulk_extract ${shop.domain}: refused, no active subscription or comp`);
+      return;
+    }
+
     const report = await runBulkExtract(shopId, {
       dryRun,
       onProgress: async (done, total) => {
@@ -418,6 +449,29 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
 
   try {
     const graphql = await adminGraphql(shop.domain);
+
+    // ENTITLEMENT: same reason as bulk_extract - alt text for the whole
+    // catalogue is a paid pass, and the check belongs at execution as well as
+    // at enqueue (FREE-TIER-SPEC §3). Both this check and the Admin client it
+    // needs stay inside the try: they can throw, and a throw before the row
+    // leaves "queued" strands the row and locks the dashboard.
+    if (!(await mayProcessAutomatically(shop, graphql))) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "refused",
+          finishedAt: new Date(),
+          report: {
+            refused: true,
+            reason:
+              "This shop has no active subscription, so writing alt text is not available.",
+          } as any,
+        },
+      });
+      helpers.logger.info(`bulk_alt_text ${shop.domain}: refused, no active subscription or comp`);
+      return;
+    }
+
     const dictionary = await dictionaryFor(shopId);
     const extraStopwords = await extraStopwordsFor(shopId);
     const products = await fetchAllProducts(graphql);

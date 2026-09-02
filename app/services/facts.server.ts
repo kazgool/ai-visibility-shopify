@@ -125,6 +125,74 @@ const METAFIELDS_DELETE = `#graphql
   }
 `;
 
+/** The metafieldsSet / metafieldsDelete limit per call. */
+const METAFIELDS_PER_CALL = 24;
+
+/**
+ * Group writes into calls without ever splitting one product across two.
+ *
+ * A product's values and its `state` entry have to land in the same call. Cut
+ * blindly every 24 entries, the values can be written and the state lost to a
+ * failure on the next call - and a value with no state entry is read as human
+ * for ever after, so the app can never correct or withdraw it.
+ *
+ * A product with more than `size` fields cannot have a call of its own: the
+ * API refuses more than 25 entries, so emitting a slice of 30 would fail the
+ * whole batch. No dictionary produces that today; if one ever does, that
+ * product is chunked and its `state` entry rides in the first chunk. The
+ * asymmetry is the point. State written for a value that never landed is
+ * self-correcting - the next pass recomputes and writes it. A value written
+ * with no state is not: it is read as human and never touched again.
+ */
+export function sliceByOwner<T extends { ownerId: string }>(
+  items: T[],
+  size = METAFIELDS_PER_CALL,
+): T[][] {
+  const byOwner = new Map<string, T[]>();
+  for (const item of items) {
+    const list = byOwner.get(item.ownerId);
+    if (list) list.push(item);
+    else byOwner.set(item.ownerId, [item]);
+  }
+
+  const slices: T[][] = [];
+  let current: T[] = [];
+  for (const group of byOwner.values()) {
+    if (group.length > size) {
+      if (current.length > 0) {
+        slices.push(current);
+        current = [];
+      }
+      for (const chunk of chunkStateFirst(group, size)) slices.push(chunk);
+      continue;
+    }
+    if (current.length > 0 && current.length + group.length > size) {
+      slices.push(current);
+      current = [];
+    }
+    current = current.concat(group);
+  }
+  if (current.length > 0) slices.push(current);
+
+  return slices;
+}
+
+/**
+ * Cut one owner's entries into calls of at most `size`, with the `state`
+ * entry moved to the front so it is written first.
+ */
+function chunkStateFirst<T extends { ownerId: string }>(group: T[], size: number): T[][] {
+  const isState = (item: T) =>
+    (item as { key?: unknown }).key === "state";
+  const ordered = [...group.filter(isState), ...group.filter((i) => !isState(i))];
+
+  const chunks: T[][] = [];
+  for (let i = 0; i < ordered.length; i += size) {
+    chunks.push(ordered.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export type WriteOutcome = {
   productId: string;
   written: string[];
@@ -147,8 +215,9 @@ export async function writeFacts(
   entries: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[],
 ): Promise<WriteOutcome[]> {
   const outcomes: WriteOutcome[] = [];
-  const metafields: Record<string, unknown>[] = [];
-  const deletions: Record<string, unknown>[] = [];
+  // ownerId is stated in the type because the slicing below groups on it.
+  const metafields: { ownerId: string; [key: string]: unknown }[] = [];
+  const deletions: { ownerId: string; [key: string]: unknown }[] = [];
 
   for (const { product, facts, fields = [] } of entries) {
     const outcome: WriteOutcome = {
@@ -227,8 +296,7 @@ export async function writeFacts(
     outcomes.push(outcome);
   }
 
-  for (let i = 0; i < metafields.length; i += 24) {
-    const slice = metafields.slice(i, i + 24);
+  for (const slice of sliceByOwner(metafields)) {
     const data = await graphql<any>(METAFIELDS_SET, { metafields: slice });
     const errors = data?.metafieldsSet?.userErrors ?? [];
     if (errors.length) {
@@ -236,8 +304,7 @@ export async function writeFacts(
     }
   }
 
-  for (let i = 0; i < deletions.length; i += 24) {
-    const slice = deletions.slice(i, i + 24);
+  for (const slice of sliceByOwner(deletions)) {
     const data = await graphql<any>(METAFIELDS_DELETE, { metafields: slice });
     const errors = data?.metafieldsDelete?.userErrors ?? [];
     if (errors.length) {

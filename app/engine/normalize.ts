@@ -99,9 +99,27 @@ export function diacriticPattern(term: string): string {
  * gets published as a width. Every other pattern still runs against the
  * lowercased text, because that is what the WordPress port matched.
  */
+/**
+ * A run of two or more single letters each followed by a dot is one word a
+ * person reads as one word: "S.N.P.M.A.P.S.", "M.S.". Left as written, every
+ * pattern sees a one-letter token and a sentence full of full stops, which is
+ * how "notificat de S.N.P.M.A.P.S. 1378/2023" published "notificat de s".
+ *
+ * The run has to be single letters throughout, so "1.5" and "www.example.com"
+ * are untouched - the lookbehind is what keeps the middle of a domain from
+ * starting a run.
+ */
+const DOTTED_ABBREVIATION = /(?<![\p{L}\p{N}.])(?:\p{L}\.){2,}/gu;
+
+export function collapseDottedAbbreviations(input: string): string {
+  return String(input ?? "").replace(DOTTED_ABBREVIATION, (run) =>
+    run.replace(/\./g, ""),
+  );
+}
+
 export function prepareTextCased(title: string, body: string): string {
   const raw = `${decodeEntities(title ?? "")}. ${stripTags(body ?? "")}`;
-  return raw.replace(/\s+/gu, " ").trim();
+  return collapseDottedAbbreviations(raw.replace(/\s+/gu, " ").trim());
 }
 
 /**

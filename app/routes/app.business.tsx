@@ -26,6 +26,7 @@ import {
 // module outside a loader or action pulls it into the client bundle and
 // breaks the build.
 import { SOCIAL_PLATFORMS } from "../services/social-profiles";
+import { hasPaidAccess } from "../services/billing.server";
 
 // The commercial answers a shop gives once (WP 1.6.7 port): delivery,
 // returns, warranty, payment. Published as shipping and return-policy
@@ -43,6 +44,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   if (!shop) return { error: "Shop not found" };
+
+  // ENTITLEMENT: this action writes to the store (FREE-TIER-SPEC §3). Hiding
+  // the screen is not a gate - the form can be posted directly - so the write
+  // itself refuses. Nothing already written is touched by the refusal.
+  const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+  if (!paid) {
+    return {
+      error:
+        "This shop has no active subscription, so business info is not published. Nothing already written is touched.",
+    };
+  }
 
   const form = await request.formData();
   const text = (name: string) => String(form.get(name) ?? "").trim();
