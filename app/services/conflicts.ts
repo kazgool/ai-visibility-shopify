@@ -23,3 +23,16 @@ export type ConflictLike = {
 export function organizationPairIsInformational(conflict: ConflictLike): boolean {
   return conflict.type === "Organization" && conflict.weEmitOne;
 }
+
+/**
+ * Is this `@id` one this app emitted? Our nodes always end in a fragment we
+ * chose; a theme's node ends in whatever the theme chose, or has no fragment
+ * at all. Moved here from theme-scan.server.ts on 3 September 2026 (build
+ * step 4) for the reason this file exists: the SEO card's B1 aggregate has to
+ * tell a theme node from ours, and it is computed by a pure function the
+ * browser bundle can import. theme-scan.server.ts re-exports it, so every
+ * existing caller and its test are unchanged.
+ */
+export function isOurNodeId(id: string): boolean {
+  return id.endsWith("#product") || id.endsWith("#collection") || id.endsWith("#organization");
+}

@@ -3,6 +3,7 @@ import { redirect } from "@remix-run/node";
 import { useEffect, useState } from "react";
 import {
   Form,
+  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -40,6 +41,16 @@ import {
   type ConflictEntry,
 } from "../services/theme-scan.server";
 import { diffThemeScans, formatSeoWatchLine, type SeoWatchChange } from "../services/seo-watch";
+import {
+  cleanSentence,
+  pagesReadSentence,
+  themeNodeAdvice,
+  themeNodeSentence,
+  type FindingsAggregate,
+  type ThemeNodeAggregate,
+} from "../services/seo-aggregate";
+import { readSeoAggregates } from "../services/seo-aggregate.server";
+import { DEFAULT_DAILY_BUDGET, dailyBudget } from "../services/seo-page.server";
 import { organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
@@ -146,6 +157,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ])
     : [null, null];
 
+  // Per-product SEO scan (PRD-SEO-PER-PRODUCT build step 4). Both cards below
+  // read one aggregate over the whole SeoScan table, so the Findings card and
+  // the Structured data card can never disagree about the same catalogue. The
+  // budget comes with them because the pages-read sentence has to do this
+  // shop's own arithmetic, not repeat a constant.
+  const [scan, scanBudget] = shop
+    ? await Promise.all([readSeoAggregates(shop.id), dailyBudget(shop.id)])
+    : [null, DEFAULT_DAILY_BUDGET];
+
   return {
     unlocked: true as const,
     themeScan,
@@ -154,6 +174,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     queueJob,
     applyJob,
     hasStorefrontPassword,
+    scan,
+    scanBudget,
   };
 };
 
@@ -1205,6 +1227,171 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
   );
 }
 
+/**
+ * Findings per product (PRD-SEO-PER-PRODUCT section 4, build step 4).
+ *
+ * One row per check, `count of denominator`, ordered by the count this store
+ * actually has. Nothing in this component decides which finding matters -
+ * aggregateFindings sorted the rows, and it sorted them by data. That is what
+ * makes the same card read correctly on a 50-product fixture, a 20,000-product
+ * store, an empty one and one where the nightly page pass has never run.
+ *
+ * Three things it will not do:
+ *  - print a zero for a check that could not run. Those rows read "not yet
+ *    read" with their own count, because "we looked and found nothing" and
+ *    "nobody has looked" are different sentences (EXPERIENCE-PRD section 2).
+ *  - hide the denominator. A count without one is how a number stops meaning
+ *    anything.
+ *  - print a wall of zeros. Checks that ran and found nothing collapse into
+ *    one line, so a clean store reads as clean.
+ */
+function FindingsPerProductCard({
+  aggregate,
+  budget,
+}: {
+  aggregate: FindingsAggregate;
+  budget: number;
+}) {
+  const clean = cleanSentence(aggregate);
+  const found = aggregate.rows.filter((r) => r.state === "found");
+  const notYetRead = aggregate.rows.filter((r) => r.state === "notYetRead");
+
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <BlockStack gap="050">
+          <Text as="h2" variant="headingMd">
+            Findings per product
+          </Text>
+          <Text as="p" tone="subdued" variant="bodySm">
+            Every check this app makes about a product, counted over the
+            catalogue. The ones that need the product page read are counted
+            over the pages read so far, never over the whole catalogue.
+          </Text>
+        </BlockStack>
+
+        <Text as="p" variant="bodySm">
+          {pagesReadSentence(aggregate, budget)}
+        </Text>
+
+        {aggregate.products === 0 ? (
+          <Text as="p" tone="subdued">
+            No products have been read into this table yet. It fills on the
+            next catalogue pass - run Fill catalogue from the dashboard.
+          </Text>
+        ) : (
+          <BlockStack gap="200">
+            {found.map((row) => (
+              <InlineStack key={row.code} align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {row.label}
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    {row.source === "A"
+                      ? "From the catalogue read."
+                      : "From reading the product page."}
+                  </Text>
+                </BlockStack>
+                <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <Text as="span" fontWeight="semibold">
+                    {`${row.count} of ${row.denominator}`}
+                  </Text>
+                  <Link to={`/app/products?finding=${row.code}`}>
+                    <Text as="span" variant="bodySm">
+                      See products
+                    </Text>
+                  </Link>
+                </InlineStack>
+              </InlineStack>
+            ))}
+
+            {notYetRead.map((row) => (
+              <InlineStack key={row.code} align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {row.label}
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    {row.source === "A"
+                      ? "Waiting for the next catalogue pass."
+                      : "Waiting for the nightly page read, or the pages answered with the password form."}
+                  </Text>
+                </BlockStack>
+                <Text as="span" tone="subdued">
+                  {`Not yet read on ${row.notRead}`}
+                </Text>
+              </InlineStack>
+            ))}
+
+            {clean ? (
+              <Text as="p" tone="subdued" variant="bodySm">
+                {clean}
+              </Text>
+            ) : null}
+
+            {aggregate.couldNotBeRead > 0 ? (
+              <Text as="p" tone="subdued" variant="bodySm">
+                {`${aggregate.couldNotBeRead} of the ${aggregate.pagesAttempted} pages fetched could not be read as a crawler would read them - a password page, a redirect or an error. Nothing is concluded about those pages.`}
+              </Text>
+            ) : null}
+          </BlockStack>
+        )}
+      </BlockStack>
+    </Card>
+  );
+}
+
+/**
+ * Structured data, from the aggregate of B1 over every page read rather than
+ * from one product page.
+ *
+ * The failure this replaces, 3 September 2026: the card read one product page
+ * and recommended a mode from it. Both pages it fetched that day were the
+ * storefront password form, and it reported "No Product node found" as a
+ * finding about the theme. A theme can also emit a node on one template and
+ * not another, and an app can inject one on some pages and not others - one
+ * page cannot see any of that. So Full is recommended only when no scanned
+ * page has a theme node, and the card says how many pages that rests on.
+ */
+function StructuredDataCard({ aggregate }: { aggregate: ThemeNodeAggregate }) {
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <Text as="h2" variant="headingMd">
+          Structured data
+        </Text>
+        <InlineStack gap="150" blockAlign="center" wrap>
+          <Badge
+            tone={
+              aggregate.verdict === "unknown"
+                ? undefined
+                : aggregate.verdict === "extend"
+                  ? "success"
+                  : "attention"
+            }
+          >
+            {aggregate.verdict === "unknown"
+              ? "No pages read yet"
+              : aggregate.verdict === "extend"
+                ? "Extend mode"
+                : "Full mode"}
+          </Badge>
+          <Text as="span" variant="bodySm">
+            {themeNodeSentence(aggregate)}
+          </Text>
+        </InlineStack>
+        <Text as="p">{themeNodeAdvice(aggregate)}</Text>
+        {aggregate.two > 0 ? (
+          <Text as="p" tone="subdued" variant="bodySm">
+            {`Two or more Product nodes on ${aggregate.two} page${aggregate.two === 1 ? "" : "s"}: assistants read two products where there is one. Those pages are listed under the "No Product node on the page, or two of them" row above.`}
+          </Text>
+        ) : null}
+      </BlockStack>
+    </Card>
+  );
+}
+
 export default function Seo() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as any;
@@ -1294,6 +1481,19 @@ export default function Seo() {
           <MetricTile label="Schema node types" {...schemaMetric} />
           <MetricTile label="Conflicts" {...conflictMetric} />
         </InlineGrid>
+
+        {data.scan ? (
+          <FindingsPerProductCard
+            aggregate={data.scan.findings as unknown as FindingsAggregate}
+            budget={data.scanBudget}
+          />
+        ) : null}
+
+        {data.scan ? (
+          <StructuredDataCard
+            aggregate={data.scan.themeNodes as unknown as ThemeNodeAggregate}
+          />
+        ) : null}
 
         <SeoListingsCard queueJob={queueJob} applyJob={data.applyJob as any as JobRunLike} />
 

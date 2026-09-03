@@ -16,6 +16,8 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { isSeoUnlocked } from "../services/billing.server";
+import { themeNodeAdvice, themeNodeSentence } from "../services/seo-aggregate";
+import { readSeoAggregates } from "../services/seo-aggregate.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
 import { CRAWLER_INFO } from "../services/crawler-info";
 import {
@@ -138,9 +140,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // link below points somewhere reachable.
   const seoUnlocked = shop ? await isSeoUnlocked(shop.id) : false;
 
+  // The per-product aggregate of B1 (PRD-SEO-PER-PRODUCT build step 4). The
+  // card below used to recommend a mode from the one product page a scan had
+  // read; on 3 September 2026 that page was the storefront password form and
+  // it reported "No Product node found" as a finding about the theme. It now
+  // reads the same aggregate the SEO screen reads, so the two screens cannot
+  // disagree about one catalogue. Null when the SEO module is off for this
+  // shop, in which case the one-page card is all there is - and it says so.
+  const scan = shop && seoUnlocked ? (await readSeoAggregates(shop.id)).themeNodes : null;
+
   return {
     persistedCrawlers,
     themeScan,
+    scan,
     domain,
     preferredSource,
     crawlerHits,
@@ -224,6 +236,7 @@ function toneForStatus(status: number): "success" | "critical" {
 export default function Diagnostics() {
   const {
     themeScan,
+    scan,
     domain,
     preferredSource,
     crawlerHits,
@@ -439,23 +452,52 @@ export default function Diagnostics() {
                     "The storefront password is entered on the SEO screen."
                   )}
                 </Banner>
+              ) : scan ? (
+                // The verdict over every page read, not over this one page.
+                <BlockStack gap="100">
+                  <Badge
+                    tone={
+                      scan.verdict === "unknown"
+                        ? undefined
+                        : scan.verdict === "extend"
+                          ? "success"
+                          : "attention"
+                    }
+                  >
+                    {scan.verdict === "unknown"
+                      ? "No product pages read yet"
+                      : scan.verdict === "extend"
+                        ? "Keep Extend mode"
+                        : "Switch to Full mode"}
+                  </Badge>
+                  <Text as="p" variant="bodySm">
+                    {themeNodeSentence(scan)}
+                  </Text>
+                  <Text as="p">{themeNodeAdvice(scan)}</Text>
+                </BlockStack>
               ) : theme.hasProductLd ? (
                 <BlockStack gap="100">
                   <Badge tone="success">
-                    {`Theme emits ${theme.nodeCount} Product node${theme.nodeCount === 1 ? "" : "s"}`}
+                    {`Theme emits ${theme.nodeCount} Product node${theme.nodeCount === 1 ? "" : "s"} on the page we read`}
                   </Badge>
                   <Text as="p">
                     Keep the app embed in <b>Extend</b> mode. We will add only
                     what the theme omits, referenced to its node, so assistants
-                    read one product rather than two.
+                    read one product rather than two. This verdict rests on one
+                    product page; the per-product page read counts every one.
                   </Text>
                 </BlockStack>
               ) : (
                 <BlockStack gap="100">
-                  <Badge tone="attention">No Product node found</Badge>
+                  <Badge tone="attention">
+                    No Product node on the one page we read
+                  </Badge>
                   <Text as="p">
-                    Switch the app embed to <b>Full</b> mode so this store
-                    publishes complete product data.
+                    Switching the app embed to <b>Full</b> mode would make this
+                    store publish complete product data. One page is a weak
+                    basis for that: a theme can emit a node on one template and
+                    not another. The per-product page read decides it over the
+                    whole catalogue.
                   </Text>
                 </BlockStack>
               )}

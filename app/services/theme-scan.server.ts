@@ -155,23 +155,23 @@ export function extractLdObjects(html: string): any[] {
   return out;
 }
 
-/**
- * An @id our own block would have set. The extension sets `#product` on the
- * Product node, `#collection` on the CollectionPage node, and
- * `#organization` on the Organization node it emits itself (when extending
- * the theme's own node it reuses the theme's @id instead). Recognising our
- * suffixes is how a conflict can name us as one of the two sources without
- * guessing at the other - and how the scan keeps our own output from
- * counting as "the theme emits one".
- */
-export function isOurNodeId(id: string): boolean {
-  return id.endsWith("#product") || id.endsWith("#collection") || id.endsWith("#organization");
-}
+// Two pure rules live in ./conflicts (no ".server" suffix) because screens
+// apply them in the browser, and re-exported here so every server caller and
+// its tests keep the import they already had:
+//
+//  - organizationPairIsInformational: the SEO screen's components render this
+//    judgement client side.
+//  - isOurNodeId: an @id our own block would have set. The extension sets
+//    `#product` on the Product node, `#collection` on the CollectionPage node
+//    and `#organization` on the Organization node it emits itself (when
+//    extending the theme's own node it reuses the theme's @id instead).
+//    Recognising our suffixes is how a conflict can name us as one of the two
+//    sources without guessing at the other, how the scan keeps our own output
+//    from counting as "the theme emits one", and - since build step 4 - how
+//    the SEO card's B1 aggregate tells a theme node from ours.
+export { organizationPairIsInformational, isOurNodeId } from "./conflicts";
 
-// The presentation rule for an Organization pair where one node is ours
-// lives in ./conflicts (no ".server" suffix) because the SEO screen's
-// components apply it in the browser. Re-exported here for server callers.
-export { organizationPairIsInformational } from "./conflicts";
+import { isOurNodeId } from "./conflicts";
 
 /**
  * Resolve an `@id` to the form it actually identifies, so a relative id from

@@ -18,61 +18,22 @@
 import type { ProductInput } from "./facts.server";
 import { classifyMetaField } from "./seo.server";
 
-/** Stable across releases: the weekly diff says "A1 changed on Tuesday". */
-export type FindingCode =
-  | "A1"
-  | "A2"
-  | "A3"
-  | "A4"
-  | "A5"
-  | "B1"
-  | "B2"
-  | "B3"
-  | "B4"
-  | "B5";
+// The finding vocabulary - the codes, the Finding shape and CHECK_LABEL -
+// lives in ./seo-findings (no ".server" suffix and no import that has one),
+// because build step 4 renders those labels in the browser and this module
+// imports classifyMetaField from seo.server for A5. Re-exported here so every
+// caller and every test keeps the import it already had; see seo-findings.ts
+// for the client build that failed before the split.
+export {
+  CHECK_LABEL,
+  findingsOf,
+  isSourceAFinding,
+  type Finding,
+  type FindingCode,
+  type FindingSource,
+} from "./seo-findings";
 
-/** Which read the finding came from. Stated on the row, never mixed. */
-export type FindingSource = "A" | "B" | "A+B";
-
-export type Finding = {
-  code: FindingCode | string;
-  source: FindingSource;
-  detail: Record<string, unknown>;
-};
-
-/** Labels for the SEO card. One line per check, no store-specific wording. */
-export const CHECK_LABEL: Record<FindingCode, string> = {
-  A1: "Missing identifiers for rich results",
-  A2: "Offer on the page disagrees with the product",
-  A3: "Meta title or description shared with another product",
-  A4: "Handle renamed with no redirect from the old one",
-  A5: "Meta title or description absent",
-  B1: "No Product node on the page, or two of them",
-  B2: "Canonical points somewhere other than this page",
-  B3: "The page tells search engines not to index it",
-  B4: "The app block was not detected on the page",
-  B5: "The page could not be read as a crawler would read it",
-};
-
-/**
- * Which source owns a finding. Source A owns exactly the findings whose
- * `source` is "A"; source B owns "B" and "A+B" (A2 is computed from the page
- * against the offer facts source A stored). Both write into the same
- * `findings` column, so each must rewrite only its own half - without this
- * rule the next catalogue pass would erase every page finding, and the next
- * page scan would erase every catalogue finding.
- */
-export function isSourceAFinding(finding: Finding): boolean {
-  return finding.source === "A";
-}
-
-/** The findings on a stored row, defensively: the column is json. */
-export function findingsOf(value: unknown): Finding[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (f): f is Finding => !!f && typeof f === "object" && typeof (f as any).code === "string",
-  );
-}
+import { findingsOf, type Finding } from "./seo-findings";
 
 export const IDENTIFIERS = ["barcode", "vendor", "sku", "image"] as const;
 export type Identifier = (typeof IDENTIFIERS)[number];

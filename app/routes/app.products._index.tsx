@@ -33,6 +33,14 @@ import { extractOneProduct } from "../services/extract.server";
 // logic the client component also uses, so they come from a module with no
 // ".server" suffix - see meta-column.ts for why that split matters.
 import { metaColumnState } from "../services/seo.server";
+import { CHECK_LABEL } from "../services/seo-findings";
+import {
+  PAGE_STATE_LABEL,
+  PAGE_STATE_TONE,
+  pageStateOf,
+  type PageState,
+} from "../services/seo-aggregate";
+import { FINDING_LIST_CAP, productsWithFinding, scanRowsFor } from "../services/seo-aggregate.server";
 import {
   metaColumnLabel,
   metaColumnMissing,
@@ -59,25 +67,51 @@ const COLLECTIONS = `#graphql
 // this shop - the whole field is left out of the query rather than fetched
 // and ignored (SEO-WORKSPACE-PRD §4: the loader must not do the extra work
 // either, not just hide the column).
+function productFields(withSeo: boolean): string {
+  return `
+    id
+    title
+    handle
+    status
+    featuredMedia { preview { image { url } } }
+    images(first: 50) { nodes { id altText } }
+    metafields(namespace: "$app", first: 10) { nodes { key value } }
+    ${withSeo ? "seo { title description }" : ""}
+  `;
+}
+
 function productsQuery(withSeo: boolean): string {
   return `#graphql
   query ProductsOverview($cursor: String, $before: String, $query: String) {
     products(first: 25, after: $cursor, before: $before, query: $query, sortKey: UPDATED_AT, reverse: true) {
       pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
       nodes {
-        id
-        title
-        handle
-        status
-        featuredMedia { preview { image { url } } }
-        images(first: 50) { nodes { id altText } }
-        metafields(namespace: "$app", first: 10) { nodes { key value } }
-        ${withSeo ? "seo { title description }" : ""}
+        ${productFields(withSeo)}
       }
     }
   }
 `;
 }
+
+// The "Page" column filter (PRD-SEO-PER-PRODUCT build step 6) is answered
+// from our own SeoScan rows, not from a Shopify search: which products carry
+// finding B3 is not something Shopify knows. So that list arrives as a set of
+// ids and is fetched by id, with our own paging over it - the products query
+// above cannot express the question at all.
+function productsByIdsQuery(withSeo: boolean): string {
+  return `#graphql
+  query ProductsByIds($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        ${productFields(withSeo)}
+      }
+    }
+  }
+`;
+}
+
+/** Products per page in the finding list, matching the Shopify page size. */
+const FINDING_PAGE_SIZE = 25;
 
 type Row = {
   id: string;
@@ -95,6 +129,8 @@ type Row = {
   mirrored: boolean;
   /** Only computed when seo_unlocked - see the loader. */
   metaState: MetaColumnState | null;
+  /** What the last page read found. Only computed when seo_unlocked. */
+  pageState: PageState | null;
   isFreeProduct: boolean;
 };
 
@@ -134,12 +170,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const seoUnlocked = shop ? await isSeoUnlocked(shop.id) : false;
 
+  // The finding list: /app/products?finding=B3, linked from every row of the
+  // SEO screen's Findings per product card. Only reachable behind the SEO
+  // key, since the rows it reads only exist for a shop that has one; a
+  // hand-typed finding= on a locked shop falls through to the normal list.
+  const finding = seoUnlocked ? (url.searchParams.get("finding") ?? "").trim() : "";
+  const findingPage = Math.max(0, Number(url.searchParams.get("page") ?? 0) || 0);
+
+  let findingList: { total: number; capped: boolean; ids: string[] } | null = null;
+  if (finding !== "" && shop) {
+    const hits = await productsWithFinding(shop.id, finding);
+    findingList = { total: hits.total, capped: hits.capped, ids: hits.productIds };
+  }
+
   const [res, colRes] = await Promise.all([
-    admin.graphql(productsQuery(seoUnlocked), { variables: { cursor, before, query } }),
+    findingList
+      ? admin.graphql(productsByIdsQuery(seoUnlocked), {
+          variables: {
+            ids: findingList.ids.slice(
+              findingPage * FINDING_PAGE_SIZE,
+              findingPage * FINDING_PAGE_SIZE + FINDING_PAGE_SIZE,
+            ),
+          },
+        })
+      : admin.graphql(productsQuery(seoUnlocked), { variables: { cursor, before, query } }),
     admin.graphql(COLLECTIONS),
   ]);
   const json = await res.json();
-  const page = json.data?.products;
+  // A product deleted between the row being written and this read comes back
+  // as null from nodes(ids:) - dropped rather than rendered as a blank row.
+  const page = findingList
+    ? { nodes: (json.data?.nodes ?? []).filter((n: any) => n?.id), pageInfo: null }
+    : json.data?.products;
   const colJson = await colRes.json();
   const collections = (colJson.data?.collections?.nodes ?? []).map((c: any) => ({
     id: String(c.id).split("/").pop(),
@@ -163,6 +225,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const hasAccess = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
   const freeIds = shop ? await freeProductIds(shop.id) : [];
   const freeProductsRemaining = Math.max(0, 3 - freeIds.length);
+
+  // The Page column. One query for the 25 products on this page, so the
+  // column costs the same on a 50-product store and a 20,000-product one.
+  const pageStates = shop && seoUnlocked
+    ? await scanRowsFor(
+        shop.id,
+        (page?.nodes ?? []).map((p: any) => p.id),
+      )
+    : new Map();
 
   const rows: Row[] = (page?.nodes ?? []).map((p: any) => {
     const mf = new Map<string, string>(
@@ -202,6 +273,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // Already one of the three free products - reprocessing it is free
       // regardless of whether the cap is otherwise full.
       isFreeProduct: freeIds.includes(p.id),
+      // ENTITLEMENT: null when the SEO module is off, the same as metaState -
+      // the rows were never read for this shop, so there is no state to show.
+      pageState: seoUnlocked ? pageStateOf(pageStates.get(p.id) ?? null) : null,
     };
   });
 
@@ -219,6 +293,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     rows: filtered,
     total: rows.length,
+    finding,
+    findingLabel: finding ? (CHECK_LABEL[finding as keyof typeof CHECK_LABEL] ?? finding) : null,
+    findingTotal: findingList?.total ?? 0,
+    findingCapped: findingList?.capped ?? false,
+    findingPage,
+    findingCap: FINDING_LIST_CAP,
+    findingPageSize: FINDING_PAGE_SIZE,
     filter,
     search,
     collection,
@@ -322,6 +403,27 @@ function MetaCell({ state }: { state: MetaColumnState }) {
   );
 }
 
+/**
+ * The Page column (PRD-SEO-PER-PRODUCT section 4, build step 6). Four states,
+ * not three: a page that answered with the password form, a redirect or an
+ * error is its own state, because green would claim a clean page and amber
+ * would blame the theme for something nobody managed to look at. Grey means
+ * the nightly pass has not reached this product yet, which on a large
+ * catalogue is most of it for the first few weeks and is not a defect.
+ */
+function PageCell({ state }: { state: PageState }) {
+  return (
+    <BlockStack gap="050">
+      <Badge tone={PAGE_STATE_TONE[state]}>{PAGE_STATE_LABEL[state]}</Badge>
+      {state === "unread" ? (
+        <Text as="span" variant="bodySm" tone="subdued">
+          Read nightly, oldest first.
+        </Text>
+      ) : null}
+    </BlockStack>
+  );
+}
+
 function ProcessProductAction({
   productId,
   attributes,
@@ -374,6 +476,13 @@ export default function ProductsOverview() {
   const {
     rows,
     total,
+    finding,
+    findingLabel,
+    findingTotal,
+    findingCapped,
+    findingPage,
+    findingCap,
+    findingPageSize,
     filter,
     search,
     collection,
@@ -386,6 +495,13 @@ export default function ProductsOverview() {
   } = useLoaderData<typeof loader>() as {
     rows: Row[];
     total: number;
+    finding: string;
+    findingLabel: string | null;
+    findingTotal: number;
+    findingCapped: boolean;
+    findingPage: number;
+    findingCap: number;
+    findingPageSize: number;
     filter: string;
     search: string;
     collection: string;
@@ -428,6 +544,21 @@ export default function ProductsOverview() {
     setParams(next);
   };
 
+  const movePage = (delta: number) => {
+    const next = new URLSearchParams(params);
+    const to = Math.max(0, findingPage + delta);
+    if (to === 0) next.delete("page");
+    else next.set("page", String(to));
+    setParams(next);
+  };
+
+  const clearFinding = () => {
+    const next = new URLSearchParams(params);
+    next.delete("finding");
+    next.delete("page");
+    setParams(next);
+  };
+
   const move = (dir: "after" | "before") => {
     const next = new URLSearchParams(params);
     next.delete("after");
@@ -452,6 +583,28 @@ export default function ProductsOverview() {
               </Text>
               <Text as="p">
                 What gets written stays written, in your own Shopify metafields, whether you subscribe or not.
+              </Text>
+            </BlockStack>
+          </Banner>
+        ) : null}
+
+        {finding ? (
+          <Banner
+            tone="info"
+            title={`Products with: ${findingLabel}`}
+            onDismiss={clearFinding}
+          >
+            <BlockStack gap="100">
+              <Text as="p">
+                {`${findingTotal} product${findingTotal === 1 ? "" : "s"} in this store carry finding ${finding}.`}
+                {findingCapped
+                  ? ` This list shows the first ${findingCap}; fix these and the next pass will show the rest.`
+                  : ""}
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                Findings come from the per-product scan, not from a Shopify
+                search, so this list is not affected by the search box or the
+                collection filter above.
               </Text>
             </BlockStack>
           </Banner>
@@ -512,9 +665,11 @@ export default function ProductsOverview() {
         {rows.length === 0 ? (
           <Banner tone="info">
             <Text as="p">
-              {filter === "all"
-                ? "No products on this page yet. Run Fill catalogue from the dashboard."
-                : "Nothing on this page matches that filter. Try another page or another filter."}
+              {finding
+                ? "No product carries this finding any more. It was counted on the SEO screen when that page was built; the count refreshes on the next pass."
+                : filter === "all"
+                  ? "No products on this page yet. Run Fill catalogue from the dashboard."
+                  : "Nothing on this page matches that filter. Try another page or another filter."}
             </Text>
           </Banner>
         ) : (
@@ -531,7 +686,7 @@ export default function ProductsOverview() {
                 { title: "Summary" },
                 { title: "Image text" },
                 { title: "State" },
-                ...(seoUnlocked ? [{ title: "Meta" }] : []),
+                ...(seoUnlocked ? [{ title: "Meta" }, { title: "Page" }] : []),
                 { title: "What AI reads" },
                 ...(!hasAccess ? [{ title: "Free processing" }] : []),
               ]}
@@ -593,6 +748,11 @@ export default function ProductsOverview() {
                   {seoUnlocked ? (
                     <IndexTable.Cell>
                       {row.metaState ? <MetaCell state={row.metaState} /> : null}
+                    </IndexTable.Cell>
+                  ) : null}
+                  {seoUnlocked ? (
+                    <IndexTable.Cell>
+                      {row.pageState ? <PageCell state={row.pageState} /> : null}
                     </IndexTable.Cell>
                   ) : null}
                   <IndexTable.Cell>
@@ -658,7 +818,16 @@ export default function ProductsOverview() {
           </Card>
         )}
 
-        {pageInfo ? (
+        {finding ? (
+          <InlineStack align="center">
+            <Pagination
+              hasPrevious={findingPage > 0}
+              hasNext={(findingPage + 1) * findingPageSize < Math.min(findingTotal, findingCap)}
+              onPrevious={() => movePage(-1)}
+              onNext={() => movePage(1)}
+            />
+          </InlineStack>
+        ) : pageInfo ? (
           <InlineStack align="center">
             <Pagination
               hasPrevious={pageInfo.hasPreviousPage}
@@ -671,9 +840,11 @@ export default function ProductsOverview() {
 
         <Box paddingBlockStart="200">
           <Text as="p" tone="subdued" variant="bodySm">
-            {filter === "all"
-              ? `${total} products on this page.`
-              : `${rows.length} of ${total} products on this page match.`}
+            {finding
+              ? `${rows.length} of ${findingTotal} products with this finding, on this page.`
+              : filter === "all"
+                ? `${total} products on this page.`
+                : `${rows.length} of ${total} products on this page match.`}
             {" Counts come from the metafields on each product, so they show what is published right now."}
           </Text>
         </Box>

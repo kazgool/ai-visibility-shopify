@@ -80,6 +80,61 @@ export async function dailyBudget(shopId: string): Promise<number> {
   return Math.floor(value);
 }
 
+// --- what has been spent today ---------------------------------------------
+
+/** Pages fetched today, nightly pass and merchant clicks together. */
+export const SPEND_SETTING_KEY = "seo_scan_spent";
+
+/**
+ * The day a spend belongs to, in UTC, because the nightly pass runs at 03:45
+ * UTC and a local-time day would split one night's work across two budgets.
+ */
+export function budgetDay(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+export type BudgetStatus = { budget: number; spent: number; remaining: number; day: string };
+
+/**
+ * How much of tonight's budget is left. Counted rather than inferred from the
+ * rows: a merchant who presses "Read this page now" on the same product ten
+ * thousand times would move one row's scannedAt ten thousand times and a
+ * row-based count would read that as one page (PRD section 4 - the button is
+ * "counted against it, so a merchant cannot spend 10,000 fetches by
+ * clicking"). A stored counter is the only thing that can say no.
+ */
+export async function pageBudget(shopId: string, now = new Date()): Promise<BudgetStatus> {
+  const budget = await dailyBudget(shopId);
+  const day = budgetDay(now);
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SPEND_SETTING_KEY } },
+  });
+  let spent = 0;
+  try {
+    const parsed = row?.value ? JSON.parse(row.value) : null;
+    // A counter from an earlier day is not this day's spend. Read as zero
+    // rather than reset here: a read must not write.
+    if (parsed && parsed.day === day && Number.isFinite(Number(parsed.pages))) {
+      spent = Math.max(0, Math.floor(Number(parsed.pages)));
+    }
+  } catch {
+    spent = 0;
+  }
+  return { budget, spent, remaining: Math.max(0, budget - spent), day };
+}
+
+/** Add to today's counter. Rolls over by overwriting a counter from another day. */
+export async function spendPages(shopId: string, pages: number, now = new Date()): Promise<void> {
+  if (pages <= 0) return;
+  const { spent, day } = await pageBudget(shopId, now);
+  const value = JSON.stringify({ day, pages: spent + pages });
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: SPEND_SETTING_KEY } },
+    create: { shopId, key: SPEND_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
 // --- robots.txt ------------------------------------------------------------
 
 export type RobotsGroup = { agents: string[]; allow: string[]; disallow: string[] };
@@ -569,12 +624,22 @@ export async function scanShopPages(input: {
 
   const cookie = input.password ? await storefrontCookie(origin, input.password, fetchImpl) : null;
 
-  const candidates: Candidate[] = await db.seoScan.findMany({
-    where: { shopId, handle: { not: null } },
-    orderBy: [{ scannedAt: { sort: "asc", nulls: "first" } }, { productId: "asc" }],
-    take: budget,
-    select: { id: true, productId: true, handle: true, offer: true, findings: true },
-  });
+  // What is left of today's budget, not the whole budget: the product
+  // editor's "Read this page now" button spends from the same allowance
+  // (PRD section 4), and a nightly pass that ignored that would let a shop
+  // fetch more pages in a day than its operator set.
+  const spentAlready = (await pageBudget(shopId, startedAt)).spent;
+  const allowance = Math.max(0, budget - spentAlready);
+
+  const candidates: Candidate[] =
+    allowance === 0
+      ? []
+      : await db.seoScan.findMany({
+          where: { shopId, handle: { not: null } },
+          orderBy: [{ scannedAt: { sort: "asc", nulls: "first" } }, { productId: "asc" }],
+          take: allowance,
+          select: { id: true, productId: true, handle: true, offer: true, findings: true },
+        });
 
   let first = true;
   for (const row of candidates) {
@@ -612,8 +677,11 @@ export async function scanShopPages(input: {
     });
   }
 
+  await spendPages(shopId, report.scanned, startedAt);
+
   report.remaining = await waiting();
-  report.stopped = report.scanned >= budget && report.remaining > 0 ? "budget" : "catalogue";
+  report.stopped =
+    report.scanned >= allowance && report.remaining > 0 ? "budget" : "catalogue";
   report.nightsToFinish = budget > 0 ? Math.ceil(report.remaining / budget) : 0;
 
   log?.(
@@ -621,4 +689,93 @@ export async function scanShopPages(input: {
       `${report.failed} unreachable, ${report.remaining} waiting`,
   );
   return report;
+}
+
+// --- one page, on demand ---------------------------------------------------
+
+export type OneScanOutcome =
+  | { ok: true; scannedAt: Date; status: string; findings: Finding[]; budget: BudgetStatus }
+  | {
+      ok: false;
+      reason: "budget" | "no_row" | "no_handle" | "robots";
+      detail?: string;
+      budget: BudgetStatus;
+    };
+
+/**
+ * "Read this page now" on the product editor (PRD section 4 and decision 2 of
+ * section 7): source B for one product, outside the nightly pass but counted
+ * against the same daily budget, so a merchant cannot spend 10,000 fetches by
+ * clicking.
+ *
+ * It writes the same row the nightly pass writes, by the same rules - source
+ * A's half of `findings` is carried through untouched, `scannedAt` moves even
+ * when the page failed - so the editor's second render reads the new values
+ * from the row and never from what this function happened to return. Refusals
+ * are values, not exceptions: the screen has a sentence for each of them.
+ */
+export async function scanOneProductPage(input: {
+  shopId: string;
+  productId: string;
+  origin: string;
+  password?: string | null;
+  deps?: ScanDeps;
+}): Promise<OneScanOutcome> {
+  const fetchImpl = input.deps?.fetchImpl ?? fetch;
+  const now = input.deps?.now ?? (() => new Date());
+  const at = now();
+
+  const budget = await pageBudget(input.shopId, at);
+  if (budget.remaining <= 0) return { ok: false, reason: "budget", budget };
+
+  const row = await db.seoScan.findUnique({
+    where: { shopId_productId: { shopId: input.shopId, productId: input.productId } },
+    select: { id: true, handle: true, offer: true, findings: true },
+  });
+  if (!row) return { ok: false, reason: "no_row", budget };
+  if (!row.handle) return { ok: false, reason: "no_handle", budget };
+
+  // The merchant's own robots.txt still decides, exactly as it does at night.
+  // A shop that has said no to /products/ has said no to this button too.
+  const robots = await fetchRobots(input.origin, fetchImpl);
+  const blocked = robots.fetched ? productsDisallow(robots.content) : null;
+  if (blocked) return { ok: false, reason: "robots", detail: blocked, budget };
+
+  const cookie = input.password
+    ? await storefrontCookie(input.origin, input.password, fetchImpl)
+    : null;
+  const page = await readProductPage(
+    `${input.origin}${PRODUCTS_PATH}${row.handle}`,
+    cookie,
+    fetchImpl,
+  );
+  const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null);
+
+  const keptFromSourceA = findingsOf(row.findings).filter(isSourceAFinding);
+  const scannedAt = now();
+  await db.seoScan.update({
+    where: { id: row.id },
+    data: {
+      scannedAt,
+      status: reading.status,
+      nodes: reading.nodes as any,
+      canonical: reading.canonical,
+      noindex: reading.noindex,
+      appBlock: reading.appBlock,
+      cacheControl: reading.cacheControl,
+      findings: [...keptFromSourceA, ...reading.findings] as any,
+    },
+  });
+
+  // Spent after the fetch, not before: a page that could not be reached still
+  // cost a request and still counts, but a refusal above costs nothing.
+  await spendPages(input.shopId, 1, at);
+
+  return {
+    ok: true,
+    scannedAt,
+    status: reading.status,
+    findings: reading.findings,
+    budget: { ...budget, spent: budget.spent + 1, remaining: budget.remaining - 1 },
+  };
 }

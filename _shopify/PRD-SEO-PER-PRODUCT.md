@@ -486,9 +486,41 @@ later addition to source B once the budget's real cost is known.
    deferred to step 5 with the reason in section 2.3. No screen was touched.
    The migration from step 2 has still **not been applied to any database**,
    so nothing runs until it is.
-4. The SEO card rewired to the aggregate; the Extend/Full verdict from B1.
-   Half a day.
-5. Product editor section and button, second render pressed. Half a day.
-6. Products list column, weekly watch per product. Half a day.
+4. **Done, 3 September 2026.** The SEO screen's "Findings per product" card
+   and the Structured data verdict from the B1 aggregate. The aggregate is
+   `app/services/seo-aggregate.ts`, pure, with `seo-aggregate.server.ts`
+   reading the rows in batches of 1,000 so a 20,000-product store folds into
+   counters rather than into memory. The Diagnostics "Structured data" card
+   reads the same aggregate, so the two screens cannot disagree about one
+   catalogue; with the SEO module off it keeps its one-page verdict and now
+   says on the screen that it rests on one page.
+5. **Done, 3 September 2026.** The product editor's "What a crawler sees on
+   this page" section and its button (`scanOneProductPage`). Every value on
+   the section is read off the row on each render, so the second render shows
+   what was written and not what the action returned. B6 is still not built:
+   this step was the screen it was deferred to, and building it needs the
+   shop's mode and embed state as well as the product's facts - three reads
+   this section does not make. Deferred again rather than guessed at, and the
+   card carries no row for it.
+6. **Done, 3 September 2026.** The Products list "Page" column, in four
+   states rather than three, and `/app/products?finding=<code>` behind every
+   row of the card. The weekly watch gained `diffProductFindings` over a
+   snapshot in Setting `seo_watch_products`.
+
+   **Amendment, 3 September 2026.** Section 4 says the button is "counted
+   against" the budget but section 3 specified no counter, and the budget as
+   built was a `take` on one query. Pressing the button ten thousand times on
+   one product moves one row's `scannedAt` ten thousand times, so anything
+   counted from the rows would read that as one page. Added: Setting
+   `seo_scan_spent`, `{day, pages}` in UTC, written by the nightly pass and
+   by the button, read by both before either fetches. The nightly pass now
+   takes what is left of the budget rather than the whole of it.
+
+   **Amendment, 3 September 2026.** The A1 label in section 2.1 reads
+   "Missing identifiers for rich results". It is now on a merchant-facing
+   screen, and the last acceptance row of section 5 says no sentence on any
+   screen promises a rich result. `CHECK_LABEL.A1` is
+   "Missing product identifiers: GTIN, brand, SKU or image". The finding, its
+   code and its detail are unchanged.
 7. Two independent QA rounds on a different axis each, adjudicated, before
    any of it is called done. Then `check.bat`, CHANGELOG, deploy, tag.

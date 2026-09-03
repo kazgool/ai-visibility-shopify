@@ -14,6 +14,8 @@ const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
 const mockCount = vi.fn();
 const mockSettingFindUnique = vi.fn();
+const mockSettingUpsert = vi.fn();
+const mockScanFindUnique = vi.fn();
 
 vi.mock("../../db.server", () => ({
   default: {
@@ -21,15 +23,26 @@ vi.mock("../../db.server", () => ({
       findMany: (...a: unknown[]) => mockFindMany(...a),
       update: (...a: unknown[]) => mockUpdate(...a),
       count: (...a: unknown[]) => mockCount(...a),
+      findUnique: (...a: unknown[]) => mockScanFindUnique(...a),
     },
-    setting: { findUnique: (...a: unknown[]) => mockSettingFindUnique(...a) },
+    setting: {
+      findUnique: (...a: unknown[]) => mockSettingFindUnique(...a),
+      // Build step 4: the nightly pass writes today's spend so the product
+      // editor's "Read this page now" button draws from the same allowance.
+      upsert: (...a: unknown[]) => mockSettingUpsert(...a),
+    },
   },
 }));
 
 import type { OfferFacts } from "../seo-scan";
 import {
+  BUDGET_SETTING_KEY,
   DEFAULT_DAILY_BUDGET,
   REQUEST_INTERVAL_MS,
+  budgetDay,
+  pageBudget,
+  scanOneProductPage,
+  spendPages,
   dailyBudget,
   extractSchemaOffer,
   isPasswordPage,
@@ -633,5 +646,198 @@ describe("the budget setting", () => {
     expect(await dailyBudget("shop1")).toBe(DEFAULT_DAILY_BUDGET);
     mockSettingFindUnique.mockResolvedValue({ value: "0" });
     expect(await dailyBudget("shop1")).toBe(DEFAULT_DAILY_BUDGET);
+  });
+});
+
+// --- the shared daily allowance (build step 4) ------------------------------
+//
+// The product editor's "Read this page now" button and the nightly pass spend
+// from one budget. A counter is the only thing that can enforce that: a
+// merchant pressing the button on the same product ten thousand times moves
+// one row's scannedAt ten thousand times, so counting rows would read that as
+// one page (PRD section 4).
+
+const DAY = new Date("2026-09-03T10:00:00Z");
+
+/** Answers the budget key and the spend key separately, as the shop would. */
+function settings(spentToday: number | null, budget: string | null = null) {
+  mockSettingFindUnique.mockImplementation(async ({ where }: any) =>
+    where.shopId_key.key === BUDGET_SETTING_KEY
+      ? budget === null
+        ? null
+        : { value: budget }
+      : spentToday === null
+        ? null
+        : { value: JSON.stringify({ day: budgetDay(new Date()), pages: spentToday }) },
+  );
+}
+
+describe("the daily allowance", () => {
+  it("reads a counter from an earlier day as nothing spent, and never writes on a read", async () => {
+    mockSettingFindUnique.mockImplementation(async ({ where }: any) =>
+      where.shopId_key.key === BUDGET_SETTING_KEY
+        ? null
+        : { value: JSON.stringify({ day: "2026-09-02", pages: 500 }) },
+    );
+    const status = await pageBudget("shop1", DAY);
+    expect(status).toMatchObject({ budget: 500, spent: 0, remaining: 500, day: "2026-09-03" });
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+  });
+
+  it("adds to today's counter", async () => {
+    mockSettingFindUnique.mockImplementation(async ({ where }: any) =>
+      where.shopId_key.key === BUDGET_SETTING_KEY
+        ? null
+        : { value: JSON.stringify({ day: "2026-09-03", pages: 12 }) },
+    );
+    await spendPages("shop1", 3, DAY);
+    expect(mockSettingUpsert.mock.calls[0][0].update.value).toBe(
+      JSON.stringify({ day: "2026-09-03", pages: 15 }),
+    );
+  });
+
+  it("lets the nightly pass read only what is left of the budget, and records what it spent", async () => {
+    settings(497);
+    mockFindMany.mockImplementation(answerFindMany(rows(12)));
+    mockCount.mockResolvedValue(9);
+    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    // 500 budget less the 497 already spent today: three pages, not twelve.
+    expect(mockFindMany.mock.calls[0][0].take).toBe(3);
+    expect(productUrls).toHaveLength(3);
+    expect(report.scanned).toBe(3);
+    expect(report.stopped).toBe("budget");
+    expect(mockSettingUpsert.mock.calls[0][0].update.value).toContain('"pages":500');
+  });
+
+  it("fetches nothing at all once the allowance is gone", async () => {
+    settings(500);
+    mockCount.mockResolvedValue(40);
+    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(mockFindMany).not.toHaveBeenCalled();
+    expect(productUrls).toHaveLength(0);
+    expect(report.scanned).toBe(0);
+    expect(report.stopped).toBe("budget");
+    // Nothing was fetched, so nothing is added to the counter.
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("Read this page now", () => {
+  const ROW = {
+    id: "row1",
+    handle: "a-chair",
+    offer: null,
+    findings: [{ code: "A1", source: "A", detail: { missing: ["barcode"] } }],
+  };
+
+  it("reads one page, writes the row and spends one from the same allowance", async () => {
+    settings(10);
+    mockScanFindUnique.mockResolvedValue(ROW);
+    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const outcome = await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any },
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(productUrls).toEqual([`${ORIGIN}/products/a-chair`]);
+    expect(mockSettingUpsert.mock.calls[0][0].update.value).toContain('"pages":11');
+
+    // Source A's half of the column survives and scannedAt moved: this is
+    // exactly what the editor's second render reads back off the row.
+    const written = mockUpdate.mock.calls[0][0].data;
+    expect(written.scannedAt).toBeInstanceOf(Date);
+    expect(written.status).toBe("ok");
+    expect(written.findings.map((f: any) => f.code)).toContain("A1");
+  });
+
+  it("refuses when the allowance is gone, and fetches nothing", async () => {
+    settings(500);
+    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const outcome = await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any },
+    });
+
+    expect(outcome).toMatchObject({ ok: false, reason: "budget" });
+    expect(productUrls).toHaveLength(0);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("obeys the shop's own robots.txt, exactly as the nightly pass does", async () => {
+    settings(0);
+    mockScanFindUnique.mockResolvedValue(ROW);
+    const { impl, productUrls } = routedFetch(
+      () => reply(CLEAN, { url: URL_A }),
+      "User-agent: *\nDisallow: /products/",
+    );
+
+    const outcome = await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any },
+    });
+
+    expect(outcome).toMatchObject({ ok: false, reason: "robots", detail: "/products/" });
+    expect(productUrls).toHaveLength(0);
+    expect(mockSettingUpsert).not.toHaveBeenCalled();
+  });
+
+  it("moves scannedAt and still spends when the page could not be reached", async () => {
+    settings(0);
+    mockScanFindUnique.mockResolvedValue(ROW);
+    const impl = vi.fn(async (url: string) => {
+      if (String(url).endsWith("/robots.txt")) return reply("");
+      throw new Error("ECONNREFUSED");
+    });
+
+    const outcome = await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any },
+    });
+
+    expect(outcome).toMatchObject({ ok: true, status: "error" });
+    expect(mockUpdate.mock.calls[0][0].data.scannedAt).toBeInstanceOf(Date);
+    expect(mockSettingUpsert).toHaveBeenCalled();
+  });
+
+  it("says so rather than throwing when the product has no row yet", async () => {
+    settings(0);
+    mockScanFindUnique.mockResolvedValue(null);
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const outcome = await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any },
+    });
+
+    expect(outcome).toMatchObject({ ok: false, reason: "no_row" });
   });
 });

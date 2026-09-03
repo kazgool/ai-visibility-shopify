@@ -30,6 +30,9 @@ import {
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
+import { describeFinding, findingsForProduct } from "../services/seo-aggregate";
+import { scanRowFor } from "../services/seo-aggregate.server";
+import { pageBudget, scanOneProductPage } from "../services/seo-page.server";
 import {
   writeSeo,
   revertSeo,
@@ -82,6 +85,12 @@ const SET_ALT = `#graphql
     productUpdateMedia(productId: $productId, media: $media) {
       mediaUserErrors { field message }
     }
+  }
+`;
+
+const PRIMARY_DOMAIN_FOR_SCAN = `#graphql
+  query PrimaryDomainForProductScan {
+    shop { url }
   }
 `;
 
@@ -240,10 +249,41 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       mayWriteSeo(seoProductLike, "seo_description") || currentSeoDescription === "",
   };
 
+  // Per-product SEO scan (PRD-SEO-PER-PRODUCT build step 5). Read straight
+  // off the row, never from anything the last action returned: after the
+  // button, the loader runs again and this is what the second render shows.
+  // ENTITLEMENT: behind the SEO key, the same key the SEO screen is behind.
+  // Not behind a subscription - decision 2 of section 7 is that the button
+  // exists wherever the key is present, including on the three products a
+  // free-tier shop chose, because the key is what is paid for.
+  let crawlerPage = null;
+  if (shop && seoUnlocked) {
+    const [row, budget] = await Promise.all([
+      scanRowFor(shop.id, product.id),
+      pageBudget(shop.id),
+    ]);
+    crawlerPage = {
+      hasRow: row !== null,
+      scannedAt: row?.scannedAt ? new Date(row.scannedAt).toISOString() : null,
+      status: row?.status ?? null,
+      canonical: (row as any)?.canonical ?? null,
+      noindex: (row as any)?.noindex ?? null,
+      appBlock: (row as any)?.appBlock ?? null,
+      cacheControl: (row as any)?.cacheControl ?? null,
+      findings: findingsForProduct(row).map((f) => ({
+        code: String(f.code),
+        source: f.source,
+        text: describeFinding(f),
+      })),
+      budget: { budget: budget.budget, spent: budget.spent, remaining: budget.remaining },
+    };
+  }
+
   return {
     answer,
     citation,
     crawlers,
+    crawlerPage,
     product: {
       id: product.id,
       // The page header is ours; imported titles carry entities.
@@ -295,6 +335,57 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   // a separate paid add-on and is never covered by the free-tier's three
   // products - FREE-TIER-SPEC §3 lists it under "not free" alongside every
   // other volume/continuity feature.
+  // "Read this page now" (PRD section 4). Its own gate, and only one: the SEO
+  // key. Decision 2 of section 7 puts the button wherever the key is,
+  // including on the three products a free-tier shop chose, so neither the
+  // paid gate below nor the free-product gate applies to it. It writes
+  // nothing to Shopify - it fetches one public page and updates our own row -
+  // so there is nothing here for a subscription to be protecting.
+  if (intent === "seo_scan_page") {
+    const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+    if (!shop) return { error: "Shop not found." };
+    if (!(await isSeoUnlocked(shop.id))) {
+      return { error: "The per-product page read is not enabled for this shop." };
+    }
+
+    // The primary domain, not the myshopify one: a page fetched on the wrong
+    // host answers with a redirect, and the row would report finding B5 about
+    // a redirect this app caused itself (same reason as the nightly task).
+    const domainJson = await (await admin.graphql(PRIMARY_DOMAIN_FOR_SCAN)).json();
+    const shopUrl = domainJson.data?.shop?.url ?? `https://${session.shop}`;
+    let origin = `https://${session.shop}`;
+    try {
+      origin = new URL(shopUrl).origin;
+    } catch {
+      // Keep the myshopify origin rather than refuse the read.
+    }
+
+    const password = await db.setting.findUnique({
+      where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+    });
+
+    const outcome = await scanOneProductPage({
+      shopId: shop.id,
+      productId: id,
+      origin,
+      password: password?.value,
+    });
+
+    // Refusals are sentences, not exceptions. Whatever happened, the loader
+    // runs again and the section is rendered from the row, not from this.
+    if (outcome.ok) return { scanRefusal: null };
+    return {
+      scanRefusal:
+        outcome.reason === "budget"
+          ? `This store has used all ${outcome.budget.budget} page reads for today. The nightly pass continues tomorrow.`
+          : outcome.reason === "robots"
+            ? `Your robots.txt disallows ${outcome.detail}, so this page was not fetched. robots.txt lives in your theme as robots.txt.liquid.`
+            : outcome.reason === "no_handle"
+              ? "This product has no handle recorded yet, so there is no page address to fetch."
+              : "This product has no row in the per-product scan yet. It gets one on the next catalogue pass.",
+    };
+  }
+
   if (intent === "seo" || intent === "seo_revert" || intent === "seo_reset") {
     const shop = await db.shop.findUnique({ where: { domain: session.shop } });
     const unlocked = await isSeoUnlocked(shop?.id);
@@ -317,7 +408,12 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   // (or fewer) free products; any other product is refused. A paid shop
   // (or comp) always passes. This intentionally does not gate GET-only
   // reads or the seo intents above, which have their own rule.
-  if (intent !== "seo" && intent !== "seo_revert" && intent !== "seo_reset") {
+  if (
+    intent !== "seo" &&
+    intent !== "seo_revert" &&
+    intent !== "seo_reset" &&
+    intent !== "seo_scan_page"
+  ) {
     const shop = await db.shop.findUnique({ where: { domain: session.shop } });
     if (!shop) return { error: "Shop not found." };
     const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
@@ -550,9 +646,151 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   return { saved: true };
 };
 
+type CrawlerPage = {
+  hasRow: boolean;
+  scannedAt: string | null;
+  status: string | null;
+  canonical: string | null;
+  noindex: boolean | null;
+  appBlock: string | null;
+  cacheControl: string | null;
+  findings: { code: string; source: string; text: string }[];
+  budget: { budget: number; spent: number; remaining: number };
+};
+
+/**
+ * What a crawler sees on this page (PRD-SEO-PER-PRODUCT section 4, build
+ * step 5): this product's row from the per-product scan, and a button that
+ * fetches the page now.
+ *
+ * Everything here comes off the row. Nothing is held in component state and
+ * nothing is carried over from the action's return value, which is what makes
+ * the second render honest: after the button, the loader re-reads the row and
+ * the section shows the scannedAt and the findings that were actually
+ * written. Two bugs shipped in this app by showing what a screen was told
+ * rather than what was stored (CLAUDE.md: the SEO queue kept showing
+ * pre-write proposals and read "0 of 50" on a fully written store).
+ *
+ * The button exists wherever the SEO key is present, including on a free-tier
+ * shop's three products (PRD section 7, decision 2): the key is what is paid
+ * for, and the annual licence is a separate product.
+ */
+function CrawlerPageCard({
+  page,
+  busy,
+}: {
+  page: {
+    hasRow: boolean;
+    scannedAt: string | null;
+    status: string | null;
+    canonical: string | null;
+    noindex: boolean | null;
+    appBlock: string | null;
+    cacheControl: string | null;
+    findings: { code: string; source: string; text: string }[];
+    budget: { budget: number; spent: number; remaining: number };
+    refusal: string | null;
+  };
+  busy: boolean;
+}) {
+  const scanned = page.scannedAt ? new Date(page.scannedAt).toLocaleString() : null;
+
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <InlineStack align="space-between" blockAlign="center" wrap={false}>
+          <BlockStack gap="050">
+            <Text as="h2" variant="headingMd">
+              What a crawler sees on this page
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              The product page fetched from outside the store, the way a
+              crawler would fetch it. Nothing here is written to your store.
+            </Text>
+          </BlockStack>
+          <Form method="post">
+            <input type="hidden" name="intent" value="seo_scan_page" />
+            <Button submit loading={busy} disabled={page.budget.remaining <= 0}>
+              {scanned ? "Read this page again" : "Read this page now"}
+            </Button>
+          </Form>
+        </InlineStack>
+
+        {page.refusal ? <Banner tone="warning">{page.refusal}</Banner> : null}
+
+        <Text as="p" tone="subdued" variant="bodySm">
+          {`${page.budget.spent} of ${page.budget.budget} page reads used today for this store.` +
+            (page.budget.remaining <= 0
+              ? " Today's allowance is used up; the nightly pass continues tomorrow."
+              : "")}
+        </Text>
+
+        {!page.hasRow ? (
+          <Text as="p" tone="subdued">
+            This product has no row yet. It gets one on the next catalogue
+            pass - run Fill catalogue from the dashboard, then read the page.
+          </Text>
+        ) : !scanned ? (
+          <Text as="p" tone="subdued">
+            This page has not been read yet. The nightly pass works through
+            the catalogue oldest first, or you can read this one now.
+          </Text>
+        ) : page.status !== "ok" ? (
+          <Banner tone="warning">
+            {`The page could not be read as a crawler would read it on ${scanned} (${page.status}). Nothing is concluded about the page from that - not that it lacks a Product node, and not that it has one.`}
+          </Banner>
+        ) : (
+          <BlockStack gap="200">
+            <Text as="p" variant="bodySm" tone="subdued">
+              {`Read on ${scanned}.`}
+            </Text>
+            <InlineStack gap="150" wrap>
+              <Badge tone={page.noindex ? "critical" : "success"}>
+                {page.noindex ? "noindex" : "Indexable"}
+              </Badge>
+              <Badge tone={page.appBlock === "present" ? "success" : "attention"}>
+                {page.appBlock === "present" ? "Our block found" : "Our block not found"}
+              </Badge>
+              {page.cacheControl ? (
+                <Badge>{`Cache-Control: ${page.cacheControl}`}</Badge>
+              ) : null}
+            </InlineStack>
+            {page.canonical ? (
+              <Text as="p" variant="bodySm" tone="subdued">
+                {`Canonical: ${page.canonical}`}
+              </Text>
+            ) : null}
+          </BlockStack>
+        )}
+
+        {page.findings.length > 0 ? (
+          <BlockStack gap="150">
+            <Divider />
+            {page.findings.map((f, i) => (
+              <InlineStack key={`${f.code}-${i}`} gap="200" blockAlign="start" wrap={false}>
+                <Box paddingBlockStart="050">
+                  <Badge tone={f.source === "A" ? "info" : "attention"}>{f.code}</Badge>
+                </Box>
+                <Text as="p" variant="bodySm">
+                  {f.text}
+                </Text>
+              </InlineStack>
+            ))}
+          </BlockStack>
+        ) : page.hasRow && scanned && page.status === "ok" ? (
+          <Text as="p" tone="subdued" variant="bodySm">
+            Nothing found on this product by any check that has run.
+          </Text>
+        ) : null}
+      </BlockStack>
+    </Card>
+  );
+}
+
 export default function ProductEditor() {
   const {
     product,
+    crawlerPage,
     images,
     storedFacts,
     autoFacts,
@@ -574,6 +812,7 @@ export default function ProductEditor() {
       } | null;
       citation: CitationCheck | null;
       crawlers: { agent: string; ok: boolean; checkedAt: string }[];
+      crawlerPage: CrawlerPage | null;
       product: { id: string; title: string; handle: string; image: string | null };
       mirrorUrl: string | null;
       images: {
@@ -614,7 +853,9 @@ export default function ProductEditor() {
   // Refusal errors from the action (entitlement checks, write failures) were
   // returned but never rendered, so a refused save looked like a successful
   // one. Surfaced as a critical banner at the top of the editor.
-  const actionData = useActionData<typeof action>() as { error?: string } | undefined;
+  const actionData = useActionData<typeof action>() as
+    | { error?: string; scanRefusal?: string | null }
+    | undefined;
 
   const initial = storedFacts.length > 0 ? storedFacts : autoFacts;
   const [rows, setRows] = useState<Fact[]>(
@@ -741,6 +982,13 @@ export default function ProductEditor() {
             )}
           </BlockStack>
         </Card>
+
+        {crawlerPage ? (
+          <CrawlerPageCard
+            page={{ ...crawlerPage, refusal: actionData?.scanRefusal ?? null }}
+            busy={busy}
+          />
+        ) : null}
 
         {answer ? (
           <Card>

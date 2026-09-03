@@ -20,6 +20,102 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Per-product SEO scan, steps 4, 5 and 6 of 7: the screens (3 September 2026)
+
+The rows written by steps 2 and 3 now have screens behind them. Server only -
+no extension file changed in this part of the wave. **The step 2 migration
+has still not been applied to any database**, so every screen below reads an
+empty table until it is, and an empty table is exactly the fourth shape they
+were written and tested for: they say "not yet read", never "0".
+
+**SEO screen: a new "Findings per product" card.** One row per check (A1-A5,
+B1-B5), each showing `count of denominator` and a link to the products it
+found. Rows are ordered by the count this store actually has, so nothing in
+the code decides in advance which finding matters; the same card reads
+correctly on a 50-product fixture, a 20,000-product store, an empty one and
+one where the nightly page pass has never run. Checks that ran and found
+nothing collapse into one line at the bottom, grouped by denominator, because
+the catalogue denominator and the pages-read denominator are different
+numbers and one sentence quoting one of them for both would be false about
+half the checks. A check that could not run reads "Not yet read on N", never
+zero. The pages-read sentence from PRD section 3 sits at the top, doing this
+shop's own arithmetic from its own budget setting. There is no row for B6;
+B6 is not built (PRD section 2.3).
+
+**"Structured data" now reads the aggregate of B1, on both screens that show
+it.** It recommends Full mode only when *no* scanned page has a theme node,
+and says how many pages the verdict rests on. This replaces a verdict drawn
+from one product page, which on 3 September reported "No Product node found"
+as a finding about the theme when both pages it had read were the storefront
+password form. The card on Diagnostics reads the same aggregate as the one on
+the SEO screen, so the two screens cannot disagree about one catalogue; when
+the SEO module is off for a shop, Diagnostics keeps its one-page verdict and
+now says on the screen that it rests on one page.
+
+**Product editor: "What a crawler sees on this page".** The row's findings in
+plain sentences, the date the page was read, and a "Read this page now"
+button. Every value is read off the row on each render, never from what the
+action returned, so the second render shows what was actually written. The
+button exists wherever the SEO key is present, including on the three
+products a free-tier shop chose (PRD section 7, decision 2): it fetches one
+public page and writes nothing to Shopify, so it is gated on the key alone
+and not on a subscription.
+
+**The daily budget is now a counter, and the button spends from it.** Setting
+`seo_scan_spent`, `{day, pages}` in UTC. The nightly pass reads only what is
+left of the budget and records what it spent; the button refuses when the
+allowance is gone. Counting rows instead would have let a merchant press the
+button ten thousand times on one product and have it count as one page,
+because it moves one row's `scannedAt` each time.
+
+**Products list: a "Page" column**, four states. Green when the last page
+read found nothing, amber when it found something, grey when the page has
+never been read, and its own state for a page that could not be read at all -
+because green would claim a clean page and amber would blame the theme for
+something nobody managed to look at. Each row of the SEO card links to
+`/app/products?finding=<code>`, a list built from our own rows rather than
+from a Shopify search, capped at 250 with the screen saying so when it is.
+
+**Weekly watch gains a per-product mode.** `diffProductFindings` compares this
+week's per-product findings against a snapshot in Setting `seo_watch_products`
+and the Monday lines name the products that changed, by code, in both
+directions. Products with no findings are left out of the snapshot, so a clean
+catalogue of any size stores almost nothing. The first week reports nothing,
+having nothing to compare against - the same rule the theme diff already kept.
+
+**No sentence on any screen promises a rich result.** `grep -rn "rich result"
+app/` returns two hits and neither is a promise: the link to Google's own
+Rich Results Test, which reports what Google says rather than what we do, and
+the comment recording this change. Check A1's label was
+"Missing identifiers for rich results" and is now "Missing product
+identifiers: GTIN, brand, SKU or image" - supplying a GTIN does not earn a
+rich result, it removes one reason not to get one, and the label went onto a
+merchant-facing screen in this step.
+
+**Two modules were split for the client build, and one of the splits was
+found by the build failing rather than by review.** `seo-scan.ts` imports
+`classifyMetaField` from `seo.server`, so the moment its labels were rendered
+in a browser the client build refused: `'./seo.server' imported by
+'app/services/seo-scan.ts'`. The finding vocabulary - the codes, the `Finding`
+shape, `CHECK_LABEL`, `findingsOf`, `isSourceAFinding` - is now
+`app/services/seo-findings.ts`, with `seo-scan.ts` re-exporting all of it so
+no caller or test changed. `isOurNodeId` moved from `theme-scan.server.ts` to
+`conflicts.ts` for the same reason, also re-exported. Same rule that put
+`meta-column.ts` and `conflicts.ts` where they are.
+
+**Tested.** 55 new unit tests: 31 in `seo-aggregate.test.ts` against the
+aggregate function rather than any component, over the four store shapes the
+PRD names plus a store whose pages all answered with the password form; 9 in
+`seo-page.test.ts` for the shared allowance and the one-page read, including
+that a refusal fetches nothing and that a failed fetch still moves
+`scannedAt`; 6 in `seo-watch.test.ts` for the per-product diff. `check.bat`:
+45 test files, 637 tests, typecheck, build and the Liquid check all green,
+and the suite run once more with `.env` renamed away, which is what CI has.
+
+**Not verified by hand.** No browser was opened: the migration has not been
+applied, so there are no rows to render and pressing the button would find no
+row. The by-hand rows in PRD section 5 that wait on a screen still wait.
+
 ### Per-product SEO scan, step 3 of 7: source B, the nightly page scan (3 September 2026)
 
 Step 3 of the build order in `PRD-SEO-PER-PRODUCT.md`. Still nothing

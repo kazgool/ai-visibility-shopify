@@ -34,7 +34,14 @@ import {
   recordThemeScan,
   type ThemeScanResult,
 } from "../app/services/theme-scan.server";
-import { diffThemeScans, type SeoWatchChange } from "../app/services/seo-watch";
+import {
+  diffProductFindings,
+  diffThemeScans,
+  formatProductWatchLine,
+  snapshotFindings,
+  type ProductSnapshot,
+  type SeoWatchChange,
+} from "../app/services/seo-watch";
 import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
 import { crawlerHitCutoff } from "../app/services/retention";
 
@@ -755,6 +762,74 @@ function asResponseGraphql(
   };
 }
 
+/** Where the last per-product watch snapshot is kept. */
+export const PRODUCT_WATCH_SETTING_KEY = "seo_watch_products";
+
+/** How many changed products one Monday line lists before it says "and more". */
+const PRODUCT_WATCH_LOG_CAP = 50;
+
+/**
+ * Diff this week's per-product findings against last week's snapshot, log the
+ * lines, and store this week as next week's baseline.
+ *
+ * Best effort in the same sense pingProducts is: the weekly watch existed and
+ * did its job before this, and a failure here must not be the reason a shop
+ * loses its theme scan. The failure is logged, never swallowed silently.
+ */
+async function recordProductWatch(
+  shopId: string,
+  domain: string,
+  nowIso: string,
+  logger: { info: (m: string) => void; error: (m: string) => void },
+): Promise<void> {
+  try {
+    const rows = await db.seoScan.findMany({
+      where: { shopId },
+      select: { productId: true, handle: true, findings: true },
+    });
+    const current = snapshotFindings(rows);
+
+    const stored = await db.setting.findUnique({
+      where: { shopId_key: { shopId, key: PRODUCT_WATCH_SETTING_KEY } },
+    });
+    let previous: ProductSnapshot | null = null;
+    try {
+      const parsed = stored?.value ? JSON.parse(stored.value) : null;
+      // A snapshot that is not an object is not a snapshot. Treated as no
+      // baseline, which reports nothing rather than reporting the whole
+      // catalogue as changed on Monday.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        previous = parsed as ProductSnapshot;
+      }
+    } catch {
+      previous = null;
+    }
+
+    const handles = new Map(rows.map((row) => [row.productId, row.handle]));
+    const changes = diffProductFindings(previous, current, nowIso, handles);
+
+    const value = JSON.stringify(current);
+    await db.setting.upsert({
+      where: { shopId_key: { shopId, key: PRODUCT_WATCH_SETTING_KEY } },
+      create: { shopId, key: PRODUCT_WATCH_SETTING_KEY, value },
+      update: { value },
+    });
+
+    if (changes.length === 0) return;
+    logger.info(`seo_watch ${domain}: ${changes.length} product(s) changed since the last watch`);
+    for (const change of changes.slice(0, PRODUCT_WATCH_LOG_CAP)) {
+      logger.info(`seo_watch ${domain}: ${formatProductWatchLine(change)}`);
+    }
+    if (changes.length > PRODUCT_WATCH_LOG_CAP) {
+      logger.info(
+        `seo_watch ${domain}: and ${changes.length - PRODUCT_WATCH_LOG_CAP} more products changed`,
+      );
+    }
+  } catch (error) {
+    logger.error(`seo_watch ${domain}: per-product watch failed - ${describeError(error)}`);
+  }
+}
+
 export const seo_watch: Task = async (_payload, helpers) => {
   const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
 
@@ -817,6 +892,17 @@ export const seo_watch: Task = async (_payload, helpers) => {
           `seo_watch ${shop.domain}: ${newChanges.length} change(s) detected`,
         );
       }
+
+      // Per-product mode (PRD-SEO-PER-PRODUCT section 4, build step 6). The
+      // theme diff above reads one product page; this reads every SeoScan
+      // row, so the Monday line can name the products whose findings changed.
+      //
+      // Last week's codes are kept in a Setting row rather than a column,
+      // because the question is "what changed since the last watch" and the
+      // rows themselves only ever hold now. Clean products are left out of
+      // the snapshot (snapshotFindings), so a healthy 20,000-product store
+      // stores almost nothing and a broken one stores what it has to.
+      await recordProductWatch(shop.id, shop.domain, nowIso, helpers.logger);
     } catch (error) {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
       helpers.logger.error(`seo_watch failed for ${shop.domain}: ${describeError(error)}`);
