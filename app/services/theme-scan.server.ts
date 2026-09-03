@@ -114,30 +114,45 @@ function collectNodes(parsed: any): any[] {
  */
 export function extractLdNodes(html: string): LdNode[] {
   const nodes: LdNode[] = [];
+  for (const node of extractLdObjects(html)) {
+    const types = typesOf(node);
+    if (types.length === 0) continue;
+    nodes.push({
+      types,
+      id: String(node["@id"] ?? ""),
+      // AggregateRating lives nested inside a Product node on this platform
+      // (never as its own top-level node), so this is the only place its
+      // presence can be read off the page. Key omitted entirely when absent,
+      // so existing shape-equality checks are unaffected.
+      ...(node && typeof node === "object" && node.aggregateRating
+        ? { hasAggregateRating: true }
+        : {}),
+    });
+  }
+  return nodes;
+}
+
+/**
+ * The same blocks, unparsed: every top-level JSON-LD object on the page with
+ * `@graph` flattened, properties and all. extractLdNodes keeps only types and
+ * ids, which is all the theme scan ever needed; the per-product page scan
+ * needs the Product node's `offers` to compare against what the variants say
+ * (check A2), and reading the page twice with two different parsers is how
+ * the two come to disagree.
+ */
+export function extractLdObjects(html: string): any[] {
+  const out: any[] = [];
   for (const match of html.matchAll(LD_BLOCK)) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(match[1].trim());
     } catch {
+      // A broken block is a finding to report, not a reason to fail the scan.
       continue;
     }
-    for (const node of collectNodes(parsed)) {
-      const types = typesOf(node);
-      if (types.length === 0) continue;
-      nodes.push({
-        types,
-        id: String(node["@id"] ?? ""),
-        // AggregateRating lives nested inside a Product node on this
-        // platform (never as its own top-level node), so this is the only
-        // place its presence can be read off the page. Key omitted entirely
-        // when absent, so existing shape-equality checks are unaffected.
-        ...(node && typeof node === "object" && node.aggregateRating
-          ? { hasAggregateRating: true }
-          : {}),
-      });
-    }
+    out.push(...collectNodes(parsed));
   }
-  return nodes;
+  return out;
 }
 
 /**
@@ -277,7 +292,7 @@ export async function fetchRobotsCheck(
 ): Promise<RobotsCheck> {
   try {
     const res = await fetch(`${origin}/robots.txt`, {
-      headers: { "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)" },
+      headers: { "User-Agent": SCAN_USER_AGENT },
     });
     if (!res.ok) {
       return { fetched: false, content: "", disallowsRelevant: [] };
@@ -296,13 +311,60 @@ export async function fetchRobotsCheck(
   }
 }
 
+/**
+ * Our user agent, sent by every page read this app makes. Identify honestly;
+ * some merchants log user agents, and the nightly page scan matches its own
+ * robots.txt group against this string.
+ */
+export const SCAN_USER_AGENT = "AI-Visibility-App/1.0 (+https://apps.shopify.com)";
+
+/**
+ * Unlock a password-protected storefront and return the cookie that keeps it
+ * unlocked, or null when there is no password or the unlock produced no
+ * cookie. Exported because the per-product page scan
+ * (PRD-SEO-PER-PRODUCT section 3) has to send the password "exactly as
+ * scanPage does": one implementation, so the two cannot drift.
+ *
+ * `fetchImpl` exists for tests only; production always passes nothing.
+ */
+export async function storefrontCookie(
+  origin: string,
+  storefrontPassword: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  const unlock = await fetchImpl(`${origin}/password`, {
+    method: "POST",
+    headers: {
+      "User-Agent": SCAN_USER_AGENT,
+      Accept: "text/html",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      form_type: "storefront_password",
+      utf8: "✓",
+      password: storefrontPassword,
+    }),
+    redirect: "manual",
+  });
+  // headers.get("set-cookie") comma-joins multiple Set-Cookie headers into
+  // one string, and splitting that on ";" can hand back a mangled value -
+  // a correct password then still reads as a password wall. getSetCookie()
+  // returns them separately; the storefront_digest cookie is the session
+  // unlock, so it is selected explicitly, with the joined form only as a
+  // fallback for runtimes without getSetCookie.
+  const setCookies =
+    typeof unlock.headers.getSetCookie === "function" ? unlock.headers.getSetCookie() : [];
+  const digest = setCookies.find((c) => c.startsWith("storefront_digest="));
+  const cookie = digest ?? setCookies[0] ?? unlock.headers.get("set-cookie");
+  return cookie ? cookie.split(";")[0] : null;
+}
+
 async function fetchWithPasswordUnlock(
   url: string,
   storefrontPassword?: string | null,
 ): Promise<string> {
   const headers: Record<string, string> = {
-    // Identify honestly; some merchants log user agents.
-    "User-Agent": "AI-Visibility-App/1.0 (+https://apps.shopify.com)",
+    "User-Agent": SCAN_USER_AGENT,
     Accept: "text/html",
   };
 
@@ -312,30 +374,8 @@ async function fetchWithPasswordUnlock(
   // crawler check reports the protection either way.
   if (storefrontPassword) {
     const origin = new URL(url).origin;
-    const unlock = await fetch(`${origin}/password`, {
-      method: "POST",
-      headers: {
-        ...headers,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        form_type: "storefront_password",
-        utf8: "✓",
-        password: storefrontPassword,
-      }),
-      redirect: "manual",
-    });
-    // headers.get("set-cookie") comma-joins multiple Set-Cookie headers into
-    // one string, and splitting that on ";" can hand back a mangled value -
-    // a correct password then still reads as a password wall. getSetCookie()
-    // returns them separately; the storefront_digest cookie is the session
-    // unlock, so it is selected explicitly, with the joined form only as a
-    // fallback for runtimes without getSetCookie.
-    const setCookies =
-      typeof unlock.headers.getSetCookie === "function" ? unlock.headers.getSetCookie() : [];
-    const digest = setCookies.find((c) => c.startsWith("storefront_digest="));
-    const cookie = digest ?? setCookies[0] ?? unlock.headers.get("set-cookie");
-    if (cookie) headers.Cookie = cookie.split(";")[0];
+    const cookie = await storefrontCookie(origin, storefrontPassword);
+    if (cookie) headers.Cookie = cookie;
   }
 
   const res = await fetch(url, { headers, redirect: "follow" });

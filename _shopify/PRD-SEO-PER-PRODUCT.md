@@ -200,7 +200,7 @@ whether the app's own block is present, response status, and the
 | B3 | noindex on the page, from meta or `X-Robots-Tag` | B | present or absent |
 | B4 | App block present on the page (the embed check per product, not per theme) | B | present, absent, or unreadable |
 | B5 | Response: status, redirect chain, password page | B | 200, 301 to where, 404, password |
-| B6 | Which of our expected nodes are absent on this page and why (`deriveMissingReasons`, per product) | B | the list, with reasons |
+| B6 | Which of our expected nodes are absent on this page and why (`deriveMissingReasons`, per product) | B | the list, with reasons. **Not built in step 3, deliberately - see 2.3** |
 
 Not in this table and not to be added under it: any score, any keyword, any
 rewritten text. FAQPage rich results are restricted by Google since 2023 to
@@ -284,11 +284,67 @@ no `seo_scan` JobRun rather than a refused one. Turning the key on fills the
 rows at the next catalogue pass - no backfill, no migration of old data, and
 nothing to undo if the key is turned off again.
 
+### 2.3 What step 3 built, 3 September 2026
+
+Source B is `app/services/seo-page.server.ts` and the nightly worker task
+`seo_scan_products`. The checks that read the page are pure functions in that
+file (`readingOf`, `productsDisallow`, `extractSchemaOffer`), so every one of
+them is asserted from a string of HTML with no network and no database - which
+is the only way the interesting cases can be produced at all. The one store
+available cannot have its storefront password turned off, so "the page
+answered with the password form" is not a state anyone can arrange on demand.
+
+**One column, two sources, and the rule that keeps them apart.** `findings`
+holds both halves. Source A owns the entries whose `source` is `"A"`; source B
+owns the rest (`"B"`, and `"A+B"` for A2, which is computed here from the
+`offer` column step 2 stored). Each rewrites only its own half. Without this,
+the next catalogue pass would erase every page finding, and - worse and less
+visible - step 2's "did this row change" comparison would see a changed row on
+every single pass and rewrite the whole table every time, which is exactly the
+rewrite storm that comparison exists to prevent. `computeSourceA` was amended
+in this step for that reason, with two tests of its own.
+
+**A correction to step 2.** The `@@index([shopId, scannedAt])` comment written
+in step 2 said Postgres sorts NULLs first on ASC. It sorts them **last**. The
+ordering is the cursor, so left as written every night would have rescanned
+the same pages and never reached a page that had never been read. The query
+asks for `nulls: "first"` explicitly, and the test that proves it answers
+`findMany` the way Postgres would, honouring the null placement the code asked
+for - a test that sorted the rows itself would have passed either way.
+
+**What B5 covers**, since it is one code for several sentences: a status that
+is not 200, a request that could not be made at all, a product URL that
+answered from a different address, and a `Disallow` in the shop's own
+robots.txt that covers `/products/`. Each carries a `reason` in its detail. A
+password page is deliberately **not** one of them: it is a `status` of
+`"password"` with no source B finding at all, so the aggregate in step 4 can
+only say "could not be read" and can never say "no Product node".
+
+**B6 is not built, and this is the reason.** `deriveMissingReasons` needs the
+shop's mode, whether the app embed is active, and whether *this product* has
+facts or a summary. Source B reads a page; it reads none of those three. Two
+of them are one Admin call per shop, but the third is per product and is not
+in the catalogue read this pass has in hand. Building it from what a page
+happens to show would produce a list of "missing nodes" that is really a list
+of nodes the block correctly chose not to emit, on every product, for ever. It
+belongs to step 5, where the product editor already has the product's facts on
+the screen. Every other row of the table in 2.1 is built.
+
+**Two more things the step keeps.** A page that was attempted has its
+`scannedAt` moved even when the request failed, or the ordering would hand the
+same broken product back every night and the rest of the catalogue would never
+be reached. And the storefront is unlocked once per shop, not once per page:
+500 unlock requests a night would be a worse citizen than the scan itself.
+
 ## 3. The budget and the scheduler
 
 **500 page fetches per shop per day.** Set by Marius, 3 September. Applies to
 source B only; source A is unmetered because it is already paid for by the
 catalogue pass.
+
+**Built 3 September 2026**, every bullet below. The task runs nightly at
+03:45 UTC (`worker/index.ts`), which is after the Monday 03:30 sweep starts
+and before the 04:00 weekly watch.
 
 - A new worker task `seo_scan_products`, run nightly after `sweep_missing`
   (03:30 UTC), one JobRun per shop per night, kind `seo_scan`.
@@ -374,10 +430,14 @@ store. A row without both is not done.
 | Every source A check answers correctly on a product with every field present, one with every field absent, and one whose variants were not read | `seo-scan.test.ts`, all three shapes through all five checks - **done** | - |
 | A row whose content did not change is not rewritten; a short read deletes nothing | `seo-scan.test.ts` - **done** | - |
 | A source A failure is reported and does not fail the catalogue pass it runs in, and does not look like "no SEO key" | `seo-scan.test.ts` - **done** | - |
-| B1 distinguishes theme node, our node, both, neither, by `@id` | unit on four HTML fixtures | dev store product page in Extend and in Full |
-| B5 records `password` and writes no findings for a page that answered with the password form, and the aggregate says "could not be read" | unit | dev store without the password entered |
-| The nightly task stops at 500 and reports `remaining` and `nightsToFinish` | unit with 1,200 products and a counting fetch stub | - |
-| A shop without the SEO key gets no `seo_scan` JobRun | unit | second dev store |
+| B1 distinguishes theme node, our node, both, neither, by `@id` | `seo-page.test.ts` - **done**, including extend mode reusing the theme's id, which is one node and not a conflict | dev store product page in Extend and in Full - not done |
+| B5 records `password` and writes no findings for a page that answered with the password form, and the aggregate says "could not be read" | `seo-page.test.ts` - **done**; the row keeps source A's findings and gains no source B one | dev store without the password entered - waits for step 4's screen |
+| The nightly task stops at the budget and reports `remaining` and `nightsToFinish` | `seo-page.test.ts` - **done**, with a counting fetch stub; also that it paces one request at a time, 500 ms apart | - |
+| A shop without the SEO key gets no `seo_scan` JobRun | `seo-scan-task.test.ts` - **done**; it asks Shopify nothing either | second dev store - not done |
+| A `Disallow` covering `/products/` stops the scan, is reported as B5, and no page is fetched | `seo-page.test.ts` - **done**; a group naming this app beats the `*` group, a longer `Allow` wins, and an unreachable robots.txt does not stop anything | - |
+| The order is never-scanned first, then oldest first, and the query's null placement is what produces it | `seo-page.test.ts` - **done**, against a findMany that answers the way Postgres would | - |
+| Source A and source B never erase each other's findings, and neither rewrites a row because the other wrote one | `seo-scan.test.ts` - **done** | - |
+| `Cache-Control: no-cache` is sent and what came back is recorded | `seo-page.test.ts` - **done** | a page served from the app proxy, which answers max-age=300 - not done |
 | The product editor's button runs one fetch and the second render shows the new `scannedAt` | unit on the action | press it, reload |
 | Every count on the SEO card has its denominator and the "pages read" sentence | assert on the rendered strings | - |
 | No sentence on any screen promises a rich result | grep for "rich result" in `app/` returns only the negative sentence in this PRD's card copy | - |
@@ -418,8 +478,14 @@ later addition to source B once the budget's real cost is known.
    because the page it compares against arrives in step 3. 42 new unit tests
    over three shapes of product. The migration has **not been applied to any
    database** - see the handover. Step 3 has not been started.
-3. Source B as `seo_scan_products` with the budget, the password rule and the
-   cache rule. One day.
+3. **Done, 3 September 2026.** Source B as `seo_scan_products`: the nightly
+   task, the per-shop budget setting, the robots.txt rule, the password rule,
+   the cache rule, and checks B1 to B5 plus A2's page half. 44 new unit tests
+   in `seo-page.test.ts` and `seo-scan-task.test.ts`, two more in
+   `seo-scan.test.ts` for the shared `findings` column. B6 is deliberately
+   deferred to step 5 with the reason in section 2.3. No screen was touched.
+   The migration from step 2 has still **not been applied to any database**,
+   so nothing runs until it is.
 4. The SEO card rewired to the aggregate; the Extend/Full verdict from B1.
    Half a day.
 5. Product editor section and button, second render pressed. Half a day.

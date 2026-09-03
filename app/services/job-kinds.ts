@@ -14,6 +14,7 @@ const NAMES: Record<string, string> = {
   reconcile: "A setting change",
   seo_queue: "The SEO queue build",
   seo_apply: "The SEO write",
+  seo_scan: "The page scan",
 };
 
 /** "A catalogue pass", "A setting change", or "A job" for a kind not listed. */

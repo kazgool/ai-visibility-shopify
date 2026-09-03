@@ -523,6 +523,59 @@ describe("computeSourceA", () => {
     expect(seoScan.updateMany.mock.calls[0][0].where.id.in).toEqual(["row-1"]);
   });
 
+  it("leaves source B's half of the findings alone when it rewrites a row", async () => {
+    // Rule 4 (seo-page.server.ts): one column, two sources, months apart.
+    // Without this the next catalogue pass would erase every page finding -
+    // and the unchanged check above would see a changed row every time and
+    // rewrite the whole table on every pass.
+    const product = empty();
+    const fromSourceB = { code: "B1", source: "B", detail: { productNodes: 0 } };
+    resetDb([
+      {
+        id: "row-b",
+        productId: product.id,
+        handle: product.handle,
+        findings: [fromSourceB],
+        offer: null,
+      },
+    ]);
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+
+    await computeSourceA("shop", noGraphql, { products: [product], complete: true });
+
+    const written = seoScan.update.mock.calls[0][0].data.findings;
+    expect(written.map((f: any) => f.code)).toEqual(["A1", "A5", "B1"]);
+    expect(written.at(-1)).toEqual(fromSourceB);
+  });
+
+  it("does not rewrite a row just because source B added a finding to it", async () => {
+    const product = complete();
+    resetDb([
+      {
+        id: "row-b2",
+        productId: product.id,
+        handle: product.handle,
+        findings: [{ code: "B3", source: "B", detail: { from: "meta" } }],
+        offer: {
+          variantsRead: 1,
+          available: true,
+          minPrice: "100",
+          maxPrice: "100",
+          currency: "RON",
+        },
+      },
+    ]);
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+
+    const report = await computeSourceA("shop", noGraphql, {
+      products: [product],
+      complete: true,
+    });
+
+    expect(report?.touched).toBe(1);
+    expect(seoScan.update).not.toHaveBeenCalled();
+  });
+
   it("rewrites a row whose findings changed", async () => {
     const product = empty();
     resetDb([

@@ -23,6 +23,7 @@ import { fetchCollections, writeCollections } from "../app/services/collections.
 import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
+import { dailyBudget, scanShopPages } from "../app/services/seo-page.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
@@ -819,6 +820,106 @@ export const seo_watch: Task = async (_payload, helpers) => {
     } catch (error) {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
       helpers.logger.error(`seo_watch failed for ${shop.domain}: ${describeError(error)}`);
+    }
+  }
+};
+
+/**
+ * Source B of the per-product SEO scan (PRD-SEO-PER-PRODUCT section 3): one
+ * GET of each product's public page, nightly, under a per-shop daily budget.
+ *
+ * Nightly rather than weekly because the budget is what bounds it: a 20,000
+ * product store finishes in 40 nights at the default 500, and the JobRun
+ * report says so in the same numbers the SEO screen shows.
+ *
+ * ENTITLEMENT: the SEO key first, and a shop without it gets no JobRun at
+ * all rather than a refused one - a refused row would put a job the merchant
+ * never asked for on the dashboard of every shop in the database, every
+ * night. The subscription check is second and behaves like seo_watch's:
+ * logged and skipped. Both inside the try, because the second calls the Admin
+ * API and an expired token throws.
+ */
+export const seo_scan_products: Task = async (_payload, helpers) => {
+  const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
+
+  for (const shop of shops) {
+    try {
+      if (!(await isSeoUnlocked(shop.id))) {
+        continue; // not part of this shop's module - no log noise for the common case
+      }
+
+      const graphql = await adminGraphql(shop.domain);
+
+      if (!(await mayProcessAutomatically(shop, graphql))) {
+        helpers.logger.info(
+          `seo_scan_products ${shop.domain}: skipped, no active subscription or comp`,
+        );
+        continue;
+      }
+
+      // The primary domain, not the myshopify one: a page fetched on the
+      // wrong host answers with a redirect, and every product would report
+      // finding B5 about a redirect this app caused itself.
+      const domainData = await graphql<any>(PRIMARY_DOMAIN_SEO);
+      const shopUrl = domainData?.shop?.url ?? `https://${shop.domain}`;
+      let origin = `https://${shop.domain}`;
+      try {
+        origin = new URL(shopUrl).origin;
+      } catch {
+        // Keep the myshopify origin rather than fail the night's scan.
+      }
+
+      const budget = await dailyBudget(shop.id);
+      const passwordSetting = await db.setting.findUnique({
+        where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+      });
+
+      const jobRun = await db.jobRun.create({
+        data: {
+          shopId: shop.id,
+          kind: "seo_scan",
+          status: "running",
+          startedAt: new Date(),
+          total: budget,
+        },
+      });
+
+      try {
+        const report = await scanShopPages({
+          shopId: shop.id,
+          origin,
+          password: passwordSetting?.value,
+          budget,
+          deps: { log: (message) => helpers.logger.info(message) },
+        });
+
+        await db.jobRun.update({
+          where: { id: jobRun.id },
+          data: {
+            status: "done",
+            finishedAt: new Date(),
+            progress: report.scanned,
+            // The denominator is the whole catalogue still waiting, not the
+            // budget: "500 of 20,000" is the true sentence, and a bar that
+            // reads 500 of 500 every night says the opposite of what happened.
+            total: report.scanned + report.remaining,
+            report: report as any,
+          },
+        });
+      } catch (error) {
+        await db.jobRun.update({
+          where: { id: jobRun.id },
+          data: {
+            status: "failed",
+            finishedAt: new Date(),
+            report: { error: describeError(error) } as any,
+          },
+        });
+        throw error;
+      }
+    } catch (error) {
+      if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
+      helpers.logger.error(`seo_scan_products failed for ${shop.domain}: ${describeError(error)}`);
     }
   }
 };

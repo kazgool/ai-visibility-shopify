@@ -19,6 +19,7 @@ async function main() {
       crawler_check: tasks.crawler_check,
       bulk_collections: tasks.bulk_collections,
       seo_watch: tasks.seo_watch,
+      seo_scan_products: tasks.seo_scan_products,
       seo_queue_build: tasks.seo_queue_build,
       seo_apply: tasks.seo_apply,
       prune_crawler_hits: tasks.prune_crawler_hits,
@@ -29,6 +30,7 @@ async function main() {
       "*/15 * * * * poll_changes",
       "30 3 * * 1 sweep_missing", // Monday 03:30 UTC
       "0 4 * * 1 seo_watch", // Monday 04:00 UTC, seo_unlocked shops only
+      "45 3 * * * seo_scan_products", // nightly 03:45 UTC, after the Monday sweep starts
       "0 5 * * * prune_crawler_hits", // daily 05:00 UTC, PRIVACY.md 30-day retention
     ].join("\n"),
   });

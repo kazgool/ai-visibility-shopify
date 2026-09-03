@@ -20,6 +20,61 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Per-product SEO scan, step 3 of 7: source B, the nightly page scan (3 September 2026)
+
+Step 3 of the build order in `PRD-SEO-PER-PRODUCT.md`. Still nothing
+merchant-facing: no screen reads these rows yet. Step 4 is not started, and
+the step 2 migration has not been applied to any database, so nothing here
+runs until it is.
+
+- **New worker task `seo_scan_products`**, nightly at 03:45 UTC. It fetches
+  each product's public page as a crawler would - our own user agent, no
+  admin session - and records what came back: the JSON-LD nodes, the
+  canonical, noindex, whether our block is on the page, the status, and the
+  `Cache-Control` the response carried.
+- **A per-shop daily budget**, Setting `seo_scan_daily_budget`, absent means
+  500. Requests are made one at a time, 500 ms apart. The JobRun report says
+  `scanned`, `remaining` and `nightsToFinish`, so a 20,000-product store reads
+  "500 read, 39 nights for the rest" rather than a number with no denominator.
+  A bad value in the setting falls back to 500 rather than silently scanning
+  nothing.
+- **The order is the cursor**: never scanned first, then oldest first. This
+  corrected a wrong comment written in step 2 - Postgres sorts NULLs *last* on
+  ASC, so the query asks for `nulls: "first"` explicitly. Left as written, a
+  store would have rescanned the same pages every night and never reached a
+  page it had never read.
+- **The shop's own robots.txt is obeyed.** A `Disallow` covering `/products/`
+  for our user agent stops the scan before a single page is fetched, and is
+  itself reported as finding B5. A group naming this app beats the `*` group,
+  a longer `Allow` wins over a `Disallow`, and a robots.txt that could not be
+  fetched does not stop anything.
+- **A page behind the password form is recorded as "could not be read"**, with
+  no finding about the page at all - never as "no Product node". The
+  storefront password is sent exactly as the existing scan sends it: the
+  unlock is now one function used by both, and it is done once per shop rather
+  than once per page.
+- **`Cache-Control: no-cache` is sent, and what came back is recorded.** A
+  page served from a cache is a finding about the cache, not about the theme,
+  so the scan states what it received instead of assuming it was fresh.
+- **The two sources share one `findings` column and no longer overwrite each
+  other.** Source A owns the findings whose source is "A", source B owns the
+  rest. Without this the next catalogue pass would have erased every page
+  finding - and step 2's "has this row changed" comparison would have seen a
+  changed row on every pass and rewritten the whole table each time, which is
+  the rewrite storm that comparison exists to prevent.
+- **A shop without the SEO key gets no `seo_scan` JobRun at all**, not a
+  refused one, and the task asks Shopify nothing for it. A refused row would
+  otherwise appear on every shop's dashboard every night for a job nobody
+  pressed. The subscription check follows, and behaves like the weekly watch's.
+- **Check B6 is deliberately not built** and the reason is written in PRD
+  section 2.3: it needs the shop's mode, the embed state and the product's own
+  facts, none of which a page read carries. It moves to step 5, where the
+  product editor already has them.
+- 44 new unit tests, plus two in the step 2 suite for the shared column.
+  Verified: typecheck clean, 44 test files, 591 tests green, build clean,
+  Liquid check clean. The suite was also run once with `.env` renamed away, as
+  CI runs it: 591 green there too.
+
 ### Per-product SEO scan, step 2 of 7: the SeoScan table and source A (3 September 2026)
 
 Step 2 of the build order in `PRD-SEO-PER-PRODUCT.md`. Still nothing

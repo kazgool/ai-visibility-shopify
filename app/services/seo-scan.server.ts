@@ -19,6 +19,11 @@
 //     rows for products that are still on sale.
 //  3. A field that was not read is not reported. Everything on that is in
 //     seo-scan.ts, which holds the checks themselves.
+//  4. Source A rewrites only its own half of the `findings` column. Source B
+//     (seo-page.server.ts) writes into the same column, months of passes
+//     apart; without this rule every catalogue pass would erase every page
+//     finding, and the comparison in rule 1 would also see a changed row on
+//     every pass and rewrite all of them.
 
 import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
@@ -26,6 +31,8 @@ import { isSeoUnlocked } from "./billing.server";
 import type { ProductInput } from "./facts.server";
 import {
   duplicationByProduct,
+  findingsOf,
+  isSourceAFinding,
   offerFacts,
   sourceAFindings,
   type Finding,
@@ -222,7 +229,7 @@ async function sourceAPass(
 
   const toCreate: { shopId: string; productId: string; bulkAt: Date }[] = [];
   const createContent = new Map<string, RowContent>();
-  const toUpdate: { id: string; content: RowContent }[] = [];
+  const toUpdate: { id: string; content: RowContent; keptFromSourceB: Finding[] }[] = [];
   const toTouch: string[] = [];
   const now = new Date();
 
@@ -252,13 +259,22 @@ async function sourceAPass(
       continue;
     }
 
+    // Rule 4: compare against source A's half only. Source B's findings sit
+    // in the same array and change on their own schedule.
+    const storedFromSourceA = findingsOf(row.findings).filter(isSourceAFinding);
     const same =
       (row.handle ?? null) === content.handle &&
-      stable(row.findings ?? []) === stable(content.findings) &&
+      stable(storedFromSourceA) === stable(content.findings) &&
       stable(row.offer ?? null) === stable(content.offer);
 
     if (same) toTouch.push(row.id);
-    else toUpdate.push({ id: row.id, content });
+    else {
+      toUpdate.push({
+        id: row.id,
+        content,
+        keptFromSourceB: findingsOf(row.findings).filter((f) => !isSourceAFinding(f)),
+      });
+    }
   }
 
   // Created rows carry their content on the same insert; createMany cannot
@@ -286,7 +302,9 @@ async function sourceAPass(
       data: {
         bulkAt: now,
         handle: row.content.handle,
-        findings: row.content.findings as any,
+        // Rule 4: source A first, then whatever source B had already found on
+        // this page, carried through untouched.
+        findings: [...row.content.findings, ...row.keptFromSourceB] as any,
         offer: row.content.offer as any,
       },
     });

@@ -209,6 +209,8 @@ model SeoScan {
 
   @@unique([shopId, productId])
   // The nightly scan's order is its cursor: never scanned first, then oldest
-  // first. Postgres sorts NULLs first on ASC, which is exactly that order.
+  // first. Postgres sorts NULLs LAST on ASC, so the query asks for
+  // `nulls: "first"` explicitly (seo-page.server.ts); this index serves it.
+  // The comment written here in build step 2 said the opposite and was wrong.
   @@index([shopId, scannedAt])
 }
