@@ -1,9 +1,11 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { Link, useLoaderData, useSearchParams } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form, Link, useActionData, useLoaderData, useSearchParams } from "@remix-run/react";
+import { useState } from "react";
 import {
   Page,
   Card,
   BlockStack,
+  Checkbox,
   InlineStack,
   InlineGrid,
   Text,
@@ -17,6 +19,21 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { hasPaidAccess } from "../services/billing.server";
+import {
+  catalogueQuery,
+  DEFAULT_PREFS,
+  NEVER_GIVEN_A_PAGE,
+  OUT_OF_STOCK_HELP,
+  OUT_OF_STOCK_LABEL,
+  OUT_OF_STOCK_MEANING,
+  TOGGLES_METHOD_LINE,
+  UNLISTED_HELP,
+  UNLISTED_LABEL,
+  WITHDRAWAL_METHOD_LINE,
+  type PublishPrefs,
+} from "../services/eligibility";
+import { prefsFor, savePrefs } from "../services/eligibility.server";
+import { enqueue } from "../services/queue.server";
 import {
   crawlerHitsForDashboard,
   nonCrawlerTokenHits,
@@ -61,19 +78,19 @@ import {
 // caused by deletion as a shortfall in traffic. There is deliberately no
 // control offering a longer one.
 
-// The same filter the catalogue pass uses (catalogue.server.ts PRODUCTS_QUERY):
-// "status:active" excludes DRAFT and ARCHIVED, "published_status:published"
-// excludes a product that is active but published to no sales channel. Without
-// it this panel could hold up a draft product as the example of what the app
-// does to this shop - a product no other panel on the screen counts, because
-// every other panel is fed by a pass that never read it.
+// The same filter the catalogue pass uses, passed in rather than fixed here,
+// because the merchant's "include unlisted products" toggle widens it and the
+// two must never disagree (section J.4). Without any filter this panel could
+// hold up a draft product as the example of what the app does to this shop -
+// a product no other panel on the screen counts, because every other panel is
+// fed by a pass that never read it.
 const EXAMPLE_PRODUCTS = `#graphql
-  query ReportExampleProducts {
+  query ReportExampleProducts($query: String!) {
     products(
       first: 25
       sortKey: UPDATED_AT
       reverse: true
-      query: "status:active AND published_status:published"
+      query: $query
     ) {
       nodes {
         id
@@ -174,10 +191,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // values that description produced on the other. The one with the most
   // distinct families, because the panel is there to show what the work looks
   // like, and the emptiest product shows nothing.
+  // Read before the example, because the example is filtered by it.
+  const prefs = shop ? await prefsFor(shop.id) : DEFAULT_PREFS;
+
   let example: Example = null;
   if (shop) {
     try {
-      const res = await admin.graphql(EXAMPLE_PRODUCTS);
+      const res = await admin.graphql(EXAMPLE_PRODUCTS, {
+        variables: { query: catalogueQuery(prefs) },
+      });
       const json = await res.json();
       const nodes = (json.data?.products?.nodes ?? []) as {
         title: string;
@@ -218,6 +240,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
+  // The "What is switched on" card, Plain text pages row. Every row for the
+  // shop, with no productId clause: the proxy serves any row by handle and
+  // llms.txt lists every row (llms-txt.server.ts), so this is the one count
+  // the three can agree on. It used to exclude rows written before the
+  // productId column, which llms.txt still listed and the proxy still served,
+  // so the card undercounted the public set until the first reconciliation
+  // adopted them (PRD-PORT-1.7.8 I.6, "Second render"; QA of 3 September 2026,
+  // blocking 3).
+  const mirrorCount = shop
+    ? await db.mirrorCache.count({ where: { shopId: shop.id } })
+    : 0;
+  const reconcileJob = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, kind: "reconcile" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+  const reconcile = reconcileJob
+    ? {
+        status: reconcileJob.status,
+        finishedAt: reconcileJob.finishedAt?.toISOString() ?? null,
+        report: (reconcileJob.report ?? null) as unknown as {
+          skipped?: boolean;
+          deleted?: number;
+          queued?: number;
+          read?: number;
+          expected?: number;
+        } | null,
+      }
+    : null;
+
   return {
     paid: true as const,
     domain: session.shop,
@@ -226,8 +279,84 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hits,
     tokens,
     example,
+    prefs,
+    mirrorCount,
+    reconcile,
     windowDays: CRAWLER_HIT_RETENTION_DAYS,
   };
+};
+
+/**
+ * The only write this screen makes: the two publishing toggles of section J.
+ * Everything else here is read-only, and stays that way.
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = await db.shop.findUnique({ where: { domain: session.shop } });
+  if (!shop) return { error: "Shop not found" };
+
+  const form = await request.formData();
+  if (String(form.get("intent") ?? "") !== "publish_prefs") {
+    return { error: "Unknown action" };
+  }
+
+  // ENTITLEMENT: the same shape as app.business.tsx. Hiding the card is not a
+  // gate, because the form can be posted directly. Nothing already published
+  // is touched by the refusal - and withdrawal itself is never gated, so a
+  // shop in this state still loses the page of a product it unpublishes.
+  const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+  if (!paid) {
+    return {
+      error:
+        "This shop has no active subscription, so these settings are not saved. Nothing already published is touched.",
+    };
+  }
+
+  // An unchecked checkbox is not submitted at all, which is what makes the
+  // absence of the field mean "off" here.
+  const next: PublishPrefs = {
+    includeOutOfStock: form.get("includeOutOfStock") != null,
+    includeUnlisted: form.get("includeUnlisted") != null,
+  };
+
+  // One at a time, the same rule the dashboard applies to its own buttons
+  // (app._index.tsx). A reconcile is a full catalogue export, Shopify allows
+  // one bulk query per shop at a time, and a second POST ten seconds after
+  // the first used to create a second JobRun and a second job that failed on
+  // that collision and left the card silent (QA of 3 September 2026, wave fix
+  // 4). The setting itself is not saved either, so what the checkbox shows is
+  // what the running job will apply.
+  const active = await db.jobRun.findFirst({
+    where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+    select: { kind: true },
+  });
+  if (active) {
+    return {
+      error:
+        active.kind === "reconcile"
+          ? "A setting change is still being applied. Wait for it to finish, then save again."
+          : "A catalogue job is running. Wait for it to finish, then save again.",
+    };
+  }
+
+  // Only when something actually moved: a save that changed nothing must not
+  // withdraw and re-add every page in the shop.
+  const changed = await savePrefs(shop.id, next);
+  if (changed) {
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "reconcile", status: "queued" },
+    });
+    // The jobKey collapses two enqueues before the first runs into one, the
+    // way every other enqueue in worker/tasks.ts does; the guard above is
+    // what stops the second while the first is running.
+    await enqueue(
+      "reconcile_mirrors",
+      { shopId: shop.id, jobRunId: jobRun.id },
+      { jobKey: `reconcile:${shop.id}` },
+    );
+  }
+
+  return { prefs: next, queued: changed };
 };
 
 // ---------------------------------------------------------------------------
@@ -472,7 +601,7 @@ function PassNotReady({ pass, what }: { pass: PassState; what: string }) {
   if (depthState(pass.figures) === "no products") {
     return (
       <Text as="p" tone="subdued">
-        {`${PassOn(pass.when)} read no products, so ${what} has not been measured. The pass reads only products that are active and published to a sales channel; drafts and archived products are left out.`}
+        {`${PassOn(pass.when)} read no products, so ${what} has not been measured. The pass reads only products that are active and published to the Online Store, plus unlisted ones when you include them below; drafts and archived products are left out.`}
       </Text>
     );
   }
@@ -1124,6 +1253,176 @@ function WeakestCard({ pass }: { pass: PassState }) {
 
 // ---------------------------------------------------------------------------
 
+type ReconcileState = {
+  status: string;
+  finishedAt: string | null;
+  report: {
+    skipped?: boolean;
+    deleted?: number;
+    queued?: number;
+    read?: number;
+    expected?: number;
+    /** Set by the worker when withdrawal ran but queueing was withheld. */
+    queueingRefused?: string;
+    refused?: boolean;
+    reason?: string;
+    error?: string;
+  } | null;
+} | null;
+
+/** Same shape as every other date on this screen: the day, plainly. */
+function onDay(iso: string | null): string {
+  if (!iso) return "an unknown date";
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+/**
+ * What the last toggle change did, read from its JobRun row and never from
+ * local state - the row is the source of truth for a job, and the browser
+ * forgets on every refresh.
+ */
+function reconcileSentence(reconcile: ReconcileState): string | null {
+  if (!reconcile) return null;
+  if (reconcile.status === "queued" || reconcile.status === "running") {
+    return "Applying your setting: pages that no longer qualify are being withdrawn.";
+  }
+  // Every terminal state gets a sentence. A failed or refused job used to
+  // render nothing at all, so the checkbox showed its new state beside no
+  // word about whether the pages had followed it - the "0 of 50" class from
+  // CLAUDE.md (QA of 3 September 2026, wave fix 6).
+  if (reconcile.status === "failed") {
+    return (
+      `The last setting change did not complete on ${onDay(reconcile.finishedAt)}. ` +
+      "Your setting is saved; the pages will be brought in line by the next catalogue pass or the weekly check."
+    );
+  }
+  if (reconcile.status === "refused") {
+    return (
+      (reconcile.report?.reason ?? "The last setting change was refused.") +
+      " Pages that no longer qualify are still withdrawn by the weekly check."
+    );
+  }
+  if (reconcile.status !== "done" || !reconcile.report) return null;
+  const r = reconcile.report;
+  if (r.skipped) {
+    const why =
+      (r.read ?? 0) > 0 && (r.expected ?? 0) === (r.read ?? 0)
+        ? `${r.read} products were read and none qualified under the current settings`
+        : `Shopify's catalogue download was short (${r.read ?? 0} of ${r.expected ?? 0} products)`;
+    return `${why}, so nothing was withdrawn. It will be tried again on the next pass or the weekly check.`;
+  }
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const base = `${plural(r.deleted ?? 0, "page")} withdrawn, ${plural(r.queued ?? 0, "product")} queued for a page, on ${onDay(reconcile.finishedAt)}.`;
+  return r.queueingRefused ? `${base} ${r.queueingRefused}` : base;
+}
+
+/**
+ * The two toggles, in one form, each with its effect stated beside it rather
+ * than in a tooltip.
+ *
+ * Remounted by its key whenever the loader's values change, so the second
+ * render after a save shows what the database holds and not what the browser
+ * happened to be holding. Nothing here keeps state across a revalidation.
+ */
+function PublishPrefsForm({ prefs }: { prefs: PublishPrefs }) {
+  const [outOfStock, setOutOfStock] = useState(prefs.includeOutOfStock);
+  const [unlisted, setUnlisted] = useState(prefs.includeUnlisted);
+
+  return (
+    <Form method="post">
+      <input type="hidden" name="intent" value="publish_prefs" />
+      <BlockStack gap="300">
+        <Checkbox
+          label={OUT_OF_STOCK_LABEL}
+          helpText={OUT_OF_STOCK_HELP}
+          name="includeOutOfStock"
+          checked={outOfStock}
+          onChange={setOutOfStock}
+        />
+        <Checkbox
+          label={UNLISTED_LABEL}
+          helpText={UNLISTED_HELP}
+          name="includeUnlisted"
+          checked={unlisted}
+          onChange={setUnlisted}
+        />
+        <Text as="p" variant="bodySm" tone="subdued">
+          {OUT_OF_STOCK_MEANING}
+        </Text>
+        <Box>
+          <Button submit>Save these settings</Button>
+        </Box>
+      </BlockStack>
+    </Form>
+  );
+}
+
+/**
+ * What is switched on: the Plain text pages row, the two toggles that decide
+ * which products get one, and what the last change to them did.
+ */
+function ModulesCard({
+  mirrorCount,
+  prefs,
+  reconcile,
+  error,
+}: {
+  mirrorCount: number;
+  prefs: PublishPrefs;
+  reconcile: ReconcileState;
+  error?: string;
+}) {
+  const applied = reconcileSentence(reconcile);
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <Text as="h2" variant="headingMd">
+          What is switched on
+        </Text>
+
+        <InlineStack gap="200" blockAlign="center">
+          <Text as="h3" variant="headingSm">
+            Plain text pages
+          </Text>
+          <Badge tone="success">On</Badge>
+        </InlineStack>
+
+        <Text as="p">
+          {mirrorCount > 0
+            ? `${mirrorCount} product page${mirrorCount === 1 ? "" : "s"} served. One per public product, at /apps/ai-visibility/<handle>.`
+            : "No product page yet. Pages appear as products are processed."}
+        </Text>
+
+        {error ? (
+          <Banner tone="critical" title="Not saved">
+            <Text as="p">{error}</Text>
+          </Banner>
+        ) : null}
+
+        <PublishPrefsForm
+          key={`${prefs.includeOutOfStock}-${prefs.includeUnlisted}`}
+          prefs={prefs}
+        />
+
+        <Text as="p" variant="bodySm">
+          {NEVER_GIVEN_A_PAGE}
+        </Text>
+
+        {applied ? (
+          <Text as="p" variant="bodySm">
+            {applied}
+          </Text>
+        ) : null}
+
+        <MethodLine>{TOGGLES_METHOD_LINE}</MethodLine>
+        <MethodLine>{WITHDRAWAL_METHOD_LINE}</MethodLine>
+      </BlockStack>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 export default function Report() {
   const data = useLoaderData<typeof loader>() as any;
 
@@ -1134,6 +1433,9 @@ export default function Report() {
   // not remounted by a loader revalidation, so the hook order has to be the
   // same on every pass through it.
   const [searchParams] = useSearchParams();
+  const actionData = useActionData<typeof action>() as unknown as
+    | { error?: string }
+    | undefined;
   const showAll = searchParams.get("families") === "all";
 
   if (!data.paid) {
@@ -1213,6 +1515,13 @@ export default function Report() {
           />
           <WeakestCard pass={pass} />
         </InlineGrid>
+
+        <ModulesCard
+          mirrorCount={data.mirrorCount}
+          prefs={data.prefs}
+          reconcile={data.reconcile}
+          error={actionData?.error}
+        />
 
         <div className="av-report-actions">
           <Card>

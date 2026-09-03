@@ -31,6 +31,16 @@ describe("formatPrice", () => {
 });
 
 describe("renderMirror front matter", () => {
+  it("states availability from the variants, and says nothing when it is unknown", () => {
+    // PRD-PORT-1.7.8 J.7: "the mirror carries availability: out of stock".
+    // An assistant reading the page is told the product is sold out; it is
+    // not hidden, unless the merchant's toggle withdraws the page. Unknown
+    // (no variant row read) prints nothing rather than a guess.
+    expect(renderMirror({ ...base, available: false })).toContain("availability: out of stock");
+    expect(renderMirror({ ...base, available: true })).toContain("availability: in stock");
+    expect(renderMirror({ ...base })).not.toContain("availability:");
+  });
+
   it("publishes sku, image and category when present", () => {
     const out = renderMirror({
       ...base,

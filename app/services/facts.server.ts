@@ -18,6 +18,10 @@ export type VariantInput = {
   id: string;
   title?: string | null;
   sku?: string | null;
+  /** Shopify's own answer to "can this be ordered right now". The product's
+   * `available` is derived from these, not from totalInventory, so a
+   * made-to-order product is not reported as sold out. */
+  availableForSale?: boolean;
   selectedOptions: { name: string; value: string }[];
   metafields?: { key: string; value: string }[];
 };
@@ -26,12 +30,11 @@ export type ProductInput = {
   id: string;
   title: string;
   handle?: string | null;
-  // Only present on the single-product fetch path (SINGLE_PRODUCT), used to
-  // decide whether the product is still eligible for the mirror and
-  // llms.txt (fix: draft/unpublished products were being published to the
-  // public mirror). The bulk fetch path filters at the query level instead
-  // and never returns a non-eligible product in the first place, so this is
-  // left undefined there.
+  // ACTIVE, DRAFT, ARCHIVED or UNLISTED, carried on both fetch paths, and
+  // read by eligibility() to decide whether this product gets a public text
+  // page. The bulk path used to leave it unset and rely on its query filter;
+  // it now asks for the field, because a filter says what was requested and
+  // the field says what the product is.
   status?: string;
   descriptionHtml?: string | null;
   vendor?: string | null;
@@ -52,18 +55,10 @@ export type ProductInput = {
   seo?: { title: string | null; description: string | null } | null;
 };
 
-/**
- * Only a product that is ACTIVE and published to the Online Store channel
- * may keep a public mirror row or a llms.txt entry (fix: draft and
- * unpublished-but-active products were leaking to both). `status` is only
- * populated on the single-product fetch path; the bulk fetch path filters
- * at the query level and never returns an ineligible product at all, so a
- * product with no `status` field is treated as eligible there.
- */
-export function isEligibleForMirror(product: ProductInput): boolean {
-  if (product.status === undefined) return true;
-  return product.status === "ACTIVE" && !!product.onlineStoreUrl;
-}
+// The decision about which products get a public text page moved to
+// eligibility.ts, which reads the merchant's two toggles as well as the
+// product's own state. It is not re-exported from here: one decision, one
+// place, and the screen renders its sentences from the same module.
 
 export function parseState(product: ProductInput): ProductState {
   const raw = product.metafields?.find((m) => m.key === "state")?.value;

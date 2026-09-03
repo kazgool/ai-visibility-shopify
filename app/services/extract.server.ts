@@ -28,10 +28,13 @@ import {
   mayWrite,
   writeFacts,
   writeVariantFacts,
-  isEligibleForMirror,
   hasWithdrawableAutoValues,
   type ProductInput,
 } from "./facts.server";
+import { catalogueQuery, eligibility } from "./eligibility";
+import { prefsFor } from "./eligibility.server";
+import { reconcileMirrors, type Reconciliation } from "./mirror-reconcile.server";
+import { enqueue } from "./queue.server";
 import { renderMirror } from "./mirror.server";
 import { businessFor, type BusinessRecord } from "./business.server";
 import { formatPrice } from "./price.server";
@@ -154,16 +157,17 @@ async function cacheMirror(
  * Remove a stale MirrorCache row before it can keep serving publicly: either
  * the product's handle changed since we last cached it (renamed product,
  * this shop's row is now keyed to a URL nobody links to any more) or the
- * product left the published state entirely (fix: draft/unpublished
- * products must not stay mirrored or listed in llms.txt). Looked up by
- * product id, which both the products/update and products/delete webhooks
- * carry reliably, rather than by handle, which can be stale on both.
+ * product stopped qualifying for a page entirely (a draft, an archived
+ * product, one taken off the Online Store, or one excluded by the merchant's
+ * own toggles). Looked up by product id, which both the products/update and
+ * products/delete webhooks carry reliably, rather than by handle, which can
+ * be stale on both.
  */
 async function dropStaleMirror(
   shopId: string,
   productId: string,
   currentHandle: string | null,
-  isPublished: boolean,
+  isEligible: boolean,
 ): Promise<void> {
   let existing = await db.mirrorCache.findFirst({
     where: { shopId, productId },
@@ -177,7 +181,8 @@ async function dropStaleMirror(
   // handle and no productId is adopted here: its productId is set, and from
   // then on the row behaves like any post-migration row, including being
   // deletable by products/delete. Rows whose product died before the
-  // migration are caught by the weekly cleanup in sweep_missing instead.
+  // migration are caught by the weekly reconciliation in sweep_missing
+  // instead - which since section I covers every row, not only the NULL ones.
   if (!existing && currentHandle) {
     const orphan = await db.mirrorCache.findUnique({
       where: { shopId_handle: { shopId, handle: currentHandle } },
@@ -191,9 +196,57 @@ async function dropStaleMirror(
   }
 
   if (!existing) return;
-  if (!isPublished || existing.handle !== currentHandle) {
+  if (!isEligible || existing.handle !== currentHandle) {
     await db.mirrorCache.delete({ where: { id: existing.id } });
   }
+}
+
+/**
+ * Withdrawal on a shop the entitlement gate turned away (section I.2).
+ *
+ * The gate exists so a shop without paid access does not get its catalogue
+ * processed for free. Deleting this app's own MirrorCache row for a product
+ * the merchant hid is not processing: it writes nothing to Shopify, costs no
+ * pass, and is the minimum "nothing is invented" requires. So the gate stays
+ * exactly where it is for every write, and moves off this one branch.
+ *
+ * Cost is bounded by design. No row for this product - the common case on a
+ * free shop, which has at most three - means zero Admin API calls. A row
+ * present costs one product read, and never a metafield write, a mirror
+ * render or an IndexNow ping.
+ *
+ * Returns true when a page was withdrawn, so the caller can say so.
+ */
+export async function withdrawIfIneligible(
+  shopId: string,
+  productGid: string,
+): Promise<boolean> {
+  const existing = await db.mirrorCache.findFirst({
+    where: { shopId, productId: productGid },
+  });
+  if (!existing) return false;
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) return false;
+
+  const graphql = await adminGraphql(shop.domain);
+  const product = await fetchProduct(graphql, productGid);
+
+  // A product the Admin API no longer returns has been deleted, and its page
+  // is a claim about something that does not exist.
+  if (!product) {
+    await db.mirrorCache.delete({ where: { id: existing.id } });
+    return true;
+  }
+
+  const prefs = await prefsFor(shopId);
+  const stillGood =
+    eligibility(product, prefs) === "eligible" &&
+    existing.handle === (product.handle ?? null);
+  if (stillGood) return false;
+
+  await db.mirrorCache.delete({ where: { id: existing.id } });
+  return true;
 }
 
 export async function dictionaryFor(shopId: string): Promise<string> {
@@ -247,11 +300,28 @@ export type DryRunReport = {
    * first. Absent on reports written before this field existed, which the
    * Report screen states rather than rendering as an empty list. */
   weakest: WeakProduct[];
+  /** Whether Shopify's download matched the counts it reported for itself,
+   * and both count pairs, so a short pass can say so instead of looking like
+   * a catalogue that shrank. Absent on reports written before these fields. */
+  complete?: boolean;
+  expected?: { root: number; objects: number };
+  read?: { root: number; objects: number };
+  /** What the reconciliation at the end of the pass withdrew, adopted and
+   * queued. Absent on dry runs, which write nothing and withdraw nothing. */
+  reconciled?: Reconciliation;
 };
 
 export async function runBulkExtract(
   shopId: string,
-  options: { dryRun: boolean; onProgress?: (done: number, total: number) => Promise<void> },
+  options: {
+    dryRun: boolean;
+    onProgress?: (done: number, total: number) => Promise<void>;
+    /** How the reconciliation queues a page for a product that has none.
+     * The worker passes its own helper so the job lands on the same queue
+     * with the same job key; the default is the ordinary enqueue path. */
+    addJob?: (productGid: string) => Promise<void>;
+    log?: (message: string) => void;
+  },
 ): Promise<DryRunReport> {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
@@ -266,7 +336,12 @@ export async function runBulkExtract(
   const shopInfo = options.dryRun ? null : await fetchShopInfo(graphql);
   if (shopInfo) await saveShopInfo(shopId, shopInfo);
 
-  const products = await fetchAllProducts(graphql);
+  // The merchant's toggles widen or narrow the read itself: with unlisted
+  // products excluded they are not read by the pass at all, which is what the
+  // help text on the Report screen promises.
+  const prefs = await prefsFor(shopId);
+  const catalogue = await fetchAllProducts(graphql, catalogueQuery(prefs));
+  const products = catalogue.products;
   const engineOptions = { extraStopwords };
 
   // Publish the total straight away, so the progress bar has a scale before
@@ -278,6 +353,9 @@ export async function runBulkExtract(
     wouldSkip: 0,
     examples: [],
     weakest: [],
+    complete: catalogue.complete,
+    expected: catalogue.expected,
+    read: catalogue.read,
   };
 
   // Collected across the whole pass and cut to ten at the end, so the list is
@@ -323,11 +401,14 @@ export async function runBulkExtract(
     // checked from metafields already in hand (hasWithdrawableAutoValues),
     // so a product with genuinely nothing ever written and nothing found
     // now still costs nothing extra.
+    // Facts the variants contradict move to the variants (PRD §5.4): a
+    // description's "culoare: gri" is false for the beige variant. Split
+    // before the write guard, because the mirror row below needs the
+    // product-level facts whether or not there is anything to write.
+    const split = splitFactsByLevel(facts, product.variants ?? []);
+    if (product.handle) handleById.set(product.id, product.handle);
+
     if (!options.dryRun && (facts.length > 0 || hasWithdrawableAutoValues(product))) {
-      // Facts the variants contradict move to the variants (PRD §5.4): a
-      // description's "culoare: gri" is false for the beige variant.
-      const split = splitFactsByLevel(facts, product.variants ?? []);
-      if (product.handle) handleById.set(product.id, product.handle);
       // Push into the product-level write when there is something to write
       // (productFacts) OR something already written to withdraw. The old
       // `facts.length === 0` form missed the all-variant-level case: a
@@ -355,10 +436,25 @@ export async function runBulkExtract(
           })),
         );
       }
-      // The bulk fetch path (fetchAllProducts) filters eligibility at the
-      // query level and never returns an ineligible product, so - unlike
-      // extractOneProduct - there is no dropStaleMirror branch needed here;
-      // every product reaching this point is mirror-eligible.
+    }
+
+    // The query filter is no longer the whole answer: it cannot express
+    // "sold out and the merchant excludes sold-out products", and it is a
+    // statement about what was asked for rather than about what the
+    // product is. So the verdict is taken here, per product, from the same
+    // function every other path uses. A product that does not qualify gets
+    // no row, and the reconciliation at the end removes an old one; its
+    // metafields are still written, because its own product page renders
+    // them wherever Shopify renders the product.
+    //
+    // Outside the write guard on purpose (QA of 3 September 2026, wave fix 3):
+    // the row is about the product being public, not about it having facts.
+    // Inside the guard, a product with nothing to extract got no row from
+    // the pass, the reconciliation below then queued one extract_product per
+    // such product after every Fill catalogue, and each of those wrote the
+    // row one Admin round trip at a time - hundreds of jobs on a large store
+    // to produce what the pass had in memory.
+    if (!options.dryRun && eligibility(product, prefs) === "eligible") {
       await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
     }
 
@@ -377,6 +473,26 @@ export async function runBulkExtract(
     .sort((a, b) => a.families.length - b.families.length || a.title.localeCompare(b.title))
     .slice(0, 10);
 
+  // The pass has the read in hand, so a merchant who presses Fill catalogue
+  // gets the withdrawal immediately rather than next Monday. Never on a dry
+  // run: a dry run writes nothing, so it must take nothing away either.
+  if (!options.dryRun) {
+    report.reconciled = await reconcileMirrors(
+      { id: shopId, domain: shop.domain },
+      catalogue,
+      prefs,
+      options.addJob ??
+        (async (productGid: string) => {
+          await enqueue(
+            "extract_product",
+            { shopId, productGid },
+            { jobKey: `extract:${productGid}` },
+          );
+        }),
+      options.log,
+    );
+  }
+
   // Best effort, after the writes: indexing is a bonus, never a failure.
   if (!options.dryRun) await pingProducts(shopId, shop.domain, changed);
 
@@ -392,15 +508,27 @@ export async function extractOneProduct(shopId: string, productGid: string) {
 
   const graphql = await adminGraphql(shop.domain);
   const product = await fetchProduct(graphql, productGid);
-  if (!product) return empty;
+  if (!product) {
+    // The product is gone. The normal route is the products/delete webhook,
+    // which removes the row itself; this is the case where that webhook was
+    // lost and a queued products/update job ran after the deletion. Until
+    // 3 September 2026 this returned before the withdrawal, so a paying shop
+    // kept the page of a deleted product until the weekly sweep while a shop
+    // without access lost it in a minute (withdrawIfIneligible handles the
+    // same null). Same rule on both paths now (QA wave fix 2).
+    await db.mirrorCache.deleteMany({ where: { shopId, productId: productGid } });
+    return empty;
+  }
 
-  // Only ACTIVE products published to the Online Store are eligible for the
-  // public mirror and llms.txt. A draft, an archived product, or one active
-  // but not published to any channel is not (fix: these were leaking to the
-  // proxy and the index). Extracted facts/summary/questions are still
-  // written to metafields either way - they render nowhere on an
-  // unpublished product and are harmless there.
-  const isPublished = isEligibleForMirror(product);
+  // One decision function, reading the product's own state and the
+  // merchant's two toggles. A draft, an archived product, one active but not
+  // published to the Online Store, an unlisted one while unlisted products
+  // are excluded, and a sold-out one while sold-out products are excluded all
+  // lose their public page here. Extracted facts, summary and questions are
+  // still written to metafields on every verdict - they render on the
+  // product's own page wherever Shopify renders it.
+  const prefs = await prefsFor(shopId);
+  const isPublished = eligibility(product, prefs) === "eligible";
   await dropStaleMirror(shopId, product.id, product.handle ?? null, isPublished);
 
   const dictionary = await dictionaryFor(shopId);

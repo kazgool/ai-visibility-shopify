@@ -1,9 +1,55 @@
 # STATUS — where this project stands
 
-Last updated 3 August 2026. Read this first in a new session, then
+Last updated 2 September 2026. Read this first in a new session, then
 `PRD.md` for what we are building and `ARCHITECTURE.md` for how.
 
 ---
+
+## Where things stand, 2 September 2026
+
+The body of this file below section 0 was written on 3 August and describes
+production day. A month of work sits between that and today, and this
+section is the bridge. Everything in it is in `CHANGELOG.md` in detail.
+
+**Shipped since.** The free tier (crawler check, coverage score, three
+merchant-chosen products, no expiry). The SEO capability behind an operator
+key, with its own screen, live scan, conflict detection, meta field audit,
+term gap and weekly watch. Crawler hit logging through the app proxy, with
+30-day retention. llms.txt and agents.md served over the proxy. Preferred
+Sources. IndexNow. Alt text. Collections with comparison tables. Six waves
+of entitlement and data-integrity fixes.
+
+**Shipped 1 and 2 September, the two heaviest days.** An engine safety wave:
+negation (the engine published `contine gluten` on 21 products whose text
+says `nu contine gluten`), dotted abbreviations, decimal and thousands
+separators, capture truncation, and an alt-text guard that was overwriting
+human descriptions containing an 8-digit number. Then a Report screen at
+`/app/report`. Both are committed.
+
+**Uncommitted, verified at the unit level, 3 September.** Wave A of the
+WordPress 1.7.8 port: withdrawal of mirror and llms.txt pages for products
+that leave the published state, and two merchant toggles (out of stock,
+unlisted). Two independent QA rounds and an adjudication
+(`QA-WAVE-A-2026-09-03.md`) produced three blocking fixes and ten more, all
+applied the same day; 41 test files, 502 tests, green with `.env` renamed
+away. Not yet observed on a running store: the six checks at the end of the
+QA report, each needing Marius. Commit is his call.
+
+**Two documents supersede the sections below for anything about the engine,
+the pipeline or the screens:** `AUDIT-2026-09-02.md` (functionality, UI, UX)
+and `AUDIT-MODULE-2026-09-02.md` (engine, published outputs, pipeline). The
+latter is the one that ran the real engine over 189 Republica BIO products
+and 355 furniture products, and it is the only document here whose findings
+came from execution rather than reading.
+
+**What is next** is in `PRD-PORT-1.7.8.md` section H and in the audits'
+closing sections, not in section 7 below.
+
+**One command has been outstanding for twelve days** and blocks four
+features: `npx tsx scripts/read-forwarding.ts`. It is read-only and prints
+no addresses. It answers whether a real client IP survives Shopify's edge
+and Fly, which decides whether crawler verification can exist on Shopify at
+all.
 
 ---
 

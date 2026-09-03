@@ -11,6 +11,8 @@
 import db from "../db.server";
 import { adminGraphql } from "./admin.server";
 import { fetchAllProducts, fetchProduct, fetchShopInfo } from "./catalogue.server";
+import { catalogueQuery } from "./eligibility";
+import { prefsFor } from "./eligibility.server";
 import { dictionaryFor, extraStopwordsFor } from "./extract.server";
 import { extractProduct, stopwordSet, type Fact } from "../engine";
 import { isSeoUnlocked, mayProcessAutomatically } from "./billing.server";
@@ -34,7 +36,9 @@ export async function runSeoQueueBuild(
   const extraStopwords = await extraStopwordsFor(shopId);
   const shopInfo = await fetchShopInfo(graphql);
 
-  const products = await fetchAllProducts(graphql);
+  // The same set the catalogue pass reads, so an unlisted product gets SEO
+  // fields only when the merchant included unlisted products.
+  const { products } = await fetchAllProducts(graphql, catalogueQuery(await prefsFor(shopId)));
   if (options.onProgress) await options.onProgress(0, products.length);
 
   const queueProducts: SeoQueueProduct[] = [];

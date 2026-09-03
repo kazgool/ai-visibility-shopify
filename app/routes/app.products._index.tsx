@@ -605,6 +605,16 @@ export default function ProductsOverview() {
                       >
                         View
                       </a>
+                    ) : row.status === "UNLISTED" ? (
+                      // An unlisted product is published; it is the
+                      // merchant's own toggle that keeps it out, and the
+                      // one screen that can change that is Report. Until
+                      // 3 September 2026 this fell into the branch below and
+                      // named the one cause it is not (QA wave fix 8).
+                      <Text as="span" tone="subdued">
+                        Unlisted in Shopify, and unlisted products are left
+                        out unless you include them on the Report screen
+                      </Text>
                     ) : row.status !== "ACTIVE" ? (
                       // Processed or not, a draft or archived product is
                       // never mirrored - saying "runs when processed" on

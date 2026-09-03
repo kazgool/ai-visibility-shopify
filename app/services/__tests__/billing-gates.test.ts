@@ -65,6 +65,14 @@ vi.mock("../alt-text.server", () => ({
   writeAltText: (...a: unknown[]) => mockWriteAltText(...a),
 }));
 
+const mockReconcileMirrors = vi.fn();
+vi.mock("../mirror-reconcile.server", () => ({
+  reconcileMirrors: (...a: unknown[]) => mockReconcileMirrors(...a),
+}));
+vi.mock("../eligibility.server", () => ({
+  prefsFor: async () => ({ includeOutOfStock: true, includeUnlisted: false }),
+}));
+
 const graphql = vi.fn();
 vi.mock("../../shopify.server", () => ({
   authenticate: {
@@ -77,7 +85,7 @@ vi.mock("../../shopify.server", () => ({
 
 import { action as businessAction } from "../../routes/app.business";
 import { action as dictionaryAction } from "../../routes/app.dictionary";
-import { bulk_extract, bulk_alt_text } from "../../../worker/tasks";
+import { bulk_extract, bulk_alt_text, reconcile_mirrors } from "../../../worker/tasks";
 
 const SHOP = { id: "shop1", domain: "nordwood.myshopify.com", plan: "none" };
 
@@ -163,6 +171,40 @@ describe("G2: worker tasks refuse at execution", () => {
     const update = mockJobRunUpdate.mock.calls.at(-1)?.[0];
     expect(update.data.status).toBe("refused");
     expect(statuses()).toEqual(["running", "refused"]);
+  });
+
+  it("reconcile_mirrors still withdraws on a shop without access, and queues nothing", async () => {
+    // PRD-PORT-1.7.8 I.2: withdrawal is never gated. QA of 3 September 2026,
+    // blocking 2: the gate used to sit above the whole task, so a shop that
+    // lapsed between the POST and the run kept every page that no longer
+    // qualified. Now the catalogue is read and the reconciliation runs; only
+    // the queueing of new pages is withheld, and the report says which half
+    // happened.
+    mockMayProcessAutomatically.mockResolvedValue(false);
+    const read = {
+      products: [],
+      complete: true,
+      objectsMatch: true,
+      expected: { root: 0, objects: 0 },
+      read: { root: 0, objects: 0 },
+    };
+    mockFetchAllProducts.mockResolvedValue(read);
+    mockReconcileMirrors.mockImplementation(async (_shop, _read, _prefs, addJob) => {
+      // The job the reconciliation would queue must be refused, not counted.
+      const queued = (await addJob("gid://shopify/Product/1")) === false ? 0 : 1;
+      return { skipped: false, expected: 0, read: 0, deleted: 2, adopted: 0, queued };
+    });
+
+    await reconcile_mirrors({ shopId: "shop1", jobRunId: "job4" }, helpers);
+
+    expect(mockFetchAllProducts).toHaveBeenCalledTimes(1);
+    expect(mockReconcileMirrors).toHaveBeenCalledTimes(1);
+    const update = mockJobRunUpdate.mock.calls.at(-1)?.[0];
+    expect(update.data.status).toBe("done");
+    expect(update.data.report.deleted).toBe(2);
+    expect(update.data.report.queued).toBe(0);
+    expect(update.data.report.queueingRefused).toContain("no active subscription");
+    expect(statuses()).toEqual(["running", "done"]);
   });
 
   it("a failing entitlement check leaves no job stuck at queued", async () => {

@@ -19,6 +19,7 @@ export async function enqueue(
     | "bulk_alt_text"
     | "crawler_check"
     | "bulk_collections"
+    | "reconcile_mirrors"
     | "seo_queue_build"
     | "seo_apply",
   payload: Record<string, unknown>,

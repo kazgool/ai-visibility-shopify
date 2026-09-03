@@ -117,6 +117,59 @@ over memory — APIs moved fast in 2025–2026.
 
 ## Workflow
 
+- **Nothing is handed over that has not been run, and the handover carries
+  the last lines of the run.** Not "I believe it typechecks": the actual
+  final lines of `check.bat`, with the test and file counts. Written 2
+  September 2026, after a change set was handed over with two typecheck
+  errors in it and after a whole wave was handed over having never been
+  executed at all. If a tool is missing and the run is impossible, say
+  "unverified" in the first sentence of the handover and do not describe the
+  work as done. A handover blocked for two minutes is cheaper than a broken
+  one. Same day, the CHANGELOG entry for that wave described behaviour
+  nobody had observed; a delivery note is not a place to write what the code
+  ought to do.
+- **A change to an exported type, a shared constant or a function signature
+  is not made until every construction site is listed.** Grep the name
+  across `app`, `worker`, `scripts`, `extensions` and every `__tests__`
+  directory, and put the hit count in the handover. Tests build these types
+  as literals and are the first thing a widened type breaks: adding one
+  required field to `CatalogueRead` broke two test files that a single grep
+  for the type name would have found.
+- **Green locally is not green.** Before any commit that adds or moves a
+  test file, run the suite once with `.env` renamed away. CI has no `.env`,
+  and a module that calls `shopifyApp()` at import time throws there and
+  nowhere else. This shipped a red CI on 2 September after two adversarial
+  review rounds had read the same file without running it.
+- **A wave that fixes a class of defect closes the class.** Before it is
+  called done, enumerate every instance in the repo - every write path,
+  every worker task, every route action - list them in the PRD by file and
+  line, and say for each whether it is fixed or deliberately left, with the
+  reason. Entitlement gates took four separate passes across two days
+  because each one fixed the instances in front of it. A wave that fixes
+  some of a class and declares the class handled is worse than one that
+  fixes none, because the next reader trusts it.
+- **A specification that describes what existing code computes runs that
+  code first and pastes the output.** No sentence about an existing
+  function's arithmetic without the arithmetic in front of you. Both
+  catalogues are on disk and the runner is `scripts/audit-engine-run.ts`,
+  seconds per run. Skipping it put a false method line on a merchant-facing
+  screen and threaded a duplicate of an existing figure through six files.
+- **A cheap read that would settle a specification question is run before
+  the specification is written, not listed as a prerequisite inside it.** If
+  the command needs Marius, it is the first line of the session, not the
+  last line of a document. A 1,900-line PRD was written around
+  `scripts/read-forwarding.ts`, a read-only script that had been available
+  for twelve days and was never run, with four of its features declared
+  blocked on the answer.
+- **An acceptance criterion that is not met is a failed wave until the PRD
+  is amended and the amendment is approved.** Never explained away in the
+  delivery note for the same wave. Amending is often right; amending
+  silently is how a spec stops meaning anything.
+- **A decision recorded in the CHANGELOG binds the next audit.** An audit
+  that contradicts one must quote it and argue against it, or it is not a
+  finding. Read the Unreleased section before auditing the code it
+  describes. Skipping that cost one decision, one contradicting audit, one
+  fix and one correction in a third document, for a two-line change.
 - `check.bat` = install + prisma generate + typecheck + tests. Run it (or
   its steps) before declaring anything done. 65+ tests must stay green.
   (EPERM on prisma generate means dev.bat is running — stop it first.)

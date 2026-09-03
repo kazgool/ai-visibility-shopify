@@ -20,6 +20,156 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Fixed after two independent QA rounds on the withdrawal wave (3 September 2026)
+
+The wave below was written on 2 September and handed over unrun. On 3
+September it was run (41 test files, 502 tests, green with `.env` renamed
+away), then reviewed by two independent readers on different axes and
+adjudicated by a third; the report is `QA-WAVE-A-2026-09-03.md`. What that
+found, and what changed:
+
+- **The reconciliation could empty a shop's whole mirror on a read that parsed
+  products but found none eligible.** `complete` counts products, not fields,
+  so a `status` or `onlineStoreUrl` that stopped arriving in the bulk export
+  would have deleted every row with a "done" report and nothing to re-queue.
+  There is now a floor: products read and none eligible means nothing is
+  deleted, said in the log and on the Report card. A root count of zero is
+  still a legitimate wipe. Consequence to know: a small shop whose every
+  product is legitimately out of the set (all sold out, toggle off) keeps its
+  pages until one qualifies again. That is the safe direction.
+- **Withdrawal was still gated on the weekly sweep and on the toggle job**,
+  which contradicted the sentence in the entry below that says it is never
+  gated, and the comment in `reconcile_mirrors` that said the sweep still
+  takes pages down on any shop. Both now read the catalogue and reconcile for
+  every installed shop; only the queueing of new pages is withheld without paid
+  access, and the JobRun report says which half happened. Cost: one bulk
+  export per lapsed shop per week.
+- **The Report card counted a different set than llms.txt** (rows with a
+  `productId` against every row), so on a shop with rows from before that
+  column existed the card undercounted the public set until the first
+  reconciliation adopted them. It now counts every row, which is what the
+  proxy serves and llms.txt lists.
+- **PRD I.3 was amended** to record that `complete` compares the root count
+  only, with the reasoning, instead of arguing it here. Approved the same day.
+- A collection whose members all left the store kept its old `table`
+  metafield, links to 404s included; an auto-written table is now withdrawn
+  when the pass produces none, the way an auto fact is.
+- A deleted product on a paid shop kept its page until the weekly sweep while
+  a shop without access lost it in a minute; `extractOneProduct` now withdraws
+  the row when the product is gone, on both paths.
+- The catalogue pass wrote a mirror row only for products with facts, so the
+  reconciliation queued one `extract_product` per zero-facts product after
+  every Fill catalogue; the row is now written for every eligible product.
+- The toggle POST had no `jobKey` and no one-at-a-time guard: two saves ten
+  seconds apart made two jobs and a bulk-operation collision. It now refuses
+  while a job is queued or running, names which, and keys the job.
+- The dashboard's already-running banner did not say what was running, and a
+  queued setting change never triggered the stalled-job banner; both now name
+  the job (`app/services/job-kinds.ts`).
+- A failed or refused setting change rendered no sentence on the Report card;
+  every terminal state now has one, and counts pluralise.
+- A handle swapped between two renamed products left one product's page
+  serving under the other's URL, reported as a clean pass; a row whose
+  `productId` is not the product that owns its handle is now withdrawn and
+  re-queued.
+- The free-tier Products screen told an unlisted product's owner "Not
+  published to the Online Store", which is the one cause it is not; it now
+  names the toggle and the screen it is on.
+- Tests for the rows that had none: the report action, `savePrefs`, the
+  `products/delete` handler, and the mirror's availability line.
+
+One finding from the rounds was wrong and is recorded as such in the QA
+report: `status:active,unlisted` is documented Shopify syntax ("Filter by a
+comma-separated list of statuses", example `status:active,draft`).
+
+### Fixed (a product taken off the store kept its public pages, 2 September 2026)
+
+What a merchant would have seen before this: a product unpublished in June,
+still answering at `/apps/ai-visibility/<handle>` in September, still listed in
+llms.txt and agents.md, and quotable by an assistant as something the shop
+sells. On a shop with no active subscription the page never came down at all
+unless the product was deleted outright.
+
+One table, `MirrorCache`, is the whole public set: the proxy serves any row by
+handle, and llms.txt and agents.md list every row a shop has. Nothing on the
+request path checks the product's state, by design - no Admin API call on a
+public request - so the row has to be removed when the state changes, or by a
+later check. Four ways it was not:
+
+- **A lost `products/update` on a paid shop.** The weekly cleanup only matched
+  rows with a NULL `productId`, which is the shape of rows written before that
+  column existed. A row with a `productId` was never touched, and a product
+  taken off sale is often never edited again, so the page served indefinitely.
+- **Any shop without paid access.** The entitlement gate in `extract_product`
+  returned before the withdrawal branch was ever reached. Withdrawal is now
+  never gated (true of every path since 3 September; on 2 September the sweep
+  and the toggle job were still gated, see the entry above): deleting this
+  app's own row writes nothing to Shopify and costs no pass, and a public page
+  for a product the store no longer sells is not a benefit kept, it is a claim
+  that has become false. The cost is one product
+  read per update of a product that has a page, and zero Admin calls when it
+  has none.
+- **A renamed product.** The old-handle row kept answering 200 with a canonical
+  link to a URL Shopify only redirects if the merchant set a redirect.
+- **A lost `products/delete`.** Same NULL-only cleanup, same result.
+
+All four now fall out of one rule, in `mirror-reconcile.server.ts`: a row is
+kept only because a product that is eligible right now has that handle. It runs
+at the end of every catalogue pass, in the weekly sweep, and when a merchant
+changes a publishing setting.
+
+- **It refuses to delete anything when Shopify's catalogue download was
+  short** (audit 6.9). `fetchAllProducts` now returns `complete`, comparing the
+  bulk operation's own `rootObjectCount` against the number of products
+  parsed. The object count is reported beside it as `objectsMatch` and has no
+  vote: Shopify counts child rows, this parser counts JSONL lines, and if
+  those two definitions ever disagree by one, requiring both to match would
+  make `complete` false on every shop and the withdrawal would be silently
+  inert while appearing to ship. A truncated download otherwise looks exactly
+  like a catalogue that shrank, and acting on the difference would empty the
+  mirror for a shop whose products are all still on sale. Skipping costs a
+  week; deleting wrongly costs every page. This case cannot be forced on
+  Shopify, so the evidence is the
+  unit test in `catalogue-read.test.ts`, and it is recorded here as such.
+- **Comparison tables leaked the same way, in a different shape.** The Admin
+  API returns a collection's members whatever their status, and every table row
+  links to `/products/{handle}`, so a draft, archived or unpublished member was
+  written into the collection's `table` metafield with a link to a 404, and an
+  unlisted member appeared in the one place Shopify says it does not. Members
+  are now filtered before the table is built. Sold-out members are kept: the
+  shop's own collection page lists them, and the table follows the page.
+
+### Added (two settings for which product states are put in front of AI, 2 September 2026)
+
+On the Report screen, a "What is switched on" card with the Plain text pages
+row and two checkboxes, each stating its effect in a sentence beside it.
+Turning one off removes pages that are already published, within a minute, not
+merely stops adding new ones.
+
+- **Include products that are out of stock**, default on. A sold-out product's
+  page states its availability, so an assistant reading it is told; hiding it
+  would be this app deciding something the merchant did not.
+- **Include unlisted products**, default off. `UNLISTED` is a real fourth
+  Shopify product status since API version 2025-10, not a synonym for draft:
+  the product is active but only a direct link reaches it, and Shopify keeps it
+  out of search, collections and recommendations. Publishing it by default
+  would undo the merchant's own decision to hide it. Off also keeps it out of
+  the catalogue pass, the alt-text pass and the SEO queue.
+
+With both at their defaults the app publishes exactly what it published
+before. Never given a page, and no toggle offered for them: drafts, archived
+products, and products active but not published to the Online Store. None has
+a public address, so a page for them would point at nothing.
+
+- **"Out of stock" was measured wrongly and is now asked of the variants.** It
+  read `totalInventory > 0`, so a made-to-order product with inventory tracking
+  off, or one whose variant policy is to keep selling at zero, printed
+  `availability: out of stock` in its mirror while Shopify was selling it. It
+  now reads Shopify's own `availableForSale` across the variants, which is the
+  same value the mirror line, the summary's out-of-stock clause and the toggle
+  all read, so the three cannot disagree. Unknown stays unknown: a product
+  whose variants were not read prints no availability line rather than a guess.
+
 ### Added (the Report screen, 2 September 2026)
 
 A new read-only screen at `/app/report`, "Reporting at a glance"

@@ -12,6 +12,7 @@
 import { buildCollectionCapsule, cleanOutput, type Fact } from "../engine";
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE, ENGINE_VERSION } from "./facts.server";
+import { DEFAULT_PREFS, eligibility, type PublishPrefs } from "./eligibility";
 
 export type CollectionNode = {
   id: string;
@@ -25,6 +26,13 @@ export type CollectionNode = {
       id: string;
       title: string;
       handle: string;
+      // Read so a member that has no public product page can be dropped
+      // before it reaches the table. The Admin API returns a collection's
+      // members whatever their status, so without these two a draft or
+      // unpublished member was rendered with a link to a 404, and an
+      // unlisted member appeared in the one place Shopify says it does not.
+      status?: string | null;
+      onlineStoreUrl?: string | null;
       metafields?: { key: string; value: string }[];
     }[];
   };
@@ -50,6 +58,8 @@ const COLLECTIONS = `#graphql
             id
             title
             handle
+            status
+            onlineStoreUrl
             metafields(namespace: "$app", first: 2) { nodes { key value } }
           }
         }
@@ -73,6 +83,8 @@ type RawNode = Omit<CollectionNode, "metafields" | "products"> & {
       id: string;
       title: string;
       handle: string;
+      status?: string | null;
+      onlineStoreUrl?: string | null;
       metafields?: { nodes: { key: string; value: string }[] };
     }[];
   };
@@ -152,12 +164,50 @@ export type CollectionOutcome = {
   written: string[];
   skipped: string[];
   unchanged: string[];
+  /** Auto-written fields withdrawn because this pass produced nothing for them. */
+  removed: string[];
   /** Nothing comparable in this collection - said plainly, not hidden. */
   empty: boolean;
 };
 
-export function buildForCollection(collection: CollectionNode) {
-  const products = (collection.products?.nodes ?? []).map((p) => ({
+const METAFIELDS_DELETE = `#graphql
+  mutation DeleteCollectionFields($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      userErrors { field message }
+    }
+  }
+`;
+
+/**
+ * The members a comparison table may show. Every row links to
+ * /products/{handle}, so a member with no public product page would put a
+ * link to a 404 into a metafield that then persists until the next
+ * collections pass.
+ *
+ * Out of stock is forced on here whatever the merchant's toggle says:
+ * Shopify's own collection page lists sold-out members, and the table sits on
+ * that page, so the table follows the page. The unlisted toggle is honoured,
+ * because an unlisted product is one Shopify keeps out of collections.
+ */
+export function eligibleMembers(
+  collection: CollectionNode,
+  prefs: PublishPrefs = DEFAULT_PREFS,
+) {
+  const tablePrefs: PublishPrefs = { ...prefs, includeOutOfStock: true };
+  return (collection.products?.nodes ?? []).filter(
+    (p) =>
+      eligibility(
+        { status: p.status ?? undefined, onlineStoreUrl: p.onlineStoreUrl ?? null },
+        tablePrefs,
+      ) === "eligible",
+  );
+}
+
+export function buildForCollection(
+  collection: CollectionNode,
+  prefs: PublishPrefs = DEFAULT_PREFS,
+) {
+  const products = eligibleMembers(collection, prefs).map((p) => ({
     id: p.id,
     title: p.title,
     handle: p.handle,
@@ -178,13 +228,18 @@ export function buildForCollection(collection: CollectionNode) {
 export async function writeCollections(
   graphql: GraphqlFn,
   collections: CollectionNode[],
+  prefs: PublishPrefs = DEFAULT_PREFS,
 ): Promise<CollectionOutcome[]> {
   const outcomes: CollectionOutcome[] = [];
   const metafields: Record<string, unknown>[] = [];
+  const deletions: Record<string, unknown>[] = [];
 
   for (const collection of collections) {
-    const capsule = buildForCollection(collection);
-    const members = collection.products?.nodes?.length ?? 0;
+    const capsule = buildForCollection(collection, prefs);
+    // The members the table was built from, not every member the API
+    // returned: reporting a count the table does not match is a number
+    // without its denominator.
+    const members = eligibleMembers(collection, prefs).length;
     const outcome: CollectionOutcome = {
       id: collection.id,
       title: cleanOutput(collection.title),
@@ -194,6 +249,7 @@ export async function writeCollections(
       written: [],
       skipped: [],
       unchanged: [],
+      removed: [],
       empty: capsule.table.columns.length === 0,
     };
 
@@ -214,7 +270,25 @@ export async function writeCollections(
         continue;
       }
       if (field.value === "" || field.value === "[]" || field.value === "{}") continue;
-      if (field.key === "table" && capsule.table.columns.length === 0) continue;
+      if (field.key === "table" && capsule.table.columns.length === 0) {
+        // The pass produced no table. If a previous pass wrote one, it still
+        // sits in the metafield with a row per member it had then, each row a
+        // link to /products/{handle} - and the reason there is no table now is
+        // usually that those members went draft, archived or unlisted. Left in
+        // place it is a table of links to 404s, which is the leak PRD-PORT-1.7.8
+        // I.5 says this change closes (QA of 3 September 2026, wave fix 1). So
+        // an auto-written table is withdrawn, the way writeFacts withdraws an
+        // auto value the engine no longer produces. mayWrite above already
+        // refused a human-written one.
+        const current = collection.metafields?.find((m) => m.key === field.key)?.value;
+        if (current && current !== "" && current !== "{}") {
+          deletions.push({ ownerId: collection.id, namespace: NAMESPACE, key: field.key });
+          delete state[field.key];
+          outcome.removed.push(field.key);
+          touched = true;
+        }
+        continue;
+      }
 
       // Never write an identical value: writing marks the collection as
       // updated, and an update we caused is an update we would react to.
@@ -255,6 +329,15 @@ export async function writeCollections(
     const errors = data?.metafieldsSet?.userErrors ?? [];
     if (errors.length) {
       throw new Error(`metafieldsSet (collections): ${JSON.stringify(errors)}`);
+    }
+  }
+
+  for (let i = 0; i < deletions.length; i += 24) {
+    const slice = deletions.slice(i, i + 24);
+    const data = await graphql<any>(METAFIELDS_DELETE, { metafields: slice });
+    const errors = data?.metafieldsDelete?.userErrors ?? [];
+    if (errors.length) {
+      throw new Error(`metafieldsDelete (collections): ${JSON.stringify(errors)}`);
     }
   }
 

@@ -34,6 +34,7 @@ import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import { businessFor } from "../services/business.server";
 import { hasPaidAccess, freeProductIds } from "../services/billing.server";
 import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
+import { describeJobKind } from "../services/job-kinds";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
 // in one glance - how much is covered, what is protected, what is left to do -
@@ -132,19 +133,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // so a job that is genuinely working never looks stalled however long the
   // catalogue is; one that nothing is consuming does, and says so on the
   // first load rather than only to whoever leaves the tab open.
+  //
+  // Any kind, the same set the action's one-at-a-time guard blocks on. The
+  // list used to be [lastRun, lastAlt, crawlerJob], so a queued job of any
+  // other kind - a setting change from the Report screen, a collections pass -
+  // blocked every button here while this banner never fired, and the merchant
+  // was locked out with no explanation (QA of 3 September 2026, wave fix 5).
   const STALL_MS = 3 * 60 * 1000;
-  const stalledJob = [lastRun, lastAlt, crawlerJob].find(
-    (j) =>
-      j &&
-      (j.status === "queued" || j.status === "running") &&
-      Date.now() - j.updatedAt.getTime() > STALL_MS,
-  );
-  const stalledFor = stalledJob
-    ? Math.floor((Date.now() - stalledJob.updatedAt.getTime()) / 60000)
+  const activeJob = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+        orderBy: { updatedAt: "desc" },
+        select: { kind: true, status: true, updatedAt: true },
+      })
     : null;
+  const stalledFor =
+    activeJob && Date.now() - activeJob.updatedAt.getTime() > STALL_MS
+      ? Math.floor((Date.now() - activeJob.updatedAt.getTime()) / 60000)
+      : null;
 
   return {
     stalledFor,
+    activeJobKind: activeJob?.kind ?? null,
     products: json.data?.products?.nodes ?? [],
     totalProducts: json.data?.productsCount?.count ?? 0,
     lastRun,
@@ -200,8 +210,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // calls and muddle the report. One at a time.
   const active = await db.jobRun.findFirst({
     where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+    select: { kind: true },
   });
-  if (active) return { ok: false, alreadyRunning: true };
+  if (active) return { ok: false, alreadyRunning: true, blockingKind: active.kind };
 
   if (mode === "alt") {
     const jobRun = await db.jobRun.create({
@@ -348,12 +359,18 @@ export default function Dashboard() {
     collectionsBuilt,
     hasBusiness,
     stalledFor,
+    activeJobKind,
     hasAccess,
     freeProductsRemaining,
     crawlerHits,
   } = useLoaderData<typeof loader>() as any;
   const actionData = useActionData<typeof action>() as
-    | { ok: boolean; alreadyRunning?: boolean; needsSubscription?: boolean }
+    | {
+        ok: boolean;
+        alreadyRunning?: boolean;
+        blockingKind?: string;
+        needsSubscription?: boolean;
+      }
     | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -404,12 +421,17 @@ export default function Dashboard() {
     >
       <BlockStack gap="500">
         {actionData?.alreadyRunning ? (
-          <Banner tone="warning" title="A job is already running">
+          <Banner
+            tone="warning"
+            title={`${describeJobKind(actionData.blockingKind)} is already running`}
+          >
             <Text as="p">
-              Nothing new was started: one pass runs at a time, so a second
-              would only double the API calls and muddle the report. The
-              running job's progress is saved on our servers - it shows on
-              this screen as it moves.
+              Nothing new was started: one job runs at a time, so a second
+              would only double the API calls and muddle the report. Its
+              progress is saved on our servers
+              {actionData.blockingKind === "reconcile"
+                ? " and its result shows on the Report screen."
+                : " - it shows on this screen as it moves."}
             </Text>
           </Banner>
         ) : null}
@@ -443,7 +465,7 @@ export default function Dashboard() {
         {stalled ? (
           <Banner
             tone="warning"
-            title={`This job has not moved in ${stalledFor} minute${stalledFor === 1 ? "" : "s"}`}
+            title={`${describeJobKind(activeJobKind)} has not moved in ${stalledFor} minute${stalledFor === 1 ? "" : "s"}`}
           >
             <Text as="p">
               The background worker is not picking work up. Nothing is lost -

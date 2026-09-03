@@ -6,7 +6,14 @@
 
 import type { Task } from "graphile-worker";
 import db from "../app/db.server";
-import { extractOneProduct, runBulkExtract } from "../app/services/extract.server";
+import {
+  extractOneProduct,
+  runBulkExtract,
+  withdrawIfIneligible,
+} from "../app/services/extract.server";
+import { catalogueQuery } from "../app/services/eligibility";
+import { prefsFor } from "../app/services/eligibility.server";
+import { reconcileMirrors } from "../app/services/mirror-reconcile.server";
 import { adminGraphql } from "../app/services/admin.server";
 import {
   mayProcessAutomatically,
@@ -97,6 +104,14 @@ export const bulk_extract: Task = async (payload, helpers) => {
           data: { progress: done, total },
         });
       },
+      addJob: async (productGid: string) => {
+        await helpers.addJob(
+          "extract_product",
+          { shopId, productGid },
+          { maxAttempts: 3, jobKey: `extract:${productGid}` },
+        );
+      },
+      log: (message) => helpers.logger.info(message),
     });
 
     if (!dryRun) await advancePollCursor(shopId);
@@ -143,8 +158,19 @@ export const extract_product: Task = async (payload, helpers) => {
   if (!shop) return;
 
   if (!(await mayProcessAutomaticallyCached(shop))) {
+    // Withdrawal is never gated (section I.2). This was the larger of the two
+    // holes and it is not a lost webhook: the free tier writes mirror rows for
+    // three merchant-chosen products, and every row a lapsed shop wrote while
+    // it was paid is still serving. When one of those products is unpublished,
+    // products/update arrives, this task is queued, and until now it returned
+    // here - so the only thing that ever removed the row was products/delete.
+    // Nothing is taken away that is a benefit; a public page for a product the
+    // store no longer sells is not a benefit kept, it is a claim that has
+    // become false.
+    const withdrawn = await withdrawIfIneligible(shopId, productGid);
     helpers.logger.info(
-      `extract_product ${shop.domain}: skipped, no active subscription or comp`,
+      `extract_product ${shop.domain}: skipped, no active subscription or comp` +
+        (withdrawn ? "; its text page was withdrawn, the product no longer qualifies" : ""),
     );
     return;
   }
@@ -361,8 +387,9 @@ export const poll_changes: Task = async (_payload, helpers) => {
  * that half a season is missing.
  *
  * Cheap by design: it reads through one bulk operation and only writes what is
- * genuinely absent. The same catalogue read also feeds the mirror-orphan
- * cleanup below.
+ * genuinely absent. The same catalogue read also feeds the mirror
+ * reconciliation below, which is what takes a page down when the webhook that
+ * should have done it never arrived.
  */
 export const sweep_missing: Task = async (_payload, helpers) => {
   const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
@@ -371,35 +398,58 @@ export const sweep_missing: Task = async (_payload, helpers) => {
     try {
       const graphql = await adminGraphql(shop.domain);
 
-      // Same rule as poll_changes: FREE-TIER-SPEC §3 excludes the sweep
-      // from the free tier, checked once per shop before the (expensive)
-      // catalogue read even starts.
-      if (!(await mayProcessAutomatically(shop, graphql))) {
+      // ENTITLEMENT, in two halves (PRD-PORT-1.7.8 I.2: withdrawal is never
+      // gated; QA of 3 September 2026, blocking 2). The catalogue is read and
+      // the reconciliation runs for every installed shop, because taking a
+      // page down writes nothing to Shopify and a shop without paid access is
+      // exactly the shop whose lost-webhook pages would otherwise serve for
+      // ever. What the gate decides is whether this shop gets new work queued:
+      // the missing-attributes half below, and the extract_product jobs the
+      // reconciliation would add for eligible products with no row. On a shop
+      // without access those jobs are given a no-op, so the reconciliation
+      // still deletes and adopts, and its log line reports 0 queued.
+      // Cost accepted with the fix: one bulk export per lapsed shop per week.
+      const paid = await mayProcessAutomatically(shop, graphql);
+
+      const prefs = await prefsFor(shop.id);
+      const catalogue = await fetchAllProducts(graphql, catalogueQuery(prefs));
+      const products = catalogue.products;
+
+      // Full reconciliation, piggybacking on the catalogue already read. This
+      // replaces a cleanup that only matched rows with a NULL productId, and
+      // so never touched the case it was most needed for: a lost
+      // products/update on a paid shop leaves a row that has a productId, and
+      // a product taken off sale is often never edited again, so the page and
+      // its llms.txt entry served indefinitely. It also refuses to delete
+      // anything when Shopify's download was short, which the old statement
+      // did not check at all.
+      await reconcileMirrors(
+        { id: shop.id, domain: shop.domain },
+        catalogue,
+        prefs,
+        paid
+          ? async (productGid: string) => {
+              await helpers.addJob(
+                "extract_product",
+                { shopId: shop.id, productGid },
+                { maxAttempts: 3, jobKey: `extract:${productGid}` },
+              );
+            }
+          : async () => false,
+        (message) => helpers.logger.info(message),
+      );
+
+      if (!paid) {
         helpers.logger.info(
-          `sweep_missing ${shop.domain}: skipped, no active subscription or comp`,
+          `sweep_missing ${shop.domain}: pages reconciled; attribute sweep skipped, no active subscription or comp`,
         );
         continue;
       }
 
+      // The missing-attributes half runs either way after a skipped
+      // reconciliation: writing is safe on a short read, only deleting is not.
       const dictionary = await dictionaryFor(shop.id);
       const extraStopwords = await extraStopwordsFor(shop.id);
-      const products = await fetchAllProducts(graphql);
-
-      // Mirror-orphan cleanup, piggybacking on the catalogue already read:
-      // MirrorCache rows written before the productId column have NULL
-      // there, so a product deleted before that migration left its mirror
-      // serving forever - products/delete matches by productId and never
-      // found the row. A NULL-productId row whose handle no longer exists
-      // in the catalogue belongs to no product and is deleted here weekly.
-      // Rows whose product still exists are healed on the product's next
-      // update instead (dropStaleMirror adopts them by handle).
-      const liveHandles = products.map((p) => p.handle).filter(Boolean) as string[];
-      const { count: orphaned } = await db.mirrorCache.deleteMany({
-        where: { shopId: shop.id, productId: null, handle: { notIn: liveHandles } },
-      });
-      if (orphaned > 0) {
-        helpers.logger.info(`sweep_missing ${shop.domain}: removed ${orphaned} orphaned mirror(s)`);
-      }
 
       const missing = products.filter(
         (p) => !p.metafields?.some((m) => m.key === "facts" && m.value),
@@ -428,6 +478,98 @@ export const sweep_missing: Task = async (_payload, helpers) => {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
       helpers.logger.error(`sweep_missing failed for ${shop.domain}: ${describeError(error)}`);
     }
+  }
+};
+
+/**
+ * Apply a change to the two publishing toggles (section J.6).
+ *
+ * Turning a toggle off has to remove pages that are already published, not
+ * merely stop adding new ones - otherwise the setting describes the future
+ * and lies about the present. Run as a job so the merchant's POST returns at
+ * once and the screen can report the outcome from a JobRun row rather than
+ * from local state.
+ */
+export const reconcile_mirrors: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = payload as { shopId: string; jobRunId?: string };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+
+  try {
+    const graphql = await adminGraphql(shop.domain);
+
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: { status: "running", startedAt: new Date() },
+      });
+    }
+
+    // ENTITLEMENT, same two halves as sweep_missing (PRD-PORT-1.7.8 I.2:
+    // withdrawal is never gated; QA of 3 September 2026, blocking 2). The
+    // POST that queued this already refused a shop without paid access, so
+    // reaching here unpaid means access lapsed in between. The withdrawal
+    // still runs: taking pages down is the half of a toggle change that must
+    // never wait on a subscription. Only the queueing of new pages is withheld,
+    // and the report says so, so the card can tell the merchant which half
+    // happened.
+    const paid = await mayProcessAutomatically(shop, graphql);
+
+    const prefs = await prefsFor(shopId);
+    const catalogue = await fetchAllProducts(graphql, catalogueQuery(prefs));
+    const result = await reconcileMirrors(
+      { id: shop.id, domain: shop.domain },
+      catalogue,
+      prefs,
+      paid
+        ? async (productGid: string) => {
+            await helpers.addJob(
+              "extract_product",
+              { shopId: shop.id, productGid },
+              { maxAttempts: 3, jobKey: `extract:${productGid}` },
+            );
+          }
+        : async () => false,
+      (message) => helpers.logger.info(message),
+    );
+
+    if (!paid) {
+      helpers.logger.info(
+        `reconcile_mirrors ${shop.domain}: pages reconciled; nothing queued, no active subscription or comp`,
+      );
+    }
+
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "done",
+          finishedAt: new Date(),
+          report: {
+            ...result,
+            ...(paid
+              ? {}
+              : {
+                  queueingRefused:
+                    "This shop has no active subscription, so no new pages were queued; pages that no longer qualify were still withdrawn.",
+                }),
+          } as any,
+        },
+      });
+    }
+  } catch (error) {
+    if (jobRunId) {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: {
+          status: "failed",
+          finishedAt: new Date(),
+          report: { error: String(error) } as any,
+        },
+      });
+    }
+    throw error;
   }
 };
 
@@ -474,7 +616,13 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
 
     const dictionary = await dictionaryFor(shopId);
     const extraStopwords = await extraStopwordsFor(shopId);
-    const products = await fetchAllProducts(graphql);
+    // Same set the catalogue pass reads: alt text for an unlisted product is
+    // written only when the merchant included unlisted products, which is
+    // what "not read by the catalogue pass" promises on the Report screen.
+    const { products } = await fetchAllProducts(
+      graphql,
+      catalogueQuery(await prefsFor(shopId)),
+    );
 
     // Media shared between products is the trap: the same file inherits the
     // first description written for it. We track ownership across the pass.
@@ -693,6 +841,7 @@ export const bulk_collections: Task = async (payload, helpers) => {
     }
 
     const collections = await fetchCollections(graphql);
+    const prefs = await prefsFor(shopId);
 
     if (jobRunId) {
       await db.jobRun.update({
@@ -704,7 +853,7 @@ export const bulk_collections: Task = async (payload, helpers) => {
     const outcomes = [];
     for (let i = 0; i < collections.length; i += 5) {
       const batch = collections.slice(i, i + 5);
-      outcomes.push(...(await writeCollections(graphql, batch)));
+      outcomes.push(...(await writeCollections(graphql, batch, prefs)));
       if (jobRunId) {
         await db.jobRun.update({
           where: { id: jobRunId },

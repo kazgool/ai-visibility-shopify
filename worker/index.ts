@@ -15,6 +15,7 @@ async function main() {
       bulk_alt_text: tasks.bulk_alt_text,
       poll_changes: tasks.poll_changes,
       sweep_missing: tasks.sweep_missing,
+      reconcile_mirrors: tasks.reconcile_mirrors,
       crawler_check: tasks.crawler_check,
       bulk_collections: tasks.bulk_collections,
       seo_watch: tasks.seo_watch,
