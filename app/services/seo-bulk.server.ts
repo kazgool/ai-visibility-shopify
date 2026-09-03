@@ -16,6 +16,7 @@ import { prefsFor } from "./eligibility.server";
 import { dictionaryFor, extraStopwordsFor } from "./extract.server";
 import { extractProduct, stopwordSet, type Fact } from "../engine";
 import { isSeoUnlocked, mayProcessAutomatically } from "./billing.server";
+import { computeSourceA } from "./seo-scan.server";
 import {
   buildSeoQueue,
   writeSeo,
@@ -38,7 +39,15 @@ export async function runSeoQueueBuild(
 
   // The same set the catalogue pass reads, so an unlisted product gets SEO
   // fields only when the merchant included unlisted products.
-  const { products } = await fetchAllProducts(graphql, catalogueQuery(await prefsFor(shopId)));
+  const catalogue = await fetchAllProducts(graphql, catalogueQuery(await prefsFor(shopId)));
+  const products = catalogue.products;
+
+  // Source A of the per-product SEO scan, on the read already in hand
+  // (PRD-SEO-PER-PRODUCT build step 2). This pass only ever runs behind the
+  // SEO key, so it always computes; every other catalogue pass does the same
+  // where the key is present.
+  await computeSourceA(shopId, graphql, catalogue);
+
   if (options.onProgress) await options.onProgress(0, products.length);
 
   const queueProducts: SeoQueueProduct[] = [];

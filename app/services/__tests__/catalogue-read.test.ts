@@ -79,6 +79,20 @@ describe("the bulk query", () => {
     expect(query).toMatch(/\n\s+status\n/);
     expect(query).toContain("availableForSale");
   });
+
+  // Source A of the per-product SEO scan (PRD-SEO-PER-PRODUCT section 2): the
+  // three variant fields ride along on a read the catalogue pass already pays
+  // for. Asserted on the query string because a field silently dropped here
+  // makes check A1 report every product as missing its GTIN.
+  it("carries the variant fields the SEO scan reads", () => {
+    const query = productsBulkQuery("status:active");
+    // The variant block, not the whole query: "price" alone would match
+    // priceRangeV2 on the product and pass with no variant price at all.
+    const variantBlock = query.slice(query.indexOf("variants"));
+    expect(variantBlock).toContain("barcode");
+    expect(variantBlock).toContain("compareAtPrice");
+    expect(variantBlock).toContain("price");
+  });
 });
 
 describe("fetchAllProducts reports whether the download was whole", () => {

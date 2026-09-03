@@ -7,7 +7,7 @@
 import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
 import { sleep } from "./admin.server";
-import type { ProductInput } from "./facts.server";
+import type { ProductInput, VariantInput } from "./facts.server";
 import { NAMESPACE } from "./facts.server";
 import { catalogueQuery, DEFAULT_PREFS } from "./eligibility";
 
@@ -72,6 +72,9 @@ export function productsBulkQuery(filter: string): string {
                 id
                 title
                 sku
+                barcode
+                price
+                compareAtPrice
                 availableForSale
                 selectedOptions { name value }
                 metafields(namespace: "${NAMESPACE}", first: 3) {
@@ -114,6 +117,9 @@ const SINGLE_PRODUCT = `#graphql
           id
           title
           sku
+          barcode
+          price
+          compareAtPrice
           availableForSale
           selectedOptions { name value }
           metafields(namespace: "${NAMESPACE}", first: 3) {
@@ -183,6 +189,9 @@ export async function fetchProduct(
     id: v.id,
     title: v.title,
     sku: v.sku ?? null,
+    barcode: v.barcode ?? null,
+    price: v.price ?? null,
+    compareAtPrice: v.compareAtPrice ?? null,
     availableForSale: v.availableForSale === true,
     selectedOptions: v.selectedOptions ?? [],
     metafields: (v.metafields?.nodes ?? []).map((n: any) => ({ key: n.key, value: n.value })),
@@ -292,7 +301,7 @@ export async function fetchAllProducts(
   const products = new Map<string, ProductInput>();
   const variants = new Map<
     string,
-    { id: string; title: string | null; sku: string | null; availableForSale?: boolean; selectedOptions: { name: string; value: string }[]; metafields: { key: string; value: string }[] }
+    VariantInput & { metafields: { key: string; value: string }[] }
   >();
   let objects = 0;
   for (const line of body.split("\n")) {
@@ -338,6 +347,9 @@ export async function fetchAllProducts(
         id: row.id,
         title: row.title ?? null,
         sku: row.sku ?? null,
+        barcode: row.barcode ?? null,
+        price: row.price ?? null,
+        compareAtPrice: row.compareAtPrice ?? null,
         availableForSale: row.availableForSale === true,
         selectedOptions: row.selectedOptions ?? [],
         metafields: [] as { key: string; value: string }[],

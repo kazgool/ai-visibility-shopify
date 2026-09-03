@@ -1,0 +1,26 @@
+-- Down path for 20260903120000_seo_scan. Written before the migration it
+-- reverses, per PRD-SEO-PER-PRODUCT build step 2 and the CLAUDE.md rule that
+-- a Postgres schema change needs its way back thought out before the
+-- migration runs, not after.
+--
+-- Prisma has no down migrations, so this is run by hand:
+--
+--   psql "$DIRECT_URL" -f prisma/down/20260903120000_seo_scan.down.sql
+--   DELETE FROM "_prisma_migrations" WHERE migration_name = '20260903120000_seo_scan';
+--
+-- The second line matters: without it `prisma migrate deploy` believes the
+-- table is still there and never recreates it, and the next deploy boots
+-- against a schema that does not match the client.
+--
+-- Safe to run at any time. SeoScan holds nothing a merchant wrote: every
+-- value in it is either a fact re-readable from Shopify in one catalogue
+-- pass or a page read that the nightly task repeats. Dropping it costs one
+-- rescan and loses no merchant work. Nothing else references it - the only
+-- foreign key points from SeoScan to Shop, not the other way, so no cascade
+-- reaches any other table.
+--
+-- It is written as DROP TABLE IF EXISTS rather than DROP TABLE so that
+-- running it twice, or running it against a database where the migration
+-- never landed, is not an error in the middle of an incident.
+
+DROP TABLE IF EXISTS "SeoScan";

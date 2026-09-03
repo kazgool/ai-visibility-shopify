@@ -219,9 +219,13 @@ over memory — APIs moved fast in 2025–2026.
 
 ## Environment facts
 
-Dev store `mrdigital-dev.myshopify.com` (355 real furniture products,
-Romanian descriptions; storefront password `massive`, cannot be disabled
-on dev stores — the crawler check correctly reports it). App id
+Dev store `mrdigital-dev.myshopify.com`. Its catalogue changes: it has held a
+355-product furniture export and, on 3 September 2026, a 50-product seeded
+fixture, and Marius may point the app at another store to test. So never take
+a product count from this file or from an older document; run
+`npx tsx scripts/seo-fields-census.ts <domain>` (read-only, prints counts
+only) and use what it says today. Storefront password `massive`, cannot be
+disabled on dev stores - the crawler check correctly reports it. App id
 405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams+iad
 web, ams worker). Neon `ai-visibility-shopify`, Frankfurt. Repo
 `github.com/kazgool/ai-visibility-shopify`, branch `main`.

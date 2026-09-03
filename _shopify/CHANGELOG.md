@@ -20,6 +20,83 @@ Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.
 
+### Per-product SEO scan, step 2 of 7: the SeoScan table and source A (3 September 2026)
+
+Step 2 of the build order in `PRD-SEO-PER-PRODUCT.md`. Still nothing
+merchant-facing: no screen reads these rows yet, and no page is fetched.
+Step 3 is not started.
+
+- **New table `SeoScan`**, one row per shop and product, with a hand-written
+  migration and a hand-written down path that was written first
+  (`prisma/down/20260903120000_seo_scan.down.sql`). The down path names the
+  `_prisma_migrations` delete that has to accompany the `DROP TABLE`, because
+  without it the next `migrate deploy` believes the table is still there. The
+  table holds nothing a merchant wrote: dropping it costs one rescan.
+- **Checks A1, A3, A4 and A5 are computed at the end of every catalogue
+  pass** - all five of them, listed by file in PRD section 2.2 so the class is
+  closed rather than sampled. A1 names the identifiers that are absent; it
+  does not score four equal checks, and which of them matters is left to the
+  screen, which orders its rows by the counts the store actually has.
+- **A check never reports a field that was not read.** A product whose
+  variants did not arrive has its barcode and SKU reported as `notRead`, never
+  as missing - the merchant is not sent to Shopify admin to fix a field that
+  is already set. Same rule for a failed redirect lookup and for a page nobody
+  has read yet.
+- **A2's variant half is stored as `offer` on the row**, and its comparison is
+  written and unit-tested in both directions against a stubbed page. It raises
+  nothing until step 3 gives it a real page to compare against, because "not
+  yet read" and "the offer agrees" are different sentences.
+- **Two rules carried over from the writers.** A row whose content did not
+  change is not rewritten - only its `bulkAt` moves, in one statement - and
+  the comparison sorts JSON keys because Postgres does not preserve JSONB key
+  order. A short catalogue read deletes no rows, the same flag
+  `reconcileMirrors` obeys.
+- **A shop without the SEO key gets no rows at all**, not empty ones. Turning
+  the key on fills them at the next catalogue pass.
+- **Source A can fail without taking its host down.** It was added to five
+  passes that did their job without it, so a failure is caught, logged and
+  reported on the JobRun rather than failing Fill catalogue, the weekly sweep
+  or an alt-text run. A reported failure and "no SEO key" are deliberately
+  different values, not both null.
+
+Verified: typecheck clean, 42 test files and 545 tests green (42 of them new),
+green again with `.env` renamed away as CI runs, build green, Liquid check
+green. The migration has not been applied to any database.
+
+### Per-product SEO scan, step 1 of 7: the catalogue read and its census (3 September 2026)
+
+Step 1 of the build order in `PRD-SEO-PER-PRODUCT.md`. Nothing merchant-facing
+changed: no screen, no write, no new table, no worker task. Steps 2 to 7 are
+not started.
+
+- **The catalogue read now carries three more variant fields**, `barcode`,
+  `price` and `compareAtPrice`, on both read paths - the bulk export and the
+  single-product query. They ride along on a read the catalogue pass already
+  pays for, so no extra API call exists anywhere. The single-product path was
+  changed too, though the PRD asked only for the bulk one: a field on one read
+  path and not the other is how the same product comes to look different on
+  the product editor and on the nightly row.
+- **`VariantInput` gained the three fields as optional**, so no construction
+  site had to change to compile. All 21 `ProductInput` and 5 `VariantInput`
+  references were read anyway; the four sites that build the shape are listed
+  by file and line in PRD section 2. The bulk parser's inline variant type is
+  now `VariantInput & { metafields }` rather than a duplicate literal, so the
+  two cannot drift apart again.
+- **`scripts/seo-fields-census.ts`**, read-only, prints counts and no product
+  data. It answers how many products carry a barcode, vendor, SKU, image and
+  meta fields, and how many meta values collide. It was run; the output is
+  pasted verbatim into PRD section 0.1.
+- **What the run found is that the dev store is no longer the store the
+  documents describe.** CLAUDE.md records 355 furniture products on
+  `mrdigital-dev`; it holds 50, unfiltered, with zero barcodes, one featured
+  image in fifty, and meta titles that this app wrote on all 50. So the census
+  ran and is real, but it cannot settle which SEO checks deserve a card - PRD
+  section 0.2 says so plainly rather than dressing 50 seeded products up as a
+  measurement, and leaves that decision open for step 4.
+
+Verified: typecheck clean, 41 test files and 503 tests green, build green,
+Liquid check green.
+
 ### Fixed after two independent QA rounds on the withdrawal wave (3 September 2026)
 
 The wave below was written on 2 September and handed over unrun. On 3

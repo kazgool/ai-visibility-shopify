@@ -34,6 +34,7 @@ import {
 import { catalogueQuery, eligibility } from "./eligibility";
 import { prefsFor } from "./eligibility.server";
 import { reconcileMirrors, type Reconciliation } from "./mirror-reconcile.server";
+import { computeSourceA, type SourceAReport } from "./seo-scan.server";
 import { enqueue } from "./queue.server";
 import { renderMirror } from "./mirror.server";
 import { businessFor, type BusinessRecord } from "./business.server";
@@ -309,6 +310,9 @@ export type DryRunReport = {
   /** What the reconciliation at the end of the pass withdrew, adopted and
    * queued. Absent on dry runs, which write nothing and withdraw nothing. */
   reconciled?: Reconciliation;
+  /** Source A of the per-product SEO scan. Absent on a dry run, and null on
+   * a shop without the SEO key, which gets no rows at all. */
+  seoScan?: SourceAReport | null;
 };
 
 export async function runBulkExtract(
@@ -491,6 +495,14 @@ export async function runBulkExtract(
         }),
       options.log,
     );
+  }
+
+  // Source A of the per-product SEO scan, on the read already in hand
+  // (PRD-SEO-PER-PRODUCT build step 2). Never on a dry run: a dry run writes
+  // nothing, and a row in our own database is still a write. Returns null and
+  // writes nothing at all for a shop without the SEO key.
+  if (!options.dryRun) {
+    report.seoScan = await computeSourceA(shopId, graphql, catalogue, options.log);
   }
 
   // Best effort, after the writes: indexing is a bonus, never a failure.

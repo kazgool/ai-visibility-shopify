@@ -22,6 +22,14 @@ export type VariantInput = {
    * `available` is derived from these, not from totalInventory, so a
    * made-to-order product is not reported as sold out. */
   availableForSale?: boolean;
+  /** GTIN as the merchant entered it. Read only, never written: SEO check A1
+   * names it as an absent rich-result identifier, it is not repaired here. */
+  barcode?: string | null;
+  /** The variant's own price and compare-at price, as decimal strings, so
+   * check A2 can compare the live price with the price a product page's
+   * JSON-LD offer states. The product's `price` stays the range minimum. */
+  price?: string | null;
+  compareAtPrice?: string | null;
   selectedOptions: { name: string; value: string }[];
   metafields?: { key: string; value: string }[];
 };

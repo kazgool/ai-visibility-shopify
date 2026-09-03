@@ -56,6 +56,7 @@ model Shop {
   mirrorCache   MirrorCache[]
   themeScans    ThemeScan[]
   crawlerChecks CrawlerCheck[]
+  seoScans      SeoScan[]
 }
 
 model Setting {
@@ -166,4 +167,48 @@ model RequestMetric {
   at       DateTime @default(now())
 
   @@index([at])
+}
+
+// One row per shop and product: what a crawler sees on that product's page,
+// and what the catalogue read says about the product's own fields
+// (PRD-SEO-PER-PRODUCT section 2.2). Operational only - every merchant-
+// authored value it describes lives in Shopify, and losing this table costs
+// a rescan, never a merchant's work.
+//
+// Two sources, kept apart on purpose. Source A (the bulk catalogue read)
+// fills `handle`, `findings`, `offer` and `bulkAt`. Source B (one GET of the
+// public page) fills `nodes`, `status`, `canonical`, `noindex`, `appBlock`,
+// `cacheControl` and `scannedAt`. A null `scannedAt` means the page has never
+// been read, which the screen says as "not yet read" and never as "no
+// finding".
+model SeoScan {
+  id        String  @id @default(uuid())
+  shopId    String
+  productId String
+  handle    String?
+
+  // Source A.
+  bulkAt   DateTime?
+  findings Json?
+  // What the product's variants say about availability and price, so source
+  // B's comparison has something to compare against without a second
+  // catalogue read. Shape: OfferFacts in app/services/seo-scan.ts.
+  offer    Json?
+
+  // Source B. Untouched by build step 2; every one of them is null until the
+  // nightly page scan exists.
+  scannedAt    DateTime?
+  nodes        Json?
+  status       String?
+  canonical    String?
+  noindex      Boolean?
+  appBlock     String?
+  cacheControl String?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, productId])
+  // The nightly scan's order is its cursor: never scanned first, then oldest
+  // first. Postgres sorts NULLs first on ASC, which is exactly that order.
+  @@index([shopId, scannedAt])
 }

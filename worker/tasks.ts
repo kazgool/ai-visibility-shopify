@@ -22,6 +22,7 @@ import {
 import { fetchCollections, writeCollections } from "../app/services/collections.server";
 import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
+import { computeSourceA } from "../app/services/seo-scan.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
@@ -439,6 +440,15 @@ export const sweep_missing: Task = async (_payload, helpers) => {
         (message) => helpers.logger.info(message),
       );
 
+      // Source A of the per-product SEO scan, on the read already in hand
+      // (PRD-SEO-PER-PRODUCT build step 2). Placed before the subscription
+      // gate on purpose: source A is gated by the SEO key alone, which is a
+      // separately billed engagement, and it writes nothing to Shopify.
+      // computeSourceA returns null and writes nothing without that key.
+      await computeSourceA(shop.id, graphql, catalogue, (message) =>
+        helpers.logger.info(message),
+      );
+
       if (!paid) {
         helpers.logger.info(
           `sweep_missing ${shop.domain}: pages reconciled; attribute sweep skipped, no active subscription or comp`,
@@ -534,6 +544,11 @@ export const reconcile_mirrors: Task = async (payload, helpers) => {
       (message) => helpers.logger.info(message),
     );
 
+    // Same read, same rule as sweep_missing above.
+    await computeSourceA(shopId, graphql, catalogue, (message) =>
+      helpers.logger.info(message),
+    );
+
     if (!paid) {
       helpers.logger.info(
         `reconcile_mirrors ${shop.domain}: pages reconciled; nothing queued, no active subscription or comp`,
@@ -619,9 +634,17 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
     // Same set the catalogue pass reads: alt text for an unlisted product is
     // written only when the merchant included unlisted products, which is
     // what "not read by the catalogue pass" promises on the Report screen.
-    const { products } = await fetchAllProducts(
+    const catalogue = await fetchAllProducts(
       graphql,
       catalogueQuery(await prefsFor(shopId)),
+    );
+    const products = catalogue.products;
+
+    // Source A of the per-product SEO scan, on the read already in hand.
+    // Every pass that reads the whole catalogue refreshes it, so a row is
+    // never older than the last full read whichever job did the reading.
+    await computeSourceA(shopId, graphql, catalogue, (message) =>
+      helpers.logger.info(message),
     );
 
     // Media shared between products is the trap: the same file inherits the
