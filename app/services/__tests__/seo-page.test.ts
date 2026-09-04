@@ -16,6 +16,7 @@ const mockCount = vi.fn();
 const mockSettingFindUnique = vi.fn();
 const mockSettingUpsert = vi.fn();
 const mockScanFindUnique = vi.fn();
+const mockSettingDeleteMany = vi.fn();
 
 vi.mock("../../db.server", () => ({
   default: {
@@ -30,6 +31,10 @@ vi.mock("../../db.server", () => ({
       // Build step 4: the nightly pass writes today's spend so the product
       // editor's "Read this page now" button draws from the same allowance.
       upsert: (...a: unknown[]) => mockSettingUpsert(...a),
+      // QA of 3 September 2026: a pass that gets through robots.txt clears
+      // the "robots.txt stopped the scan" row, so the SEO screen stops saying
+      // it the night the merchant fixes robots.txt.
+      deleteMany: (...a: unknown[]) => mockSettingDeleteMany(...a),
     },
   },
 }));
@@ -37,6 +42,9 @@ vi.mock("../../db.server", () => ({
 import type { OfferFacts } from "../seo-scan";
 import {
   BUDGET_SETTING_KEY,
+  cappedBudget,
+  ROBOTS_BLOCK_SETTING_KEY,
+  SPEND_SETTING_KEY,
   DEFAULT_DAILY_BUDGET,
   REQUEST_INTERVAL_MS,
   budgetDay,
@@ -576,6 +584,38 @@ describe("the nightly pass", () => {
     // Not a promise the scan will finish tomorrow, because it will not.
     expect(report.nightsToFinish).toBe(0);
     expect(report.remaining).toBe(10);
+    // And the reason is written where a screen can read it. The B5 above goes
+    // into the JobRun report, which nothing renders: before this, the SEO
+    // screen showed every page row as "waiting for the nightly page read" and
+    // promised a night that had already decided to fetch nothing. The
+    // acceptance row says the Disallow "is reported as B5"; reported into a
+    // log is not reported (QA of 3 September 2026).
+    expect(mockSettingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          shopId: "shop1",
+          key: ROBOTS_BLOCK_SETTING_KEY,
+          value: "/products/",
+        }),
+      }),
+    );
+  });
+
+  it("clears the robots block the night the merchant fixes robots.txt", async () => {
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    mockCount.mockResolvedValue(0);
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(mockSettingDeleteMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", key: ROBOTS_BLOCK_SETTING_KEY },
+    });
   });
 
   it("an unreachable robots.txt does not stop the scan", async () => {
@@ -649,6 +689,46 @@ describe("the budget setting", () => {
   });
 });
 
+// --- the development runner's --limit --------------------------------------
+
+// scripts/run-seo-scan.ts runs the real nightly pass for one shop so it can be
+// watched without waiting for 03:45, and takes --limit N so it can be watched
+// on five pages instead of five hundred. The one thing that must be true of
+// that flag is that it is a ceiling and not a second budget: an operator sets
+// seo_scan_daily_budget, and nothing on a developer's laptop may ask a
+// merchant's storefront for more pages in a day than that setting allows.
+describe("the --limit ceiling of the development runner", () => {
+  it("lowers the shop's budget", () => {
+    expect(cappedBudget(500, 5)).toBe(5);
+    expect(cappedBudget(2000, 500)).toBe(500);
+    expect(cappedBudget(20, 19)).toBe(19);
+  });
+
+  it("never raises it, whatever the flag says", () => {
+    expect(cappedBudget(500, 5000)).toBe(500);
+    expect(cappedBudget(500, 501)).toBe(500);
+    expect(cappedBudget(5, 500)).toBe(5);
+    // The operator lowered this shop deliberately; --limit cannot undo that.
+    expect(cappedBudget(10, Number.MAX_SAFE_INTEGER)).toBe(10);
+  });
+
+  it("equals the budget when the flag is absent", () => {
+    expect(cappedBudget(500)).toBe(500);
+    expect(cappedBudget(500, null)).toBe(500);
+    expect(cappedBudget(500, undefined)).toBe(500);
+  });
+
+  it("leaves the budget alone on a value that is not a number", () => {
+    expect(cappedBudget(500, Number.NaN)).toBe(500);
+    expect(cappedBudget(500, Number.POSITIVE_INFINITY)).toBe(500);
+  });
+
+  it("floors a fraction and never goes below zero", () => {
+    expect(cappedBudget(500, 5.9)).toBe(5);
+    expect(cappedBudget(500, -1)).toBe(0);
+  });
+});
+
 // --- the shared daily allowance (build step 4) ------------------------------
 //
 // The product editor's "Read this page now" button and the nightly pass spend
@@ -659,17 +739,32 @@ describe("the budget setting", () => {
 
 const DAY = new Date("2026-09-03T10:00:00Z");
 
-/** Answers the budget key and the spend key separately, as the shop would. */
+/**
+ * Answers the budget key and the spend key separately, as the shop would, and
+ * - unlike a static stub - remembers what was spent.
+ *
+ * The counter has to accumulate for this to test anything: the nightly pass
+ * spends one page at a time rather than once at the end (QA of 3 September
+ * 2026, so a pass that dies half way does not hand its whole allowance back),
+ * and against a stub that answers the same number for ever every write would
+ * read the same starting point and the last one would win.
+ */
 function settings(spentToday: number | null, budget: string | null = null) {
+  let spent = spentToday;
   mockSettingFindUnique.mockImplementation(async ({ where }: any) =>
     where.shopId_key.key === BUDGET_SETTING_KEY
       ? budget === null
         ? null
         : { value: budget }
-      : spentToday === null
+      : spent === null
         ? null
-        : { value: JSON.stringify({ day: budgetDay(new Date()), pages: spentToday }) },
+        : { value: JSON.stringify({ day: budgetDay(new Date()), pages: spent }) },
   );
+  mockSettingUpsert.mockImplementation(async ({ create }: any) => {
+    if (create?.key !== SPEND_SETTING_KEY) return {};
+    spent = JSON.parse(create.value).pages;
+    return {};
+  });
 }
 
 describe("the daily allowance", () => {
@@ -714,7 +809,12 @@ describe("the daily allowance", () => {
     expect(productUrls).toHaveLength(3);
     expect(report.scanned).toBe(3);
     expect(report.stopped).toBe("budget");
-    expect(mockSettingUpsert.mock.calls[0][0].update.value).toContain('"pages":500');
+    // One write per page, as it is spent, and the counter reaches the budget.
+    const spends = mockSettingUpsert.mock.calls.filter(
+      (c: any) => c[0].create.key === SPEND_SETTING_KEY,
+    );
+    expect(spends).toHaveLength(3);
+    expect(spends[spends.length - 1][0].update.value).toContain('"pages":500');
   });
 
   it("fetches nothing at all once the allowance is gone", async () => {

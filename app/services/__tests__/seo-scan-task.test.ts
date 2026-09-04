@@ -47,6 +47,14 @@ const mockDailyBudget = vi.fn();
 vi.mock("../seo-page.server", () => ({
   scanShopPages: (...a: unknown[]) => mockScanShopPages(...a),
   dailyBudget: (...a: unknown[]) => mockDailyBudget(...a),
+  // The real clamp, not a stub: the nightly task passes no cap, and a stub
+  // that returned the budget unconditionally would hide a wrong argument
+  // order here. scripts/run-seo-scan.ts is what passes a cap, and the clamp
+  // itself is tested in seo-page.test.ts.
+  cappedBudget: (budget: number, cap?: number | null) =>
+    cap === null || cap === undefined || !Number.isFinite(cap)
+      ? budget
+      : Math.max(0, Math.min(budget, Math.floor(cap))),
 }));
 
 // Imported by worker/tasks.ts; mocked so importing the task list needs no

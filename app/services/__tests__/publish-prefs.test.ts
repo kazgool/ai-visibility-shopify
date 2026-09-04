@@ -7,6 +7,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const settings: { shopId: string; key: string; value: string }[] = [];
 const jobRuns: { id: string; shopId: string; kind: string; status: string }[] = [];
 const mirrorRows: { id: string; shopId: string; productId: string | null }[] = [];
+const seoScanRows: { id: string; shopId: string; productId: string }[] = [];
 const upsertCalls: unknown[] = [];
 
 vi.mock("../../db.server", () => ({
@@ -45,6 +46,21 @@ vi.mock("../../db.server", () => ({
           if (r.shopId === where.shopId && r.productId === where.productId) mirrorRows.splice(i, 1);
         }
         return { count: before - mirrorRows.length };
+      },
+    },
+    // The per-product SEO row goes the same way as the mirror row, and by the
+    // same GID (QA of 3 September 2026): left behind it kept counting in
+    // every denominator on the SEO card.
+    seoScan: {
+      deleteMany: async ({ where }: any) => {
+        const before = seoScanRows.length;
+        for (let i = seoScanRows.length - 1; i >= 0; i -= 1) {
+          const r = seoScanRows[i];
+          if (r.shopId === where.shopId && r.productId === where.productId) {
+            seoScanRows.splice(i, 1);
+          }
+        }
+        return { count: before - seoScanRows.length };
       },
     },
   },
@@ -95,6 +111,7 @@ beforeEach(() => {
   settings.length = 0;
   jobRuns.length = 0;
   mirrorRows.length = 0;
+  seoScanRows.length = 0;
   upsertCalls.length = 0;
   enqueued.length = 0;
   mockHasPaidAccess.mockResolvedValue(true);
@@ -190,6 +207,22 @@ describe("the products/delete handler", () => {
     await deleteAction({ request: new Request("https://example.com/webhooks") } as any);
 
     expect(mirrorRows.map((r) => r.id)).toEqual(["2", "3"]);
+  });
+
+  it("deletes the per-product SEO row for the same product, and only that one", async () => {
+    // Left behind, the row kept counting in every denominator on the SEO card
+    // and in the "N products carry finding B3" heading of the Products list,
+    // while the list under that heading dropped it (QA, 3 September 2026).
+    seoScanRows.push(
+      { id: "s1", shopId: "shop1", productId: "gid://shopify/Product/1" },
+      { id: "s2", shopId: "shop1", productId: "gid://shopify/Product/2" },
+      { id: "s3", shopId: "other", productId: "gid://shopify/Product/1" },
+    );
+    webhookPayload = { id: 1 };
+
+    await deleteAction({ request: new Request("https://example.com/webhooks") } as any);
+
+    expect(seoScanRows.map((r) => r.id)).toEqual(["s2", "s3"]);
   });
 
   it("does nothing when the payload has no id", async () => {

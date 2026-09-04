@@ -438,7 +438,15 @@ export default function Diagnostics() {
                 Structured data already on the page
               </Text>
               <Divider />
-              {theme.passwordProtected ? (
+              {/* The password banner is about the ONE page the theme scan
+                  fetched. Once source B has read real pages with the stored
+                  password, that banner says "nothing could be read" about a
+                  catalogue we have read, and the SEO screen shows a verdict
+                  this screen hides - the two screens disagreeing, which is
+                  what reading one aggregate was meant to end. So the
+                  aggregate wins as soon as it rests on a page (QA, 3
+                  September 2026). */}
+              {theme.passwordProtected && !(scan && scan.pagesRead > 0) ? (
                 <Banner tone="warning">
                   The storefront answered with the password page, so nothing
                   could be read. Development stores always have this on.{" "}

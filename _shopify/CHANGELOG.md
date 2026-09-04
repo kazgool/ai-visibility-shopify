@@ -16,6 +16,131 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### A development runner for the nightly page scan (4 September 2026)
+
+`scripts/run-seo-scan.ts` runs source B for one shop now instead of at 03:45
+UTC, so the nightly pass can be watched on a real storefront before it is
+trusted. Eight of the by-hand checks in `QA-SEO-PER-PRODUCT.md` were waiting on
+a cron.
+
+**It calls the task's own code, not a copy.** The per-shop body of
+`seo_scan_products` is now `scanProductPagesForShop` in `worker/tasks.ts`, and
+the task's loop and the script both call it. A runner with its own origin
+resolution, its own entitlement order or its own JobRun would drift from the
+task inside one wave, and then the thing being observed would not be the thing
+that runs at night. The function throws rather than swallowing, so the task
+keeps `markGoneIfSessionless` and the next shop while the script gets a stack
+trace and a non-zero exit.
+
+**`--limit N` is a ceiling and never a second budget.** `cappedBudget` in
+`seo-page.server.ts` is a `Math.min` in one direction: an operator sets
+`seo_scan_daily_budget`, and nothing on a developer's laptop may ask a
+merchant's storefront for more pages in a day than that setting allows.
+`--limit 5000` against a shop set to 500 runs 500. Six tests in
+`seo-page.test.ts` cover lowering, refusing to raise, an absent flag, a value
+that is not a number, a fraction, and a negative.
+
+**It says what it writes, before it writes it.** Unlike
+`scripts/seo-fields-census.ts`, this one is not read-only: it writes a
+`SeoScan` row per page read, a `JobRun` of kind `seo_scan` (which is `running`
+for the duration and so refuses every dashboard button, exactly as the nightly
+pass does), the day's `seo_scan_spent` counter, and `seo_scan_robots_block`.
+The header comment says so and so does the first line of output.
+
+**It prints counts and statuses only** - scanned, password, failed, fromCache,
+remaining, nightsToFinish, stopped, and the byCode table - and never a product
+title, a handle, a URL or any page content. When robots.txt stopped the scan it
+prints the matching rule and the user agent it was matched for. It refuses any
+shop whose domain does not end in `myshopify.com`: a runner that can be pointed
+at an arbitrary host is a scanner, and this one sends a storefront password. Its
+`addJob` throws, because source B queues nothing and that is now asserted
+rather than assumed. A mistyped flag prints one line and the usage, not a stack.
+
+**Tested.** `npx tsc --noEmit` clean, 46 files and 660 tests green, the build
+and the Liquid check green, and the suite green again with `.env` renamed away.
+The script's refusals were exercised by hand: an unknown shop, a bad `--limit`,
+an unknown flag. No scan was run against a live storefront from here.
+
+### Per-product SEO scan, step 7 of 7: two QA rounds, adjudicated (3 September 2026)
+
+Two independent rounds on deliberately different axes - one reading the code
+against every acceptance row of PRD section 5, one tracing data end to end
+through seven scenarios - then adjudicated, with every load-bearing claim
+checked against source before it was accepted. Seven claims were rejected or
+downgraded; they are named in `QA-SEO-PER-PRODUCT.md`, with the reason for
+each. Four defects were found by the adjudication and by neither round.
+
+Six blocking items, all fixed. Two of them were a screen contradicting itself:
+**the pages-read sentence counted attempted pages as read**, so a
+password-walled store read "355 of 355 pages read." four lines above "355 of
+the 355 pages fetched could not be read"; and **B5 was counted over `pagesRead`,
+which excludes exactly the pages B5 fires on**, so a store with 200 failures
+read "200 of 300" and a store where every page failed read "not yet read" while
+carrying the finding on every product. Checks now carry a denominator basis of
+their own, and B5's is attempted pages excluding the password wall - excluding
+rather than counting, because a password page stores no finding, and counting
+it in would have claimed twelve clean pages on a store where nothing was read.
+
+**The robots.txt block reached no screen.** It was written into the JobRun
+report, which no route reads, so a shop whose own robots.txt disallows
+`/products/` was promised "starting tonight" for a night the app had already
+decided would fetch nothing. PRD section 5 says the Disallow "is reported as
+B5"; reported into a log is not reported. It is now Setting
+`seo_scan_robots_block`, written in both directions so the sentence goes away
+the night the merchant fixes robots.txt.
+
+**The two cards derived the Product-node count by different rules.** The page
+reader merges two `@id`s that resolve to one address - the reason extend mode
+is one node and not a conflict - and the aggregate re-derived it from the raw
+strings, because the row does not store the page's final URL. A relative `@id`
+beside an absolute one therefore made the Structured data card say "two or more
+Product nodes" while the Findings card showed B1 clean and collapsed it, and
+pointed the merchant at a row that was not on the screen. The count now comes
+from the B1 finding the reader already stored, so the two cannot diverge. Two
+fixtures had been building a row the writer cannot produce - two nodes and no
+B1 finding - and now carry both.
+
+**Diagnostics hid a real verdict behind a one-page banner.** Its
+`passwordProtected` flag is about the single page the theme scan fetched; once
+source B has read real pages with the stored password, that banner said
+"nothing could be read" about a catalogue that had been read. On the dev store,
+whose password cannot be turned off, that is the permanent state. The aggregate
+now wins as soon as it rests on a page.
+
+**The acceptance row for the editor's button had no test.** `app/routes/__tests__/`
+held one file and it was the CSV export. Eight tests now cover the action - one
+read behind the SEO key and no other gate, each refusal a sentence rather than
+an exception - and the second render, asserted by answering `scanRowFor` with a
+row the action never returned. That is the class CLAUDE.md was amended for on
+the same day.
+
+Seven wave fixes: `products/delete` now removes the `SeoScan` row, which was
+inflating every denominator and making a list header disagree with its own
+list; a deleted product answers 404 instead of crashing the editor route; the
+storefront unlock can no longer fail a whole night or hand the merchant a 500;
+the night's spend is counted one page at a time rather than once after the loop,
+so a pass that dies does not hand its allowance back; `REDIRECT_LOOKUP_CAP` is
+asserted for the first time; "the 1 pages read" pluralises; and
+`readSeoAggregates` now folds each row and drops it, which is what its own
+comment and PRD build step 4 already said it did - it was accumulating every
+row, `nodes` JSON included, into one array first.
+
+Six items are deliberately left with reasons, and three need a PRD amendment
+rather than code: section 5's row 7 names five source A checks where there are
+four and can only be four, section 4 and step 6 disagree on three versus four
+column states, and section 3's promise to record the response `Age` has no
+column behind it. Put for approval rather than explained away.
+
+**Tested.** 17 new tests and one new test file. `npx tsc --noEmit` clean,
+`npx vitest run` 46 files and 655 tests green, `npm run build` green, the Liquid
+check green, and the suite run once more with `.env` renamed away - what CI has
+- also 46 files and 655 tests green.
+
+**Not verified by hand.** No browser was opened, and the step 2 migration has
+still not been applied to any database, so every screen reads an empty table
+until it is. The eight by-hand checks that wait on it are listed at the end of
+`QA-SEO-PER-PRODUCT.md`.
+
 Seven fixes from a deep audit of the SEO capability. This wave contains
 extension changes (`ai-visibility.liquid`), so shipping it requires
 `npx shopify app deploy`, not only a server deploy.

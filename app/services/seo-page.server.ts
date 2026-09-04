@@ -80,6 +80,23 @@ export async function dailyBudget(shopId: string): Promise<number> {
   return Math.floor(value);
 }
 
+/**
+ * The shop's budget, optionally lowered for one run and never raised.
+ *
+ * `scripts/run-seo-scan.ts` takes `--limit N` so a night's scan can be watched
+ * on a few pages instead of five hundred. The clamp is here, next to
+ * `dailyBudget`, and is a `Math.min` in one direction only: a development
+ * runner that could raise the ceiling would be a second budget, and the whole
+ * point of `seo_scan_daily_budget` is that one setting an operator controls is
+ * the only thing that decides how many pages a shop's storefront is asked for
+ * in a day. An absent, unparseable or negative cap leaves the shop's budget
+ * exactly as it is.
+ */
+export function cappedBudget(shopBudget: number, cap?: number | null): number {
+  if (cap === null || cap === undefined || !Number.isFinite(cap)) return shopBudget;
+  return Math.max(0, Math.min(shopBudget, Math.floor(cap)));
+}
+
 // --- what has been spent today ---------------------------------------------
 
 /** Pages fetched today, nightly pass and merchant clicks together. */
@@ -133,6 +150,67 @@ export async function spendPages(shopId: string, pages: number, now = new Date()
     create: { shopId, key: SPEND_SETTING_KEY, value },
     update: { value },
   });
+}
+
+/**
+ * The storefront unlock, and never a reason the night fails.
+ *
+ * `storefrontCookie` POSTs to `/password` with a bare fetch. A storefront
+ * that refuses the connection therefore threw out of the whole nightly pass -
+ * JobRun failed, zero pages, and it repeats every night - and out of the
+ * product editor's action, where the merchant got a 500 instead of one of the
+ * four refusal sentences that path was written to give. Without a cookie the
+ * pages answer with the password form, which the row already records as
+ * `status: "password"` and every screen already reads as "could not be read".
+ * That is the honest outcome; a stack trace is not. QA of 3 September 2026.
+ */
+async function unlockQuietly(
+  origin: string,
+  password: string | null | undefined,
+  fetchImpl: typeof fetch,
+  log: ((message: string) => void) | null | undefined,
+): Promise<string | null> {
+  if (!password) return null;
+  try {
+    return await storefrontCookie(origin, password, fetchImpl);
+  } catch (error) {
+    log?.(
+      `seo_scan ${origin}: the storefront password could not be sent - ${describeError(error)}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Where the last nightly pass recorded that robots.txt turned it away, so the
+ * SEO screen can say why nothing is being read instead of promising a night
+ * that will fetch nothing. The value is the Disallow path that matched; the
+ * row is removed as soon as a pass gets through, so a merchant who fixes
+ * robots.txt sees the sentence go on the next night rather than for ever.
+ */
+export const ROBOTS_BLOCK_SETTING_KEY = "seo_scan_robots_block";
+
+export async function recordRobotsBlock(
+  shopId: string,
+  disallow: string | null,
+): Promise<void> {
+  if (disallow) {
+    await db.setting.upsert({
+      where: { shopId_key: { shopId, key: ROBOTS_BLOCK_SETTING_KEY } },
+      create: { shopId, key: ROBOTS_BLOCK_SETTING_KEY, value: disallow },
+      update: { value: disallow },
+    });
+    return;
+  }
+  await db.setting.deleteMany({ where: { shopId, key: ROBOTS_BLOCK_SETTING_KEY } });
+}
+
+/** What the SEO screen shows: the Disallow that stopped the scan, or null. */
+export async function robotsBlock(shopId: string): Promise<string | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: ROBOTS_BLOCK_SETTING_KEY } },
+  });
+  return row?.value ?? null;
 }
 
 // --- robots.txt ------------------------------------------------------------
@@ -605,6 +683,14 @@ export async function scanShopPages(input: {
 
   const robots = await fetchRobots(origin, fetchImpl);
   const blocked = robots.fetched ? productsDisallow(robots.content) : null;
+  // Recorded where a screen can read it, in both directions. The B5 finding
+  // below goes into the JobRun report, which nothing renders, so before this
+  // a shop whose robots.txt turns the scan away saw every page row read
+  // "Waiting for the nightly page read" and the card promise "starting
+  // tonight" - for a night that had already decided to fetch nothing. The
+  // acceptance row in PRD section 5 says the Disallow "is reported as B5";
+  // reported into a log is not reported. QA of 3 September 2026.
+  await recordRobotsBlock(shopId, blocked);
   if (blocked) {
     report.stopped = "robots";
     report.robots = {
@@ -622,7 +708,7 @@ export async function scanShopPages(input: {
     return report;
   }
 
-  const cookie = input.password ? await storefrontCookie(origin, input.password, fetchImpl) : null;
+  const cookie = await unlockQuietly(origin, input.password, fetchImpl, log);
 
   // What is left of today's budget, not the whole budget: the product
   // editor's "Read this page now" button spends from the same allowance
@@ -650,6 +736,16 @@ export async function scanShopPages(input: {
     const page = await readProductPage(url, cookie, fetchImpl);
     const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null);
 
+    // Spent as it is spent, not once at the end. A throw from the update
+    // below, or the worker machine going away mid-pass, used to discard the
+    // accounting for every page already fetched tonight: the counter read
+    // zero and the "Read this page now" button would then hand out the whole
+    // allowance again. It also closes the window where a merchant clicking
+    // during the pass had their +1 overwritten by the pass's single final
+    // write (PRD section 6's amendment - the counter exists so a merchant
+    // cannot spend the budget by clicking). QA of 3 September 2026.
+    await spendPages(shopId, 1, startedAt);
+
     report.scanned += 1;
     if (reading.status === "password") report.password += 1;
     if (reading.status === "error") report.failed += 1;
@@ -676,8 +772,6 @@ export async function scanShopPages(input: {
       },
     });
   }
-
-  await spendPages(shopId, report.scanned, startedAt);
 
   report.remaining = await waiting();
   report.stopped =
@@ -741,9 +835,7 @@ export async function scanOneProductPage(input: {
   const blocked = robots.fetched ? productsDisallow(robots.content) : null;
   if (blocked) return { ok: false, reason: "robots", detail: blocked, budget };
 
-  const cookie = input.password
-    ? await storefrontCookie(input.origin, input.password, fetchImpl)
-    : null;
+  const cookie = await unlockQuietly(input.origin, input.password, fetchImpl, null);
   const page = await readProductPage(
     `${input.origin}${PRODUCTS_PATH}${row.handle}`,
     cookie,

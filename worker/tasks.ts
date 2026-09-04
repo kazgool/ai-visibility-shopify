@@ -23,7 +23,12 @@ import { fetchCollections, writeCollections } from "../app/services/collections.
 import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
-import { dailyBudget, scanShopPages } from "../app/services/seo-page.server";
+import {
+  cappedBudget,
+  dailyBudget,
+  scanShopPages,
+  type SourceBReport,
+} from "../app/services/seo-page.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
@@ -930,85 +935,117 @@ export const seo_scan_products: Task = async (_payload, helpers) => {
 
   for (const shop of shops) {
     try {
-      if (!(await isSeoUnlocked(shop.id))) {
-        continue; // not part of this shop's module - no log noise for the common case
-      }
-
-      const graphql = await adminGraphql(shop.domain);
-
-      if (!(await mayProcessAutomatically(shop, graphql))) {
-        helpers.logger.info(
-          `seo_scan_products ${shop.domain}: skipped, no active subscription or comp`,
-        );
-        continue;
-      }
-
-      // The primary domain, not the myshopify one: a page fetched on the
-      // wrong host answers with a redirect, and every product would report
-      // finding B5 about a redirect this app caused itself.
-      const domainData = await graphql<any>(PRIMARY_DOMAIN_SEO);
-      const shopUrl = domainData?.shop?.url ?? `https://${shop.domain}`;
-      let origin = `https://${shop.domain}`;
-      try {
-        origin = new URL(shopUrl).origin;
-      } catch {
-        // Keep the myshopify origin rather than fail the night's scan.
-      }
-
-      const budget = await dailyBudget(shop.id);
-      const passwordSetting = await db.setting.findUnique({
-        where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
-      });
-
-      const jobRun = await db.jobRun.create({
-        data: {
-          shopId: shop.id,
-          kind: "seo_scan",
-          status: "running",
-          startedAt: new Date(),
-          total: budget,
-        },
-      });
-
-      try {
-        const report = await scanShopPages({
-          shopId: shop.id,
-          origin,
-          password: passwordSetting?.value,
-          budget,
-          deps: { log: (message) => helpers.logger.info(message) },
-        });
-
-        await db.jobRun.update({
-          where: { id: jobRun.id },
-          data: {
-            status: "done",
-            finishedAt: new Date(),
-            progress: report.scanned,
-            // The denominator is the whole catalogue still waiting, not the
-            // budget: "500 of 20,000" is the true sentence, and a bar that
-            // reads 500 of 500 every night says the opposite of what happened.
-            total: report.scanned + report.remaining,
-            report: report as any,
-          },
-        });
-      } catch (error) {
-        await db.jobRun.update({
-          where: { id: jobRun.id },
-          data: {
-            status: "failed",
-            finishedAt: new Date(),
-            report: { error: describeError(error) } as any,
-          },
-        });
-        throw error;
-      }
+      await scanProductPagesForShop(shop, helpers.logger);
     } catch (error) {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
       helpers.logger.error(`seo_scan_products failed for ${shop.domain}: ${describeError(error)}`);
     }
   }
 };
+
+/** Why one shop's page scan did not run, when it did not. */
+export type SeoScanSkip = "no_seo_key" | "no_subscription";
+
+export type SeoScanShopOutcome =
+  | { ran: true; budget: number; report: SourceBReport }
+  | { ran: false; reason: SeoScanSkip };
+
+/**
+ * One shop's night of source B, exactly as the nightly task runs it.
+ *
+ * Extracted from the loop above on 4 September 2026 so that
+ * `scripts/run-seo-scan.ts` can watch a scan without waiting for 03:45 and
+ * without reimplementing any of it. A development runner that built its own
+ * origin resolution, its own entitlement order or its own JobRun would drift
+ * from the task within one wave, and then the thing being observed would not
+ * be the thing that runs at night - which is the only reason to observe it.
+ *
+ * It throws rather than swallowing: the caller decides whether a failure means
+ * `markGoneIfSessionless` and the next shop (the task) or a stack trace and a
+ * non-zero exit (the script).
+ *
+ * `budgetCap` lowers this run's budget and can never raise it - see
+ * `cappedBudget`.
+ */
+export async function scanProductPagesForShop(
+  shop: { id: string; domain: string },
+  logger: { info: (message: string) => void },
+  options: { budgetCap?: number | null } = {},
+): Promise<SeoScanShopOutcome> {
+  if (!(await isSeoUnlocked(shop.id))) {
+    // Not part of this shop's module - no log noise for the common case.
+    return { ran: false, reason: "no_seo_key" };
+  }
+
+  const graphql = await adminGraphql(shop.domain);
+
+  if (!(await mayProcessAutomatically(shop, graphql))) {
+    logger.info(`seo_scan_products ${shop.domain}: skipped, no active subscription or comp`);
+    return { ran: false, reason: "no_subscription" };
+  }
+
+  // The primary domain, not the myshopify one: a page fetched on the wrong
+  // host answers with a redirect, and every product would report finding B5
+  // about a redirect this app caused itself.
+  const domainData = await graphql<any>(PRIMARY_DOMAIN_SEO);
+  const shopUrl = domainData?.shop?.url ?? `https://${shop.domain}`;
+  let origin = `https://${shop.domain}`;
+  try {
+    origin = new URL(shopUrl).origin;
+  } catch {
+    // Keep the myshopify origin rather than fail the night's scan.
+  }
+
+  const budget = cappedBudget(await dailyBudget(shop.id), options.budgetCap);
+  const passwordSetting = await db.setting.findUnique({
+    where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
+  });
+
+  const jobRun = await db.jobRun.create({
+    data: {
+      shopId: shop.id,
+      kind: "seo_scan",
+      status: "running",
+      startedAt: new Date(),
+      total: budget,
+    },
+  });
+
+  try {
+    const report = await scanShopPages({
+      shopId: shop.id,
+      origin,
+      password: passwordSetting?.value,
+      budget,
+      deps: { log: (message) => logger.info(message) },
+    });
+
+    await db.jobRun.update({
+      where: { id: jobRun.id },
+      data: {
+        status: "done",
+        finishedAt: new Date(),
+        progress: report.scanned,
+        // The denominator is the whole catalogue still waiting, not the
+        // budget: "500 of 20,000" is the true sentence, and a bar that
+        // reads 500 of 500 every night says the opposite of what happened.
+        total: report.scanned + report.remaining,
+        report: report as any,
+      },
+    });
+    return { ran: true, budget, report };
+  } catch (error) {
+    await db.jobRun.update({
+      where: { id: jobRun.id },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        report: { error: describeError(error) } as any,
+      },
+    });
+    throw error;
+  }
+}
 
 /**
  * Collection capsules (PRD §4.8). Reads each collection with its members'

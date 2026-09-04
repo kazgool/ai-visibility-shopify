@@ -50,7 +50,7 @@ import {
   type ThemeNodeAggregate,
 } from "../services/seo-aggregate";
 import { readSeoAggregates } from "../services/seo-aggregate.server";
-import { DEFAULT_DAILY_BUDGET, dailyBudget } from "../services/seo-page.server";
+import { DEFAULT_DAILY_BUDGET, dailyBudget, robotsBlock } from "../services/seo-page.server";
 import { organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
@@ -162,9 +162,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the Structured data card can never disagree about the same catalogue. The
   // budget comes with them because the pages-read sentence has to do this
   // shop's own arithmetic, not repeat a constant.
-  const [scan, scanBudget] = shop
-    ? await Promise.all([readSeoAggregates(shop.id), dailyBudget(shop.id)])
-    : [null, DEFAULT_DAILY_BUDGET];
+  // The robots block comes with them for the same reason: a shop whose own
+  // robots.txt disallows /products/ has a card full of "waiting for the
+  // nightly page read" rows and a night that has already decided to fetch
+  // nothing. The sentence at the top of the card has to say so (QA, 3
+  // September 2026).
+  const [scan, scanBudget, scanRobotsBlock] = shop
+    ? await Promise.all([readSeoAggregates(shop.id), dailyBudget(shop.id), robotsBlock(shop.id)])
+    : [null, DEFAULT_DAILY_BUDGET, null];
 
   return {
     unlocked: true as const,
@@ -176,6 +181,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasStorefrontPassword,
     scan,
     scanBudget,
+    scanRobotsBlock,
   };
 };
 
@@ -1248,9 +1254,12 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
 function FindingsPerProductCard({
   aggregate,
   budget,
+  blockedBy,
 }: {
   aggregate: FindingsAggregate;
   budget: number;
+  /** The Disallow path that stopped the last nightly pass, or null. */
+  blockedBy: string | null;
 }) {
   const clean = cleanSentence(aggregate);
   const found = aggregate.rows.filter((r) => r.state === "found");
@@ -1271,7 +1280,7 @@ function FindingsPerProductCard({
         </BlockStack>
 
         <Text as="p" variant="bodySm">
-          {pagesReadSentence(aggregate, budget)}
+          {pagesReadSentence(aggregate, budget, blockedBy)}
         </Text>
 
         {aggregate.products === 0 ? (
@@ -1486,6 +1495,7 @@ export default function Seo() {
           <FindingsPerProductCard
             aggregate={data.scan.findings as unknown as FindingsAggregate}
             budget={data.scanBudget}
+            blockedBy={data.scanRobotsBlock}
           />
         ) : null}
 

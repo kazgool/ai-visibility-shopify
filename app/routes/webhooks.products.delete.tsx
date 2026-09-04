@@ -21,6 +21,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (id != null) {
     const productGid = `gid://shopify/Product/${id}`;
     await db.mirrorCache.deleteMany({ where: { shopId: shopRow.id, productId: productGid } });
+    // The per-product SEO row goes with it. Left behind, it kept counting in
+    // every denominator on the SEO card and in the "N products carry finding
+    // B3" heading of the Products list, while the list under that heading
+    // dropped it - a header that disagreed with its own list. Source A
+    // removes stale rows too, but only on a complete catalogue read, so a
+    // store taking short reads never corrected. QA of 3 September 2026.
+    await db.seoScan.deleteMany({ where: { shopId: shopRow.id, productId: productGid } });
   }
 
   return new Response();

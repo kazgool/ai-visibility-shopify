@@ -14,8 +14,12 @@
 
 import db from "../db.server";
 import {
-  aggregateFindings,
-  themeNodeAggregate,
+  buildFindingsAggregate,
+  buildThemeNodeAggregate,
+  createFindingsCounters,
+  createThemeNodeCounters,
+  foldFindingsRow,
+  foldThemeNodeRow,
   type FindingsAggregate,
   type ScanRowLike,
   type ThemeNodeAggregate,
@@ -81,11 +85,16 @@ export type SeoScanAggregates = {
  * the other counted every page.
  */
 export async function readSeoAggregates(shopId: string): Promise<SeoScanAggregates> {
-  const rows: ScanRowLike[] = [];
+  // Folded row by row, so what survives a batch is five integers and a map of
+  // counts per code. Until 3 September 2026 this pushed every row - `nodes`
+  // JSON included - into one array and aggregated at the end, so the batching
+  // above bought nothing and a 20,000-product store held its whole scan table
+  // in memory to produce a handful of numbers. The comment above and PRD
+  // build step 4 both described the behaviour this now has (QA).
+  const findings = createFindingsCounters();
+  const themeNodes = createThemeNodeCounters();
   await forEachRow(shopId, true, (row) => {
-    // Only what the two aggregates read is kept, so a 20,000-row catalogue
-    // holds counters and node lists rather than whole rows.
-    rows.push({
+    const view: ScanRowLike = {
       productId: row.productId,
       handle: row.handle,
       bulkAt: row.bulkAt,
@@ -93,9 +102,14 @@ export async function readSeoAggregates(shopId: string): Promise<SeoScanAggregat
       status: row.status,
       findings: row.findings,
       nodes: row.nodes,
-    });
+    };
+    foldFindingsRow(findings, view);
+    foldThemeNodeRow(themeNodes, view);
   });
-  return { findings: aggregateFindings(rows), themeNodes: themeNodeAggregate(rows) };
+  return {
+    findings: buildFindingsAggregate(findings),
+    themeNodes: buildThemeNodeAggregate(themeNodes),
+  };
 }
 
 /**

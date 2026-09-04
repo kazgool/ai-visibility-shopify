@@ -49,22 +49,47 @@ export type ScanRowLike = {
 export type CheckSource = "A" | "B";
 
 /**
+ * What a check can be asked of, which is not the same as which read it needs.
+ *
+ * `catalogue` - every product source A has computed.
+ * `pagesRead` - only pages that answered as a crawler would see them.
+ * `pagesTried` - every page whose own address answered something, which is
+ *   every attempted page except the ones that hit the storefront password.
+ *
+ * B5 is the one check whose basis is `pagesTried`, and the reason is that B5
+ * *is* the check about pages that did not answer properly. Counting it over
+ * `pagesRead` subtracts from its denominator exactly the pages it fires on: a
+ * store where 200 of 500 products answered 404 read "200 of 300", a number
+ * whose numerator is not inside its denominator, and a store where every page
+ * failed read "not yet read" while carrying a finding on every product.
+ *
+ * The password wall is excluded rather than counted, because a password page
+ * deliberately produces no finding at all (PRD section 3): counted in, B5
+ * would report "0 of 12" on a store where nothing could be read, which claims
+ * twelve clean pages. Excluded, its denominator is zero and the row reads
+ * "not yet read", which is the true sentence. QA of 3 September 2026.
+ */
+export type CheckBasis = "catalogue" | "pagesRead" | "pagesTried";
+
+/**
  * Every check the screens show, with the read it depends on. B6 is not in
  * this list because it is not built (PRD section 2.3): a row for a check that
  * never runs would read "not yet read" for ever, which is a promise, not a
  * finding.
  */
-export const CHECKS: { code: FindingCode; source: CheckSource }[] = [
-  { code: "A1", source: "A" },
-  { code: "A2", source: "B" }, // A + B: needs the page as well as the catalogue
-  { code: "A3", source: "A" },
-  { code: "A4", source: "A" },
-  { code: "A5", source: "A" },
-  { code: "B1", source: "B" },
-  { code: "B2", source: "B" },
-  { code: "B3", source: "B" },
-  { code: "B4", source: "B" },
-  { code: "B5", source: "B" },
+export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis }[] = [
+  { code: "A1", source: "A", basis: "catalogue" },
+  // A + B: needs the page as well as the catalogue, so it is asked only of
+  // pages that answered.
+  { code: "A2", source: "B", basis: "pagesRead" },
+  { code: "A3", source: "A", basis: "catalogue" },
+  { code: "A4", source: "A", basis: "catalogue" },
+  { code: "A5", source: "A", basis: "catalogue" },
+  { code: "B1", source: "B", basis: "pagesRead" },
+  { code: "B2", source: "B", basis: "pagesRead" },
+  { code: "B3", source: "B", basis: "pagesRead" },
+  { code: "B4", source: "B", basis: "pagesRead" },
+  { code: "B5", source: "B", basis: "pagesTried" },
 ];
 
 export type CheckState = "found" | "clean" | "notYetRead";
@@ -127,32 +152,74 @@ export function couldNotBeReadRow(row: Pick<ScanRowLike, "scannedAt" | "status">
  * (PRD section 2).
  */
 export function aggregateFindings(rows: ScanRowLike[]): FindingsAggregate {
-  let bulkRead = 0;
-  let pagesAttempted = 0;
-  let pagesRead = 0;
-  let couldNot = 0;
-  const counts = new Map<string, number>();
+  const counters = createFindingsCounters();
+  for (const row of rows) foldFindingsRow(counters, row);
+  return buildFindingsAggregate(counters);
+}
 
-  for (const row of rows) {
-    if (present(row.bulkAt)) bulkRead += 1;
-    if (present(row.scannedAt)) {
-      pagesAttempted += 1;
-      if (row.status === "ok") pagesRead += 1;
-      else couldNot += 1;
-    }
-    // A product is counted once per code however many findings carry it.
-    const seen = new Set<string>();
-    for (const finding of findingsOf(row.findings)) {
-      if (seen.has(finding.code)) continue;
-      seen.add(finding.code);
-      counts.set(finding.code, (counts.get(finding.code) ?? 0) + 1);
-    }
+/**
+ * The counters an aggregate is folded into, one row at a time.
+ *
+ * Split out of `aggregateFindings` on 3 September 2026 (QA) so the reader in
+ * `seo-aggregate.server.ts` can fold each batch of 1,000 rows and drop it.
+ * The comment there claimed that was already happening; it was not - every
+ * row, `nodes` JSON and all, was accumulated into one array first, so a
+ * 20,000-product store held the whole table in memory to produce a handful of
+ * integers. `aggregateFindings` is now that fold over an array, so every
+ * existing caller and every test keeps the function it had.
+ */
+export type FindingsCounters = {
+  products: number;
+  bulkRead: number;
+  pagesAttempted: number;
+  pagesRead: number;
+  /** Attempted pages that answered with the storefront password form. */
+  passwordPages: number;
+  couldNot: number;
+  counts: Map<string, number>;
+};
+
+export function createFindingsCounters(): FindingsCounters {
+  return {
+    products: 0,
+    bulkRead: 0,
+    pagesAttempted: 0,
+    pagesRead: 0,
+    passwordPages: 0,
+    couldNot: 0,
+    counts: new Map<string, number>(),
+  };
+}
+
+export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): void {
+  counters.products += 1;
+  if (present(row.bulkAt)) counters.bulkRead += 1;
+  if (present(row.scannedAt)) {
+    counters.pagesAttempted += 1;
+    if (row.status === "ok") counters.pagesRead += 1;
+    else counters.couldNot += 1;
+    if (row.status === "password") counters.passwordPages += 1;
   }
+  // A product is counted once per code however many findings carry it.
+  const seen = new Set<string>();
+  for (const finding of findingsOf(row.findings)) {
+    if (seen.has(finding.code)) continue;
+    seen.add(finding.code);
+    counters.counts.set(finding.code, (counters.counts.get(finding.code) ?? 0) + 1);
+  }
+}
 
-  const products = rows.length;
-  const built: CheckRow[] = CHECKS.map(({ code, source }) => {
-    const denominator = source === "A" ? bulkRead : pagesRead;
-    const notRead = source === "A" ? products - bulkRead : products - pagesRead;
+export function buildFindingsAggregate(counters: FindingsCounters): FindingsAggregate {
+  const { bulkRead, pagesAttempted, pagesRead, passwordPages, couldNot, counts } = counters;
+  const products = counters.products;
+  const pagesTried = pagesAttempted - passwordPages;
+
+  const basisOf = (basis: CheckBasis): number =>
+    basis === "catalogue" ? bulkRead : basis === "pagesRead" ? pagesRead : pagesTried;
+
+  const built: CheckRow[] = CHECKS.map(({ code, source, basis }) => {
+    const denominator = basisOf(basis);
+    const notRead = products - denominator;
     const count = counts.get(code) ?? 0;
     // A count with no denominator is not zero, it is unknown. This is the
     // rule the card's "not yet read" line exists for.
@@ -222,10 +289,25 @@ export function cleanSentence(aggregate: FindingsAggregate): string | null {
  * `budget` is this shop's own, so the arithmetic on the screen is the shop's
  * and not a constant repeated in the copy.
  */
-export function pagesReadSentence(aggregate: FindingsAggregate, budget: number): string {
-  const { products, pagesAttempted } = aggregate;
+export function pagesReadSentence(
+  aggregate: FindingsAggregate,
+  budget: number,
+  blockedBy: string | null = null,
+): string {
+  const { products, pagesAttempted, pagesRead, couldNotBeRead } = aggregate;
   if (products === 0) {
     return "No products have been read yet, so there are no pages to fetch.";
+  }
+  // The scan is not waiting for a night that will do anything: the shop's own
+  // robots.txt turns it away. Promising "starting tonight" here is the one
+  // sentence on this card that the app already knows it will never keep
+  // (QA of 3 September 2026).
+  if (blockedBy) {
+    return (
+      `Your robots.txt disallows ${blockedBy}, so no product page is fetched ` +
+      `and none of the page checks below can run. robots.txt lives in your ` +
+      `theme as robots.txt.liquid.`
+    );
   }
   const remaining = products - pagesAttempted;
   const nights = budget > 0 ? Math.ceil(remaining / budget) : 0;
@@ -242,7 +324,15 @@ export function pagesReadSentence(aggregate: FindingsAggregate, budget: number):
       : nights <= 1
         ? "; the rest by tomorrow night"
         : `; the rest over the next ${nights} nights`;
-  return `${pagesAttempted} of ${products} pages read${rest}.`;
+  // The numerator is pages that answered, not pages attempted. With attempted
+  // here, a store whose whole storefront is behind the password read
+  // "355 of 355 pages read." directly above "355 of the 355 pages fetched
+  // could not be read" - the card contradicting itself in four lines.
+  const failed =
+    couldNotBeRead > 0
+      ? `; ${couldNotBeRead} more could not be read`
+      : "";
+  return `${pagesRead} of ${products} pages read${failed}${rest}.`;
 }
 
 // --- B1 across the catalogue, for the Structured data card ------------------
@@ -267,24 +357,44 @@ export type ThemeNodeAggregate = {
 
 type NodeLike = { types?: unknown; id?: unknown };
 
-function productNodesOf(value: unknown): { ours: number; theirs: number; distinct: number } {
+/**
+ * Who emitted a Product node on this page, and how many distinct nodes there
+ * were.
+ *
+ * `ours` and `theirs` are read from the stored nodes, with the same
+ * `isOurNodeId` predicate the page reader uses, so the two cannot drift.
+ *
+ * `distinct` is **not** recomputed from the stored ids, and this is the
+ * reason. The page reader merges two nodes when their `@id`s resolve to the
+ * same address (`canonicalNodeId` against the page's final URL,
+ * seo-page.server.ts), which is what makes extend mode one node rather than a
+ * conflict. The row stores the nodes as they were found and does not store
+ * the final URL, so a relative `@id` beside an absolute one cannot be merged
+ * here. Re-deriving it from the raw strings made the Structured data card say
+ * "two or more Product nodes" on pages where the Findings card showed B1
+ * clean - the two screens disagreeing about one catalogue, which is the exact
+ * promise build step 4 was written to keep. So the count comes from the B1
+ * finding the page reader already stored; B1 fires whenever `distinct !== 1`,
+ * so no B1 finding means exactly one node. QA of 3 September 2026.
+ */
+function productNodesOf(
+  value: unknown,
+  findings: Finding[],
+): { ours: number; theirs: number; distinct: number } {
   const list = Array.isArray(value) ? (value as NodeLike[]) : [];
   let ours = 0;
   let theirs = 0;
-  const ids = new Set<string>();
-  let idless = 0;
   for (const node of list) {
     const types = Array.isArray(node?.types) ? node.types.map(String) : [];
     if (!types.includes("Product")) continue;
     const id = typeof node?.id === "string" ? node.id : "";
     if (isOurNodeId(id)) ours += 1;
     else theirs += 1;
-    // Extend mode deliberately reuses the theme's @id, so two nodes at one
-    // address are one node - the whole reason extend mode exists.
-    if (id === "") idless += 1;
-    else ids.add(id);
   }
-  return { ours, theirs, distinct: ids.size + idless };
+  const b1 = findings.find((f) => f.code === "B1");
+  const reported = b1 ? Number((b1.detail as Record<string, unknown>)?.productNodes) : NaN;
+  const distinct = b1 ? (Number.isFinite(reported) ? reported : 0) : 1;
+  return { ours, theirs, distinct };
 }
 
 /**
@@ -301,22 +411,36 @@ function productNodesOf(value: unknown): { ours: number; theirs: number; distinc
  * how many pages that verdict rests on.
  */
 export function themeNodeAggregate(rows: ScanRowLike[]): ThemeNodeAggregate {
-  let pagesRead = 0;
-  let theme = 0;
-  let none = 0;
-  let two = 0;
-  let appOnly = 0;
+  const counters = createThemeNodeCounters();
+  for (const row of rows) foldThemeNodeRow(counters, row);
+  return buildThemeNodeAggregate(counters);
+}
 
-  for (const row of rows) {
-    if (!wasRead(row)) continue;
-    pagesRead += 1;
-    const { ours, theirs, distinct } = productNodesOf(row.nodes);
-    if (theirs > 0) theme += 1;
-    if (distinct === 0) none += 1;
-    else if (distinct > 1) two += 1;
-    if (theirs === 0 && ours > 0) appOnly += 1;
-  }
+/** The same fold, a row at a time, for the batched reader. See FindingsCounters. */
+export type ThemeNodeCounters = {
+  pagesRead: number;
+  theme: number;
+  none: number;
+  two: number;
+  appOnly: number;
+};
 
+export function createThemeNodeCounters(): ThemeNodeCounters {
+  return { pagesRead: 0, theme: 0, none: 0, two: 0, appOnly: 0 };
+}
+
+export function foldThemeNodeRow(counters: ThemeNodeCounters, row: ScanRowLike): void {
+  if (!wasRead(row)) return;
+  counters.pagesRead += 1;
+  const { ours, theirs, distinct } = productNodesOf(row.nodes, findingsOf(row.findings));
+  if (theirs > 0) counters.theme += 1;
+  if (distinct === 0) counters.none += 1;
+  else if (distinct > 1) counters.two += 1;
+  if (theirs === 0 && ours > 0) counters.appOnly += 1;
+}
+
+export function buildThemeNodeAggregate(counters: ThemeNodeCounters): ThemeNodeAggregate {
+  const { pagesRead, theme, none, two, appOnly } = counters;
   return {
     pagesRead,
     theme,
@@ -327,13 +451,19 @@ export function themeNodeAggregate(rows: ScanRowLike[]): ThemeNodeAggregate {
   };
 }
 
+/** "page" or "pages". A store that has read exactly one says "1 page read". */
+function pageWord(n: number): string {
+  return n === 1 ? "page" : "pages";
+}
+
 /** The Structured data card's sentence, with its denominator on every count. */
 export function themeNodeSentence(aggregate: ThemeNodeAggregate): string {
   if (aggregate.pagesRead === 0) {
     return "No product page has been read yet, so there is nothing to judge the theme's structured data on.";
   }
   const parts = [
-    `Product node from the theme on ${aggregate.theme} of ${aggregate.pagesRead} pages read`,
+    `Product node from the theme on ${aggregate.theme} of ${aggregate.pagesRead} ` +
+      `${pageWord(aggregate.pagesRead)} read`,
   ];
   if (aggregate.none > 0) parts.push(`none on ${aggregate.none}`);
   if (aggregate.two > 0) parts.push(`two or more on ${aggregate.two}`);
@@ -347,9 +477,9 @@ export function themeNodeAdvice(aggregate: ThemeNodeAggregate): string {
     return "Leave the app embed as it is until pages have been read. Recommending a mode from nothing is how this card used to report the storefront password page as a missing Product node.";
   }
   if (aggregate.verdict === "full") {
-    return `No Product node from the theme on any of the ${aggregate.pagesRead} pages read, so switch the app embed to Full mode and this store publishes complete product data.`;
+    return `No Product node from the theme on any of the ${aggregate.pagesRead} ${pageWord(aggregate.pagesRead)} read, so switch the app embed to Full mode and this store publishes complete product data.`;
   }
-  return `Keep the app embed in Extend mode. We add only what the theme omits, referenced to its node, so assistants read one product rather than two. ${aggregate.none > 0 ? `The ${aggregate.none} pages with no node of their own still get a complete one from us.` : ""}`.trim();
+  return `Keep the app embed in Extend mode. We add only what the theme omits, referenced to its node, so assistants read one product rather than two. ${aggregate.none > 0 ? `The ${aggregate.none} ${pageWord(aggregate.none)} with no node of their own still get a complete one from us.` : ""}`.trim();
 }
 
 // --- the Products list column ----------------------------------------------

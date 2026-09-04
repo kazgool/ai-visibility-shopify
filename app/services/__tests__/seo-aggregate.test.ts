@@ -261,6 +261,16 @@ describe("a store whose pages answered with the password form", () => {
     }
   });
 
+  // The pages-read sentence used to count attempted pages as read, so this
+  // store's card said "12 of 12 pages read." four lines above "12 of the 12
+  // pages fetched could not be read" - the card contradicting itself
+  // (QA, 3 September 2026).
+  it("never claims a page was read that answered with the password form", () => {
+    const sentence = pagesReadSentence(aggregate, 500);
+    expect(sentence).toContain("0 of 12 pages read");
+    expect(sentence).toContain("12 more could not be read");
+  });
+
   it("refuses to recommend Full mode from pages nobody could read", () => {
     const nodes = themeNodeAggregate(rows);
     expect(nodes.pagesRead).toBe(0);
@@ -271,11 +281,19 @@ describe("a store whose pages answered with the password form", () => {
 // --- the Structured data verdict -------------------------------------------
 
 describe("the B1 aggregate behind the Structured data card", () => {
+  // The writer stores the nodes and the B1 finding together, and B1 fires
+  // exactly when the page did not carry one Product node. These fixtures
+  // carry both, because a row with two nodes and no B1 finding is a row the
+  // writer cannot produce - and the aggregate now takes the count from the
+  // finding rather than re-deriving it from the raw @id strings, which is
+  // what let the two cards disagree (QA, 3 September 2026).
+  const b1 = (productNodes: number) => f("B1", "B", { productNodes });
+
   it("recommends Extend when any scanned page has a theme node", () => {
     const rows = [
       row(1, { scannedAt: SCAN, status: "ok", nodes: [THEME_NODE] }),
-      row(2, { scannedAt: SCAN, status: "ok", nodes: [] }),
-      row(3, { scannedAt: SCAN, status: "ok", nodes: [] }),
+      row(2, { scannedAt: SCAN, status: "ok", nodes: [], findings: [b1(0)] }),
+      row(3, { scannedAt: SCAN, status: "ok", nodes: [], findings: [b1(0)] }),
     ];
     const nodes = themeNodeAggregate(rows);
     expect(nodes).toMatchObject({ pagesRead: 3, theme: 1, none: 2, two: 0, verdict: "extend" });
@@ -286,7 +304,7 @@ describe("the B1 aggregate behind the Structured data card", () => {
 
   it("recommends Full only when no scanned page has one, and says how many", () => {
     const rows = [
-      row(1, { scannedAt: SCAN, status: "ok", nodes: [] }),
+      row(1, { scannedAt: SCAN, status: "ok", nodes: [], findings: [b1(0)] }),
       row(2, { scannedAt: SCAN, status: "ok", nodes: [OUR_NODE] }),
       // Never scanned, so it is not part of the verdict either way.
       row(3),
@@ -307,9 +325,96 @@ describe("the B1 aggregate behind the Structured data card", () => {
 
   it("counts two genuinely different Product nodes on one page", () => {
     const nodes = themeNodeAggregate([
-      row(1, { scannedAt: SCAN, status: "ok", nodes: [THEME_NODE, OUR_NODE] }),
+      row(1, { scannedAt: SCAN, status: "ok", nodes: [THEME_NODE, OUR_NODE], findings: [b1(2)] }),
     ]);
     expect(nodes).toMatchObject({ two: 1, theme: 1, verdict: "extend" });
+  });
+
+  // The defect this rule exists for. The page reader merges two @ids that
+  // resolve to the same address, so it stored one node and raised no B1. The
+  // aggregate used to re-derive the count from the raw strings, see two, and
+  // put "two or more Product nodes" on the Structured data card while the
+  // Findings card showed B1 clean - the two screens disagreeing about one
+  // page, which is the promise build step 4 was written to keep.
+  it("does not re-derive a second node from a relative @id the page reader merged", () => {
+    const nodes = themeNodeAggregate([
+      row(1, {
+        scannedAt: SCAN,
+        status: "ok",
+        nodes: [
+          { types: ["Product"], id: "/products/a#shopify-product" },
+          { types: ["Product"], id: "https://shop.example/products/a#shopify-product" },
+        ],
+        findings: [],
+      }),
+    ]);
+    expect(nodes.two).toBe(0);
+    expect(nodes.none).toBe(0);
+    expect(nodes.theme).toBe(1);
+  });
+});
+
+// --- B5, whose denominator is the one that is not pagesRead ----------------
+
+describe("B5 over pages that did not answer", () => {
+  // B5 is the check about pages that did not answer as a crawler would see
+  // them, and its denominator used to be pagesRead - which subtracts from it
+  // exactly the pages it fires on. A store where two of five products
+  // answered 404 read "2 of 3": a numerator outside its own denominator
+  // (QA, 3 September 2026).
+  const b5 = f("B5", "B", { reason: "status", status: 404 });
+  const aggregate = aggregateFindings([
+    row(1, { scannedAt: SCAN, status: "404", findings: [b5] }),
+    row(2, { scannedAt: SCAN, status: "404", findings: [b5] }),
+    row(3, { scannedAt: SCAN, status: "ok", findings: [] }),
+    row(4, { scannedAt: SCAN, status: "ok", findings: [] }),
+    row(5, { scannedAt: SCAN, status: "ok", findings: [] }),
+  ]);
+
+  it("counts the failures inside a denominator that contains them", () => {
+    const check = aggregate.rows.find((r) => r.code === "B5")!;
+    expect(check.state).toBe("found");
+    expect(check.count).toBe(2);
+    expect(check.denominator).toBe(5);
+  });
+
+  it("keeps every other page check on the pages that answered", () => {
+    for (const code of ["B1", "B2", "B3", "B4"]) {
+      const check = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === code)!;
+      expect(check.denominator).toBe(3);
+    }
+  });
+
+  it("still reports a finding on a store where every page failed", () => {
+    const all404 = aggregateFindings(
+      Array.from({ length: 4 }, (_, i) =>
+        row(i, { scannedAt: SCAN, status: "500", findings: [b5] }),
+      ),
+    );
+    const check = all404.rows.find((r) => r.code === "B5")!;
+    // With pagesRead as the basis this read "not yet read on 4" while every
+    // one of the four carried the finding.
+    expect(check.state).toBe("found");
+    expect(check.count).toBe(4);
+    expect(check.denominator).toBe(4);
+  });
+});
+
+// --- robots.txt turned the scan away ---------------------------------------
+
+describe("the pages-read sentence on a shop robots.txt blocks", () => {
+  const aggregate = aggregateFindings(
+    Array.from({ length: 20 }, (_, i) => row(i, { bulkAt: BULK })),
+  );
+
+  it("says why nothing is read, instead of promising a night that fetches nothing", () => {
+    const sentence = pagesReadSentence(aggregate, 500, "/products/");
+    expect(sentence).toContain("robots.txt disallows /products/");
+    expect(sentence).not.toContain("starting tonight");
+  });
+
+  it("promises the night again as soon as robots.txt stops blocking", () => {
+    expect(pagesReadSentence(aggregate, 500, null)).toContain("starting tonight");
   });
 });
 

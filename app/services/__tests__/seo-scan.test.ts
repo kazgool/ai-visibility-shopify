@@ -36,7 +36,7 @@ import {
   offerFacts,
   sourceAFindings,
 } from "../seo-scan";
-import { computeSourceA, lookupRedirect } from "../seo-scan.server";
+import { REDIRECT_LOOKUP_CAP, computeSourceA, lookupRedirect } from "../seo-scan.server";
 
 // --- the three shapes ------------------------------------------------------
 
@@ -468,6 +468,38 @@ describe("computeSourceA", () => {
     expect(report).toBeNull();
     expect(seoScan.findMany).not.toHaveBeenCalled();
     expect(seoScan.create).not.toHaveBeenCalled();
+  });
+
+  // The cap is the only thing between a handle-rewriting import and thousands
+  // of Admin requests in one catalogue pass, and nothing asserted it until QA
+  // of 3 September 2026. The remainder must read as "not checked" and never as
+  // "no redirect": A4 on a product nobody looked up is not a finding.
+  it("checks at most REDIRECT_LOOKUP_CAP renamed handles in one pass, and accuses nobody else", async () => {
+    const renamed = Array.from({ length: REDIRECT_LOOKUP_CAP + 10 }, (_, i) =>
+      complete({ id: `gid://shopify/Product/${i}`, handle: `new-handle-${i}` }),
+    );
+    resetDb(
+      renamed.map((p, i) => ({
+        id: `row-${i}`,
+        productId: p.id,
+        handle: `old-handle-${i}`,
+        findings: [],
+        offer: null,
+      })),
+    );
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+
+    const graphql = vi.fn(async () => ({ urlRedirects: { nodes: [] } })) as any;
+    const report = await computeSourceA("shop", graphql, {
+      products: renamed,
+      complete: true,
+    });
+
+    expect(graphql).toHaveBeenCalledTimes(REDIRECT_LOOKUP_CAP);
+    expect(report?.redirectsChecked).toBe(REDIRECT_LOOKUP_CAP);
+    // Exactly the ones that were looked up carry A4. The ten past the cap were
+    // not asked about, so they are silent rather than accused.
+    expect(report?.byCode.A4).toBe(REDIRECT_LOOKUP_CAP);
   });
 
   it("creates one row per product on the first pass and counts the findings by code", async () => {

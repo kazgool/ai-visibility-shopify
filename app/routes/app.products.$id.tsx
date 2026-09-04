@@ -105,6 +105,15 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const product = json.data?.product;
   const shopName = json.data?.shop?.name ?? null;
 
+  // A product deleted in Shopify while this URL was still reachable - a
+  // bookmark, the back button, or a finding list rendered a moment before the
+  // delete - used to dereference null on the next line and answer with a
+  // stack trace. This wave adds two more ways to arrive here (the Page column
+  // and /app/products?finding=), so the guard is owed (QA, 3 September 2026).
+  if (!product) {
+    throw new Response("This product no longer exists in this store.", { status: 404 });
+  }
+
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   // Entitlement (ENTITLEMENT rule): the card is gated here, not only on
   // display - the action below checks it again for the "seo" intents, since
