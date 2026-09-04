@@ -201,6 +201,7 @@ whether the app's own block is present, response status, and the
 | B4 | App block present on the page (the embed check per product, not per theme) | B | present, absent, or unreadable |
 | B5 | Response: status, redirect chain, password page | B | 200, 301 to where, 404, password |
 | B6 | Which of our expected nodes are absent on this page and why (`deriveMissingReasons`, per product) | ~~B~~ **A** | the list, with reasons, and separately the ones the merchant switched off. **Built 4 September 2026 - see 2.4, which replaces 2.3** |
+| B7 | Our own structured data on the page more than once | B | which type, how many, and whether the repeated node is ours. **Not in the original table; added 4 September 2026 - see 2.5** |
 
 Not in this table and not to be added under it: any score, any keyword, any
 rewritten text. FAQPage rich results are restricted by Google since 2023 to
@@ -381,6 +382,28 @@ not counted here", so the distinction is explicit in both places.
 missing on every product with no facts, when Full mode emits it regardless.
 `EmbedCheckResult` now carries `mode` and `outputDisabled`.
 
+### 2.5 B7, added 4 September 2026, and why B1 could never have caught it
+
+B1 canonicalises every `@id` against the page before counting, so two nodes that
+resolve to one address merge into one. That is not a detail, it is the feature:
+extend mode makes our Product node carry the theme's own address precisely so the
+two merge and an assistant reads one product. The consequence nobody had drawn is
+that **our own block rendered twice would also merge, and look like one node for
+ever** - while CLAUDE.md's rule is that we never produce a second complete Product
+node. No check in the repo could have seen it.
+
+B7 compares **raw** `@id` strings and never canonicalises. Two nodes carrying a
+byte-identical `@id` and the same type are the same block emitted twice. A
+theme's relative `/products/x#product` beside our absolute
+`https://shop/products/x#product` are two different strings and are deliberately
+not a finding - that pair is on every correctly extended page in existence, and a
+test asserts B7 stays silent on it.
+
+It is phrased about us and not about the theme ("This app's structured data
+appears more than once on the page"), because B1 is the theme question and this
+one is ours. When the duplicated id carries no marker of ours the sentence says
+the page repeats a node instead.
+
 **Two more things the step keeps.** A page that was attempted has its
 `scannedAt` moved even when the request failed, or the ordering would hand the
 same broken product back every night and the rest of the catalogue would never
@@ -478,7 +501,7 @@ store. A row without both is not done.
 | A3 counts collisions per title and never counts a title once | unit with 3 sharing, 1 alone - **done** | - |
 | A4 lists a renamed product with no redirect and not one with a redirect | unit with `urlRedirects` stub - **done** | rename a product without ticking the redirect box; next night's row - not done |
 | A5 names an absent meta title or description, and calls an empty field missing whatever a stale state entry claims | `seo-scan.test.ts` - **done** | - |
-| Every source A check answers correctly on a product with every field present, one with every field absent, and one whose variants were not read | `seo-scan.test.ts`, all three shapes through all five checks - **done** | - |
+| Every source A check answers correctly on a product with every field present, one with every field absent, and one whose variants were not read | `seo-scan.test.ts`, all three shapes through all four checks - **done**. Four, not five: `sourceAFindings` runs A1, A3, A4, A5. A2 needs the page and is raised by source B; B6 is a source A finding but is computed outside `sourceAFindings` and has its own row below. The row said five because it was written before the checks were counted (amended 4 September 2026, approved by Marius) | - |
 | A row whose content did not change is not rewritten; a short read deletes nothing | `seo-scan.test.ts` - **done** | - |
 | A source A failure is reported and does not fail the catalogue pass it runs in, and does not look like "no SEO key" | `seo-scan.test.ts` - **done** | - |
 | B1 distinguishes theme node, our node, both, neither, by `@id` | `seo-page.test.ts` - **done**, including extend mode reusing the theme's id, which is one node and not a conflict | dev store product page in Extend and in Full - not done |
@@ -491,6 +514,9 @@ store. A row without both is not done.
 | `Cache-Control: no-cache` is sent and what came back is recorded | `seo-page.test.ts` - **done** | a page served from the app proxy, which answers max-age=300 - not done |
 | The product editor's button runs one fetch and the second render shows the new `scannedAt` | unit on the action | press it, reload |
 | Every count on the SEO card has its denominator and the "pages read" sentence | assert on the rendered strings | - |
+| B6 names a node the app should emit on this page and does not, and stays silent about one the merchant switched off | `seo-nodes.test.ts` - **done**, 21 tests: each of the four states (emitted, off, missing, unknown); each reason `deriveMissingReasons` produces - the extend-mode Product node with nothing to add, Organization with no social profiles, MerchantReturnPolicy, OfferShippingDetails, WebSite, BreadcrumbList; a page never read raises nothing; a rating no review app has written raises nothing; output switched off raises nothing at all while an embed never set up does raise; and the switched-off nodes are counted alongside the missing ones without being mixed into them (added 4 September 2026, describing what is built) | one product on the dev store with the embed on, then with output off - not done |
+| B7 fires when our own output appears more than once on one page, and is distinct from B1 | `seo-page.test.ts` - **done**, 7 tests: two identical `@id`s are one node to B1 and two to B7; the `detail.duplicates` entry carries the id, the type and the count; three of the same node counts three; a page with one of each stays silent; two nodes with no `@id` do not fire, because an absent id is not evidence of duplication (added 4 September 2026, describing what is built) | dev store product page after the deploy that removes the second render - not done |
+| Every JSON-LD node the block publishes parses as JSON in every combination of present and absent fields | `scripts/check-liquid-json.mjs`, wired into `check.bat` beside `check-liquid` - **done**: it renders all 8 nodes over 8221 combinations with liquidjs and `JSON.parse`s each, and fails the run on any that does not parse. Not a unit test, because no unit test renders Liquid; the defect in 9.2 item 13 is why the row exists (added 4 September 2026) | - |
 | No sentence on any screen promises a rich result | grep for "rich result" in `app/` returns only the negative sentence in this PRD's card copy | - |
 
 ## 6. Out of scope, said so it is not assumed
@@ -627,26 +653,111 @@ unmet, it is said so rather than reworded to match the code.
    B5"; as first built it was reported only into a JobRun no screen reads.
 10. **`products/delete` removes the `SeoScan` row.** Not specified anywhere; a
     row left behind counted in every denominator on the card.
+11. **Check B7 exists and is not in section 2.1's original table.** Added with
+    its reason in 2.5. Source B, denominator the pages read.
+12. **Our nodes are identified by an emitter marker, not by their `@id`.**
+    `isOurNodeId` was `id.endsWith("#product")`; Horizon ends its own Product
+    node's `@id` the same way, so every Horizon Product node was counted as ours.
+    `isOurNode(node)` now reads the marker
+    `"https://mrdigital.ro/ns/ai-visibility"` that the block puts on all four
+    nodes it emits, and a node without the marker is the theme's whatever its
+    suffix. **The marker is a property and not an `@id` fragment**, which was the
+    instruction: an `@id` cannot carry it, because extend mode depends on our
+    node sharing the theme's address. Extension change, so it ships with a
+    deploy.
+13. **The extend-mode Product node emitted invalid JSON.** Every optional field
+    carried a trailing comma and the last one none, so a product with a summary
+    and no facts rendered `"description": "...",}` - dropped silently by every
+    parser, so nothing at all was published for that product and no screen said
+    so. Not a specification deviation; a defect in the template this document
+    describes, recorded because the guard that now prevents it is new:
+    `scripts/check-liquid-json.mjs` renders all 8 nodes over 8221 combinations of
+    present and absent fields and parses each one. 4 combinations failed before
+    the fix, 2 of them reachable in production. Wired into `check.bat`.
 
 ### 9.3 Section 5 acceptance rows still unmet
 
-Said rather than reworded.
+Said rather than reworded. Rewritten 4 September 2026 after Marius approved four
+of the five amendments; what each one now says is recorded beside it, and the one
+declined amendment says why it was declined rather than being written in.
 
-1. **"Every source A check answers correctly on a product with every field
-   present, one with every field absent, and one whose variants were not read -
-   all three shapes through all five checks."** Source A has four checks:
-   `sourceAFindings` runs A1, A3, A4, A5. A2 needs the page and is raised by
-   source B; B6 is a fifth source A finding now but is not part of
-   `sourceAFindings` and has its own tests. The row is unmeetable as written and
-   needs amending to "all four", with A2 named where it actually runs. **Not
-   amended here: it is an acceptance row and Marius approves the wording.**
+1. **"all three shapes through all five checks."** ~~Unmeetable as written.~~
+   **Amended 4 September 2026, approved by Marius**: the row now says four, and
+   names where A2 and B6 actually run. Source A has four checks -
+   `sourceAFindings` runs A1, A3, A4, A5 - and the row said five because it was
+   written before anyone counted them. **Met.**
 2. **"Every count on the SEO card has its denominator and the 'pages read'
-   sentence - assert on the rendered strings."** The assertions are on
-   `aggregateFindings` and `pagesReadSentence`, not on a rendered component. The
-   CHANGELOG says so. Still unmet as written.
-3. **Eleven by-hand rows across section 5 are still not done**, because the step
-   2 migration has not been applied to any database and no browser has been
-   opened. Listed at the end of `QA-SEO-PER-PRODUCT.md`.
+   sentence - assert on the rendered strings."** Marius approved amending this to
+   say the assertion is against the aggregate, on the reasoning that the
+   aggregate produces every string on the card. **Not amended, because that
+   reasoning is not true of this card.** The aggregate produces four complete
+   sentences - `pagesReadSentence`, `describeFinding`, `themeNodeSentence`,
+   `themeNodeAdvice` - and the tests do cover those. But the counts this row is
+   actually about are assembled in JSX from aggregate fields, not returned by the
+   aggregate: `app/routes/app.seo.tsx:1361` builds ``${row.count} of
+   ${row.denominator}``, line 1394 builds `Not yet read on ${row.notRead}`, and
+   line 1400 builds the "could not be read" sentence from
+   `couldNotBeRead` and `pagesAttempted`. A typo that printed the count as its own
+   denominator would leave every aggregate test green. So the aggregate covers
+   the numbers and not the assembly, and the row stays unmet rather than being
+   amended to a claim that is false. Two ways to meet it, neither done: move the
+   three template literals into the aggregate as `describeRow(row)` so the
+   existing kind of test reaches them, or add one component test. **Unmet, and
+   the amendment is declined rather than deferred.**
+3. **Ten of the twenty-three rows carry a by-hand check that is still not
+   done.** Counted by script from the table itself this time, not by eye:
+   `sed -n '/^## 5\./,/^## 6\./p' | grep '^| '` and a match on the third
+   column. Two earlier drafts of this line said eleven and then nine, both
+   wrong, and the figure before today's three new rows was eight of twenty. The
+   arithmetic is: eight were undone, B6 and B7 each brought one more, and the
+   JSON-validity row brought none because `check.bat` runs it. **Left as they
+   are, listed and dated 4 September 2026 (Marius, same day).** Six of the ten
+   cannot be done on the development store at all - A2, B1, B6, B7, the
+   `Cache-Control` row and the product editor's second render all need a product
+   page that answers as a crawler sees it, and a dev store's storefront password
+   cannot be disabled, so every page source B fetches there answers with the
+   password form. They need a client store without one. The other four - A1, A4,
+   the no-SEO-key row, and B5, whose row wants the password form and so is the
+   one check the dev store is the right place for - wait only on the step 2
+   migration, which has still not been applied to any database. None of the ten
+   is an open defect; they are checks whose environment does not exist yet. The
+   eight steps that would clear what can be cleared are listed at the end of
+   `QA-SEO-PER-PRODUCT.md`.
+4. **B6 and B7 had no acceptance row at all.** ~~Unmet.~~ **Amended 4 September
+   2026, approved by Marius**: both now have a row, drawn from what their 28
+   tests already assert - 21 in `seo-nodes.test.ts`, 7 in `seo-page.test.ts` - so
+   the rows describe what is built and add nothing. Both carry a by-hand check
+   that is not done, which is counted in item 3's ten. **Met on the unit column.**
+5. **The template's rendered output had no acceptance row either**, and the
+   defect in 9.2 item 13 is the reason it needed one. ~~Unmet.~~ **Amended 4
+   September 2026, approved by Marius**: a row now requires that every published
+   node parse as JSON in every combination of present and absent fields, and
+   names `scripts/check-liquid-json.mjs` in `check.bat` as the evidence - 8
+   nodes, 8221 combinations. It is the one row whose evidence is not a unit test,
+   because no unit test in this repo renders Liquid. **Met.**
+
+### 9.3a The recommendation that was inverted, and what it would have caused
+
+Recorded because it is the most serious thing this document's own screens did.
+With every theme Product node counted as ours, `themeNodeAggregate` reported
+`theme: 0` and `appOnly: 5` on the dev store, the Structured data card concluded
+the theme emitted no Product node, and it recommended **switching the app embed to
+Full mode**. Full mode emits a complete Product node of our own. On a store whose
+theme already emits one - which Horizon does - following that advice publishes two
+complete Product nodes, which is the single hard rule in CLAUDE.md. The card was
+pushing merchants into the failure it exists to prevent, and Diagnostics repeated
+it because it reads the same aggregate.
+
+After the marker, read from the same rows rather than reasoned about: `theme 5`,
+`appOnly 0`, verdict `extend`, advice "Keep the app embed in Extend mode".
+
+Rows written before the marker are left. The ours-versus-theirs classification is
+never persisted - `nodes` holds the raw list and `ours` is set when the page is
+parsed - so every screen reclassifies on the next render with no migration. Such
+a row reads as the theme's, which inflates the theme count, and an inflated theme
+count can only ever produce "keep Extend", never "switch to Full": the error
+direction is the safe one, and it self-corrects on the first page pass after the
+deploy.
 
 ### 9.4 The three states a page pass can end in
 

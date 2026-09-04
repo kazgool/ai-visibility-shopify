@@ -54,6 +54,7 @@ vi.mock("../../db.server", () => ({
 }));
 
 import type { OfferFacts } from "../seo-scan";
+import { OUR_NODE_MARKER } from "../conflicts";
 import {
   BUDGET_SETTING_KEY,
   cappedBudget,
@@ -86,6 +87,20 @@ function productLd(id: string, offers = ""): string {
   return (
     '<script type="application/ld+json">' +
     `{"@context":"https://schema.org","@type":"Product","@id":"${id}","name":"A chair"${offers}}` +
+    "</script>"
+  );
+}
+
+/**
+ * The same node, but ours: it carries the emitter marker. Ownership is read from
+ * the marker and never from the `@id`, because extend mode makes our node share
+ * the theme's address on purpose (4 September 2026).
+ */
+function ourProductLd(id: string, offers = ""): string {
+  return (
+    '<script type="application/ld+json">' +
+    `{"@context":"https://schema.org","@type":"Product","@id":"${id}",` +
+    `"${OUR_NODE_MARKER}":"1","name":"A chair"${offers}}` +
     "</script>"
   );
 }
@@ -240,14 +255,16 @@ describe("what one page says", () => {
 
   it("B1: two nodes with different ids are two nodes, and both emitters are named", () => {
     const html =
-      CANONICAL + productLd(`${URL_A}#product-theme`) + productLd(`${URL_A}#product`);
+      CANONICAL + productLd(`${URL_A}#product-theme`) + ourProductLd(`${URL_A}#product`);
     const row = readingOf(page(html), null);
     const b1 = row.findings.find((f) => f.code === "B1");
     expect(b1?.detail).toMatchObject({ productNodes: 2, emitters: ["theme", "app"] });
   });
 
   it("B1: extend mode reusing the theme's id is one node, not a conflict", () => {
-    const html = CANONICAL + productLd(`${URL_A}#product`) + productLd(`/products/a-chair#product`);
+    // Ours at the theme's own address, which is the point of extend mode.
+    const html =
+      CANONICAL + ourProductLd(`${URL_A}#product`) + productLd(`/products/a-chair#product`);
     const row = readingOf(page(html), null);
     expect(codes(row.findings)).not.toContain("B1");
     expect(row.appBlock).toBe("present");
@@ -998,5 +1015,78 @@ describe("Read this page now", () => {
     });
 
     expect(outcome).toMatchObject({ ok: false, reason: "no_row" });
+  });
+});
+
+// --- B7: our own output twice on one page ----------------------------------
+
+// The check that exists because no other check could ever see this. B1
+// canonicalises every @id before counting, so two nodes that resolve to one
+// address merge into one node - which is what extend mode is for, and which
+// also means our own block rendered twice would look like one node for ever.
+// Read off the dev store on 4 September 2026: every product page carried two
+// Product nodes, one absolute and one relative, both ending in "#product".
+describe("B7, the same node twice on one page", () => {
+  const ABS = `${URL_A}#product`;
+  const REL = "/products/a-chair#product";
+
+  function findingsOn(html: string) {
+    return readingOf(page(CANONICAL + html + MIRROR_LINK), null).findings;
+  }
+
+  it("fires when the identical @id appears twice, which is our block rendered twice", () => {
+    const findings = findingsOn(ourProductLd(ABS) + ourProductLd(ABS));
+    const b7 = findings.find((f) => f.code === "B7");
+    expect(b7).toBeDefined();
+    expect(b7!.source).toBe("B");
+    expect((b7!.detail as any).ours).toBe(true);
+    expect((b7!.detail as any).duplicates).toEqual([
+      { type: "Product", count: 2, ours: true },
+    ]);
+  });
+
+  // The dev store's actual pair. The theme emits a relative @id and we extend it
+  // with an absolute one; they merge for B1 by design and are two different
+  // strings here, so B7 must stay silent or it would fire on every correctly
+  // extended page in existence.
+  it("stays silent on a theme node and our extension of it, absolute beside relative", () => {
+    const findings = findingsOn(productLd(REL) + ourProductLd(ABS));
+    expect(findings.find((f) => f.code === "B7")).toBeUndefined();
+    // And B1 is silent too, because the two merge to one address.
+    expect(findings.find((f) => f.code === "B1")).toBeUndefined();
+  });
+
+  it("is distinct from B1: B1 merges the pair, B7 counts the raw strings", () => {
+    // Two identical ids: one node to B1, two to B7.
+    const findings = findingsOn(ourProductLd(ABS) + ourProductLd(ABS));
+    expect(findings.find((f) => f.code === "B1")).toBeUndefined();
+    expect(findings.find((f) => f.code === "B7")).toBeDefined();
+  });
+
+  it("says the page repeats a node, not that we did, when the id is not ours", () => {
+    const themeId = `${URL_A}#schema-product`;
+    const b7 = findingsOn(productLd(themeId) + productLd(themeId)).find((f) => f.code === "B7");
+    expect(b7).toBeDefined();
+    expect((b7!.detail as any).ours).toBe(false);
+  });
+
+  it("ignores nodes with no @id, which cannot be identical to anything", () => {
+    const noId =
+      '<script type="application/ld+json">' +
+      '{"@context":"https://schema.org","@type":"BreadcrumbList"}' +
+      "</script>";
+    expect(findingsOn(noId + noId).find((f) => f.code === "B7")).toBeUndefined();
+  });
+
+  it("raises nothing on a clean page", () => {
+    expect(findingsOn(productLd(`${URL_A}#product-theme`)).find((f) => f.code === "B7"))
+      .toBeUndefined();
+  });
+
+  it("counts three of the same node as three", () => {
+    const b7 = findingsOn(ourProductLd(ABS) + ourProductLd(ABS) + ourProductLd(ABS)).find(
+      (f) => f.code === "B7",
+    );
+    expect((b7!.detail as any).duplicates[0].count).toBe(3);
   });
 });

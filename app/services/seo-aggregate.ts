@@ -22,7 +22,7 @@
 // zero reads "not yet read" and never "0". If we did not fetch it, we do not
 // say (EXPERIENCE-PRD section 2).
 
-import { isOurNodeId } from "./conflicts";
+import { isOurNode } from "./conflicts";
 import { CHECK_LABEL, findingsOf, type Finding, type FindingCode } from "./seo-findings";
 
 /**
@@ -94,6 +94,8 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   // read per pass, so its denominator is the catalogue and not the pages read
   // (built 4 September 2026; PRD section 2.1 had assigned it to source B).
   { code: "B6", source: "A", basis: "catalogue" },
+  // B7 is a page fact: the same node twice in the page's own markup.
+  { code: "B7", source: "B", basis: "pagesRead" },
 ];
 
 export type CheckState = "found" | "clean" | "notYetRead";
@@ -377,7 +379,9 @@ type NodeLike = { types?: unknown; id?: unknown };
  * were.
  *
  * `ours` and `theirs` are read from the stored nodes, with the same
- * `isOurNodeId` predicate the page reader uses, so the two cannot drift.
+ * `isOurNode` predicate the page reader uses, so the two cannot drift. It reads
+ * our emitter marker off the stored node and never the `@id`: a theme is free to
+ * choose the same suffix we do, and Horizon does.
  *
  * `distinct` is **not** recomputed from the stored ids, and this is the
  * reason. The page reader merges two nodes when their `@id`s resolve to the
@@ -403,7 +407,7 @@ function productNodesOf(
     const types = Array.isArray(node?.types) ? node.types.map(String) : [];
     if (!types.includes("Product")) continue;
     const id = typeof node?.id === "string" ? node.id : "";
-    if (isOurNodeId(id)) ours += 1;
+    if (isOurNode(node as { ours?: boolean })) ours += 1;
     else theirs += 1;
   }
   const b1 = findings.find((f) => f.code === "B1");
@@ -598,6 +602,18 @@ export function describeFinding(finding: Finding): string {
       return `The page tells search engines not to index it (from the ${d.from === "both" ? "meta tag and the header" : d.from === "header" ? "X-Robots-Tag header" : "robots meta tag"}).`;
     case "B4":
       return "Our block was not detected on this page: no product node of ours and no link to the plain text mirror.";
+    case "B7": {
+      const dupes = Array.isArray(d.duplicates) ? d.duplicates : [];
+      const parts = dupes.map(
+        (x: any) => `${String(x?.count ?? 2)} ${String(x?.nodeType ?? x?.type ?? "node")} nodes`,
+      );
+      const whose = d.ours
+        ? "This app's own output is on the page more than once"
+        : "The page repeats the same structured-data node";
+      return parts.length > 0
+        ? `${whose}: ${parts.join(", ")} sharing one address. Assistants read one node, so the duplicate is wasted at best and contradictory at worst.`
+        : label;
+    }
     case "B6": {
       const missing = Array.isArray(d.missing) ? d.missing : [];
       const names = missing.map((m: any) => String(m?.nodeType ?? "")).filter(Boolean);

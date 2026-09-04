@@ -53,5 +53,22 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM Liquid syntax is one thing; the JSON that Liquid produces is another, and
+REM `shopify app deploy` checks only the first. The extend-mode Product node gave
+REM every optional field a trailing comma and the last one none, so a product
+REM with a summary and no facts rendered invalid JSON and every parser dropped
+REM the whole node silently - the app published nothing for that product and no
+REM screen said so. Nothing here could catch that until this check existed.
+echo.
+echo === liquid json ===
+call node scripts\check-liquid-json.mjs
+if errorlevel 1 (
+  echo.
+  echo LIQUID JSON PROBLEM - a node renders invalid JSON for some combination
+  echo of present and absent fields. Assistants would drop it silently.
+  pause
+  exit /b 1
+)
+
 echo.
 pause

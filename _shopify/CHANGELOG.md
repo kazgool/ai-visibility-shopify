@@ -16,6 +16,171 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### A node that rendered invalid JSON, and a check that makes the class impossible (4 September 2026)
+
+The extend-mode Product node gave every optional field a **trailing** comma and
+the last one none, so it emitted invalid JSON whenever `additionalProperty` was
+absent: a product with a summary and no facts rendered
+`"description": "...",}`. Every parser drops an invalid JSON-LD block silently,
+so for those products this app published nothing at all - and no screen said so,
+because the page scan reads a dropped node exactly as it reads a theme that never
+emitted one.
+
+**Fixed by inverting the commas.** Every optional field in that node now carries
+a **leading** comma and the last guaranteed key carries none, so no combination
+of present and absent fields can trail.
+
+**All eight nodes were read, not just the one.** The others were written a
+different way and are safe, each for a structural reason worth recording: the
+Organization, WebSite, full-mode Product, CollectionPage and both FAQPage nodes
+all end in an unconditional field (`sameAs`, `offers`, `mainEntity`), and
+BreadcrumbList already used the leading-comma pattern. **One of eight was
+broken.** The full-mode Product node in particular is correct in every one of its
+combinations, which is why the defect only ever showed in extend mode.
+
+**`scripts/check-liquid-json.mjs`.** It extracts every `ld+json` block from the
+template, renders each one with liquidjs against every combination of the fields
+it actually reads, and parses the result. **8 nodes, 8221 combinations.** Before
+the fix: **4 combinations did not parse**, all four in the extend node, all four
+with facts absent. Two of the four are reachable in production - the node renders
+only when `av_facts or av_summary`, so the reachable broken states are "summary,
+no facts" with and without a fit_for value. Measured, not reasoned about: the
+same checker takes a path, so it was run against `git show HEAD:` to get the
+before number.
+
+Wired into `check.bat` beside `check-liquid`, which only ever looked for literal
+braces. Nothing else could have caught this: the unit tests never render Liquid,
+`shopify app deploy` parses Liquid syntax and not the JSON it produces, and the
+app's own scan cannot tell a dropped node from an absent one. `liquidjs` is a new
+devDependency and ships in nothing.
+
+**Nothing real was published broken.** `scripts/count-broken-jsonld.ts` (read
+only, one bulk read, counts only) on the dev store: 50 of 50 products have both
+facts and a summary, so **0 of 50** were in the broken set. Every product that
+emitted the node had facts, so `additionalProperty` was always last and the JSON
+always closed. A catalogue with summaries but no facts - a store part-way through
+its first pass, or one where extraction found nothing - would have been hit.
+
+### Our nodes carry an emitter marker, and the Full-mode advice is no longer wrong (4 September 2026)
+
+**This wave changes `ai-visibility.liquid`, so shipping it requires
+`npx shopify app deploy` and creates a new extension version.** The marker only
+appears in published output after that deploy; everything below is written to be
+correct before and after it.
+
+`isOurNodeId` was `id.endsWith("#product")`, and its own comment carried the
+assumption that broke it: "a theme's node ends in whatever the theme chose".
+Horizon chooses `#product`. Every Horizon Product node was therefore counted as
+ours, `themeNodeAggregate` saw `theirs: 0`, and the Structured data card
+recommended **switching to Full mode** - which would have produced the second
+complete Product node CLAUDE.md forbids. The card was pushing merchants into the
+failure it exists to prevent.
+
+**The marker is a property, not an `@id` fragment, and this is the one deviation
+from the instruction.** It cannot go in the `@id`: in extend mode our Product
+node deliberately carries the *theme's* address so JSON-LD merges the two into
+one node, and the same holds for our Organization node when the theme has an
+`@id` to reuse. Give our node its own address and it stops merging, and then the
+page carries two distinct Product nodes. Extend mode's merge is not negotiable,
+so the marker rides on the node instead:
+
+    "https://mrdigital.ro/ns/ai-visibility": "1"
+
+An absolute IRI used directly as a key - valid JSON-LD needing no `@context`
+term, ignored by every consumer that does not know it, polluting no schema.org
+property so it cannot be mistaken for a real `identifier` on the merchant's
+product, and on our own domain so a theme cannot match it by coincidence. It is
+on all four nodes we emit: Product in both modes, Organization, CollectionPage.
+`isOurNode(node)` reads that and nothing else. **A node without the marker is the
+theme's, whatever its suffix.**
+
+**Verified from the aggregate, not reasoned about.** `scripts/read-seo-rows.ts`
+now prints the Structured data card computed from the shop's own rows. On the dev
+store, after the change:
+
+    pages the verdict rests on   5
+    pages with a THEME node      5
+    pages where only ours        0
+    verdict                      extend
+    advice: Keep the app embed in Extend mode. We add only what the theme
+            omits, referenced to its node, so assistants read one product
+            rather than two.
+
+Before: `theme 0`, `appOnly 5`, `verdict full`, "switch the app embed to Full
+mode". Horizon does emit a Product node, so Extend is the true answer.
+Diagnostics reads the same aggregate and follows.
+
+**Existing SeoScan rows are left, and here is why that is not a stale
+recommendation.** The ours-versus-theirs classification is never persisted:
+`nodes` stores the raw node list and `ours` is set when the page is parsed, so
+every screen reclassifies on the next render with no migration and no recompute.
+Rows written before the marker have no marker and therefore read as the theme's,
+which inflates the theme count - and an inflated theme count can only ever
+produce "keep Extend", never "switch to Full". The one wrong answer it can give
+is recommending Extend on a store whose theme genuinely emits nothing, and Extend
+never creates a duplicate node: a missed improvement, not a broken page. It
+self-corrects on the first nightly page pass after the deploy. To force it
+sooner, clearing `scannedAt` on the shop's rows makes the next pass re-read them.
+
+**Tested.** 6 tests in `theme-scan.server.test.ts` for the classification,
+including the real Horizon shape (`/products/a-chair#product` classified as the
+theme's), our node at that same address classified as ours by the marker, and a
+stored node from before the marker reading as the theme's. Fixtures across four
+test files now carry the marker where they mean "ours", which is the change made
+visible. `npx tsc --noEmit` clean, 49 files and 714 tests green, the build and
+the Liquid check green, and green again with `.env` renamed away.
+
+### The duplicate node was not a duplicate, and isOurNodeId is wrong (4 September 2026)
+
+Five product pages on the dev store carried two Product nodes and two
+Organization nodes, both attributed to us, merged to one each by `@id`. Two
+causes were possible: the embed enabled twice in the theme, or one enable
+rendering the block twice. **It is neither.**
+
+`checkAppEmbed` now counts instances instead of setting booleans - the loop
+always visited every block, it simply recorded nothing about how many - and
+`EmbedCheckResult` carries `instances` and `activeInstances`.
+`scripts/read-app-embed.ts` reads the published theme and prints them. On the
+dev store (Horizon): **1 block present, 1 rendering.** And the two Product nodes
+have different raw `@id`s: ours absolute
+(`https://.../products/<handle>#product`, which is what the Liquid builds) and
+one relative (`/products/<handle>#product`), which our block never emits. The
+two Product branches in the Liquid are `if mode == 'full'` / `elsif` and are
+mutually exclusive. So the pair is the theme's node plus our extension of it,
+sharing an address on purpose. That is extend mode working.
+
+**The real defect is `isOurNodeId` (`conflicts.ts:36`).** It is a suffix test,
+and its own comment states the assumption that is false: "a theme's node ends in
+whatever the theme chose". Horizon chose `#product`. So the theme's Product node
+is counted as ours, `themeNodeAggregate` sees `theirs: 0`, and the Structured
+data card concludes the theme emits no Product node and recommends **switching
+to Full mode** - which would produce the second complete Product node CLAUDE.md
+forbids. The card is currently pushing merchants toward the failure it exists to
+prevent, and Diagnostics repeats it because it reads the same aggregate. **Not
+fixed here:** it changes a merchant-facing recommendation and is Marius's call.
+
+**New check B7, and it is not B1.** B1 canonicalises every `@id` before counting
+so that extend mode reads as one node - which also means our own block rendered
+twice would look like one node for ever, and no existing check could see it. B7
+compares **raw** `@id` strings and never canonicalises: two nodes with a
+byte-identical id and the same type are the same block emitted twice. The dev
+store's absolute-beside-relative pair is two different strings and does not fire
+it, which a test asserts explicitly - otherwise B7 would fire on every correctly
+extended page in existence. Phrased about our output, not about the theme:
+"This app's structured data appears more than once on the page".
+
+**Two read-only scripts.** `scripts/read-seo-rows.ts` prints what source B
+actually wrote into a row - status, canonical, node types and `@id`s, appBlock,
+findings - with handles and slugs masked and no product text, so a run's summary
+can be checked against the rows rather than reasoned about.
+`scripts/read-app-embed.ts` prints the embed instance count. Neither writes
+anything.
+
+**Tested.** 7 tests for B7 in `seo-page.test.ts`, including the pair that must
+stay silent and the three-of-a-kind count. `npx tsc --noEmit` clean, 49 files and
+712 tests green, the build and the Liquid check green, and green again with
+`.env` renamed away.
+
 ### B6, and a scan that said "finished" when nothing had started (4 September 2026)
 
 **Check B6 is built**, after being deferred twice. The deferral's reason was that
@@ -127,6 +292,44 @@ call on the path as well as the last, and still throws both a plain bug and a
 `THROTTLED` GraphQL error. `npx tsc --noEmit` clean, 48 files and 678 tests
 green, the build and the Liquid check green, and green again with `.env`
 renamed away.
+
+### Every caught error is logged as its GraphQL errors, never as an object (4 September 2026)
+
+A 500 on POST /app/seo could not be diagnosed from the logs at all. What Fly
+showed was the generic client sentence and then `graphQLErrors: [Array]`. Every
+fact needed to fix it was in the error object and none of it was printed. Three
+things conspired: Shopify's Admin API answers **HTTP 200 with a top-level
+`errors` array** for throttling, for an access refusal and for a document it will
+not run; `@shopify/shopify-api` turns that into a `GraphqlQueryError` carrying a
+whole `Response` with the useful content nested three levels down; and nothing in
+the app exported `handleError`, so Remix logged the raw object at Node's default
+depth of 2.
+
+`app/services/graphql-errors.ts` is now the only way this app logs a caught
+error. `describeGraphqlError` reads the array from all four shapes the Shopify
+stack uses and prints, on one line: the operation, the error class, `http=`,
+every message with its `extensions.code` and dotted `path`, `userErrors`
+separately, the throttle bucket when present, `x-request-id`, and three stack
+frames. It takes a `Response`'s status and nothing else.
+
+**Every site that dumped an object was changed**, and the first of them is the
+one that mattered: `entry.server.tsx` had **no `handleError` at all**. Also its
+`onError`, `worker/tasks.ts`'s `describeError` (which feeds seven `JobRun.report`
+writes), `worker/index.ts`, both webhook handlers, `seo-scan.server.ts`, and the
+three scripts. `describeGraphqlBody` closes the other half: a 200 with top-level
+errors reaches some callers as a value, and reading `data?.shop?.id` off it
+returned undefined, so `mirrorThemeScanMetafield` used to return silently with
+nothing logged.
+
+One deliberate exception, and the suite caught the over-application:
+`describeError` in `seo-page.server.ts` stays the bare message. Every error it
+catches is a storefront `fetch` and the string is rendered to the merchant as
+"The page could not be reached: ..."; stack frames on a merchant's screen are
+noise. The formatter is for what is logged, not for what is shown.
+
+**Tested.** 11 tests built from the real `GraphqlQueryError` shape, including the
+negative one: the output must never contain `[Array]`, `[Object]`,
+`[object Response]`, or a newline.
 
 ### A development runner for the nightly page scan (4 September 2026)
 

@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   extractLdNodes,
   detectConflicts,
-  isOurNodeId,
+  isOurNode,
+  OUR_NODE_MARKER,
   canonicalNodeId,
   deriveMissingReasons,
   organizationPairIsInformational,
@@ -82,19 +83,64 @@ describe("extractLdNodes", () => {
   });
 });
 
-describe("isOurNodeId", () => {
-  it("recognises our Product and CollectionPage suffixes", () => {
-    expect(isOurNodeId("https://x/products/y#product")).toBe(true);
-    expect(isOurNodeId("https://x/collections/y#collection")).toBe(true);
+describe("telling our nodes from the theme's", () => {
+  // The defect this replaced. isOurNodeId was `id.endsWith("#product")`, and its
+  // own comment carried the assumption that broke it: "a theme's node ends in
+  // whatever the theme chose". Horizon chooses "#product". So on the dev store
+  // every Horizon Product node was counted as ours, themeNodeAggregate saw
+  // theirs: 0, and the Structured data card recommended switching to Full mode -
+  // which would have produced the second complete Product node CLAUDE.md
+  // forbids. Read off the store on 4 September 2026.
+  const HORIZON_PRODUCT_ID = "/products/a-chair#product";
+
+  function nodeFrom(json: string) {
+    return extractLdNodes(`<script type="application/ld+json">${json}</script>`)[0];
+  }
+
+  it("classifies a theme node as the theme's even when its id ends in our suffix", () => {
+    const node = nodeFrom(
+      `{"@context":"https://schema.org","@type":"Product","@id":"${HORIZON_PRODUCT_ID}","name":"A chair"}`,
+    );
+    expect(node.id).toBe(HORIZON_PRODUCT_ID);
+    expect(node.ours).toBeUndefined();
+    expect(isOurNode(node)).toBe(false);
   });
 
-  it("recognises our Organization suffix", () => {
-    expect(isOurNodeId("https://x#organization")).toBe(true);
+  it("classifies our node as ours by the marker, at the very same id", () => {
+    // The same address on purpose: extend mode shares the theme's @id so the
+    // two merge into one node. The marker is what tells them apart.
+    const node = nodeFrom(
+      `{"@context":"https://schema.org","@type":"Product","@id":"${HORIZON_PRODUCT_ID}",` +
+        `"${OUR_NODE_MARKER}":"1","description":"added by us"}`,
+    );
+    expect(node.id).toBe(HORIZON_PRODUCT_ID);
+    expect(isOurNode(node)).toBe(true);
   });
 
-  it("does not recognise a theme's own id or an empty one", () => {
-    expect(isOurNodeId("https://x/products/y")).toBe(false);
-    expect(isOurNodeId("")).toBe(false);
+  it("never reads ownership off a suffix, in either direction", () => {
+    // Ours without our old suffix.
+    expect(
+      isOurNode(
+        nodeFrom(
+          `{"@type":"Organization","@id":"https://x/","${OUR_NODE_MARKER}":"1"}`,
+        ),
+      ),
+    ).toBe(true);
+    // The theme's, with every suffix we used to claim.
+    for (const id of ["https://x/products/y#product", "https://x/c#collection", "https://x#organization"]) {
+      expect(isOurNode(nodeFrom(`{"@type":"Product","@id":"${id}"}`))).toBe(false);
+    }
+  });
+
+  it("reads a node with no id and no marker as the theme's", () => {
+    expect(isOurNode(nodeFrom('{"@type":"BreadcrumbList"}'))).toBe(false);
+  });
+
+  // Every row written before the marker shipped has no marker, so it reads as
+  // the theme's. That inflates the theme count, which can only ever recommend
+  // Extend - and Extend never creates a duplicate node.
+  it("reads a stored node from before the marker as the theme's", () => {
+    expect(isOurNode({ types: ["Product"], id: "https://x/products/y#product" } as any)).toBe(false);
   });
 });
 
@@ -112,15 +158,15 @@ describe("detectConflicts", () => {
       { types: ["Organization"], id: "" },
       { types: ["Organization"], id: "https://x/#org" },
     ];
-    // Neither id matches our #product/#collection suffix here, so weEmitOne
+    // Neither node carries our marker here, so weEmitOne
     // is false - we cannot claim credit we cannot verify.
     const conflicts = detectConflicts(nodes);
     expect(conflicts).toEqual([{ type: "Organization", count: 2, weEmitOne: false }]);
   });
 
-  it("names us as one source when one of the repeated nodes carries our id", () => {
+  it("names us as one source when one of the repeated nodes is ours", () => {
     const nodes = [
-      { types: ["Product"], id: "https://x/products/y#product" },
+      { types: ["Product"], id: "https://x/products/y#product", ours: true },
       { types: ["Product"], id: "https://x/products/y" },
     ];
     const conflicts = detectConflicts(nodes);
@@ -141,8 +187,8 @@ describe("detectConflicts", () => {
   // conflict, on any of the five id shapes that can arise.
   it("does not report a conflict when two nodes share the exact same @id (the merge case)", () => {
     const nodes = [
-      { types: ["Product"], id: "https://x/products/y#product" },
-      { types: ["Product"], id: "https://x/products/y#product" },
+      { types: ["Product"], id: "https://x/products/y#product", ours: true },
+      { types: ["Product"], id: "https://x/products/y#product", ours: true },
     ];
     expect(detectConflicts(nodes, "https://x/products/y")).toEqual([]);
   });
@@ -150,7 +196,8 @@ describe("detectConflicts", () => {
   it("merges a relative @id from the theme with the absolute form of the same address from us, given the page URL", () => {
     const nodes = [
       { types: ["Product"], id: "/products/x#product" }, // theme's own, relative
-      { types: ["Product"], id: "https://shop.example/products/x#product" }, // ours, absolute
+      // Ours: the same address on purpose, told apart by the marker.
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true },
     ];
     const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
     expect(conflicts).toEqual([]);
@@ -159,7 +206,7 @@ describe("detectConflicts", () => {
   it("without a known page URL, leaves a relative id unresolved and reports the possible conflict rather than guessing", () => {
     const nodes = [
       { types: ["Product"], id: "/products/x#product" },
-      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true },
     ];
     // No pageUrl passed: the two strings differ, so they are not merged.
     const conflicts = detectConflicts(nodes);
@@ -177,7 +224,7 @@ describe("detectConflicts", () => {
 
   it("still reports a conflict when one node has an @id and the other has none - they cannot be proven the same node", () => {
     const nodes = [
-      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true },
       { types: ["Product"], id: "" },
     ];
     const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
@@ -186,7 +233,7 @@ describe("detectConflicts", () => {
 
   it("still reports a conflict for two different, unrelated @id values", () => {
     const nodes = [
-      { types: ["Product"], id: "https://shop.example/products/x#product" },
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true },
       { types: ["Product"], id: "https://shop.example/products/other-app-node" },
     ];
     const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
@@ -195,8 +242,8 @@ describe("detectConflicts", () => {
 
   it("merges three nodes down to two distinct entities and still counts the survivors", () => {
     const nodes = [
-      { types: ["Product"], id: "https://shop.example/products/x#product" },
-      { types: ["Product"], id: "https://shop.example/products/x#product" }, // dup of the first
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true },
+      { types: ["Product"], id: "https://shop.example/products/x#product", ours: true }, // dup
       { types: ["Product"], id: "https://shop.example/products/other-app-node" },
     ];
     const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
@@ -208,7 +255,7 @@ describe("organizationPairIsInformational", () => {
   it("marks an Organization pair with our node as informational", () => {
     const nodes = [
       { types: ["Organization"], id: "" }, // theme's id-less node
-      { types: ["Organization"], id: "https://shop.example#organization" }, // ours
+      { types: ["Organization"], id: "https://shop.example#organization", ours: true }, // ours
     ];
     const conflicts = detectConflicts(nodes, "https://shop.example/products/x");
     expect(conflicts).toEqual([{ type: "Organization", count: 2, weEmitOne: true }]);

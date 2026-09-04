@@ -30,7 +30,8 @@ export type FindingCode =
   | "B3"
   | "B4"
   | "B5"
-  | "B6";
+  | "B6"
+  | "B7";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -63,6 +64,10 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   // B6 says "should be here and is not". A node the merchant switched off is
   // not counted (seo-nodes.ts), so the label can promise that without lying.
   B6: "Structured data this app should be adding is missing",
+  // Our own output, twice on one page. Deliberately phrased about us and not
+  // about the theme: B1 is the theme question, and B1's @id merge is what made
+  // this invisible (4 September 2026).
+  B7: "This app's structured data appears more than once on the page",
 };
 
 /**

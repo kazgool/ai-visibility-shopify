@@ -44,6 +44,21 @@ export type EmbedCheckResult = {
    * "this node should be here and is not" and "you turned it off" (B6).
    */
   outputDisabled: boolean;
+  /**
+   * How many of our app-embed blocks are in the published theme at all,
+   * enabled or not, and how many would actually render.
+   *
+   * Counted from 4 September 2026. The loop below always visited every block -
+   * it never broke early - but it recorded only booleans, so a theme carrying
+   * our embed twice looked exactly like a theme carrying it once. That is how
+   * five product pages came to hold two Product nodes and two Organization
+   * nodes, both of them ours, merged to one each by `@id` and therefore
+   * invisible to B1 (see the row read of 4 September 2026). More than one
+   * `activeInstances` is a defect whichever side caused it: CLAUDE.md's rule
+   * is that our output never produces a second complete Product node.
+   */
+  instances: number;
+  activeInstances: number;
 };
 
 // The block type in settings_data.json contains the extension uid
@@ -100,6 +115,8 @@ export async function checkAppEmbed(
       unreadable: true,
       mode: "unknown",
       outputDisabled: false,
+      instances: 0,
+      activeInstances: 0,
     };
   }
 
@@ -117,6 +134,8 @@ export async function checkAppEmbed(
       ...base,
       mode: "unknown",
       outputDisabled: false,
+      instances: 0,
+      activeInstances: 0,
     };
   }
 
@@ -133,6 +152,8 @@ export async function checkAppEmbed(
       unreadable: true,
       mode: "unknown",
       outputDisabled: false,
+      instances: 0,
+      activeInstances: 0,
     };
   }
 
@@ -152,17 +173,24 @@ export async function checkAppEmbed(
   // output off deliberately.
   let mode: "extend" | "full" | "unknown" = "unknown";
   let outputDisabled = false;
+  // Counted, not flagged: a boolean cannot tell one embed from two.
+  let instances = 0;
+  let activeInstances = 0;
   for (const block of Object.values<any>(blocks)) {
     const type = String(block?.type ?? "");
     const ours = type.includes(`/blocks/${EXTENSION_HANDLE}/`) || type.includes(EXTENSION_UID);
     if (!ours) continue;
     present = true;
+    instances += 1;
     const rawMode = String(block?.settings?.mode ?? "");
     if (rawMode === "full" || rawMode === "extend") mode = rawMode;
     if (block?.settings?.enabled === false) outputDisabled = true;
     if (block?.disabled === true) continue;
     if (type.includes(EXTENSION_UID)) {
       enabled = true;
+      // Present, not disabled, and pointing at the released uid: this one
+      // renders, and every one of them renders the whole block again.
+      activeInstances += 1;
     } else {
       // Right handle, wrong uid: a reference saved against a dev preview.
       // The theme logs "app block path does not exist" and renders nothing.
@@ -177,6 +205,8 @@ export async function checkAppEmbed(
     ...base,
     mode,
     outputDisabled,
+    instances,
+    activeInstances,
   };
 }
 

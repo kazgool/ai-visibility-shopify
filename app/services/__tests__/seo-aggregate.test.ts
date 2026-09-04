@@ -44,7 +44,9 @@ function f(code: string, source: "A" | "B" | "A+B", detail: Record<string, unkno
 }
 
 const THEME_NODE = { types: ["Product"], id: "https://shop.example/products/a#product-theme" };
-const OUR_NODE = { types: ["Product"], id: "https://shop.example/products/a#product" };
+// Ours by the marker, not by the suffix: a theme is free to end its @id in
+// "#product" and Horizon does (4 September 2026).
+const OUR_NODE = { types: ["Product"], id: "https://shop.example/products/a#product", ours: true };
 
 function row(i: number, over: Partial<ScanRowLike> = {}): ScanRowLike {
   return {
@@ -133,10 +135,10 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // B6 joined the list on 4 September 2026 and is counted over the catalogue,
     // because source A computes it from the read it already has.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A2", "A4", "A5", "B1", "B3", "B4", "B5", "B6",
+      "A2", "A4", "A5", "B1", "B3", "B4", "B5", "B6", "B7",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "5 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
+      "6 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
     );
   });
 

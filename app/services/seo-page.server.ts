@@ -44,7 +44,7 @@ import {
   extractLdNodes,
   extractLdObjects,
   extractNoindex,
-  isOurNodeId,
+  isOurNode,
   storefrontCookie,
   type LdNode,
 } from "./theme-scan.server";
@@ -449,6 +449,49 @@ export type PageRow = {
   findings: Finding[];
 };
 
+/**
+ * B7: the same structured-data node appearing on the page more than once.
+ *
+ * Distinct from B1, and the distinction is the whole point. B1 canonicalises
+ * every `@id` against the page before counting, so two nodes that resolve to
+ * one address merge into one - which is exactly what extend mode is for, and
+ * is why B1 is silent when the theme emits a Product node and we extend it by
+ * reusing its address. That merge also means **no existing check could ever
+ * see our own output rendered twice**, and CLAUDE.md's rule is that we never
+ * produce a second complete Product node.
+ *
+ * So this one compares **raw** `@id` strings and never canonicalises. Two
+ * nodes carrying a byte-identical `@id` and the same type are the same block
+ * emitted twice; a theme's relative `/products/x#product` beside our absolute
+ * `https://shop/products/x#product` are two different strings and are not a
+ * finding here, correctly. Verified against the dev store on 4 September 2026,
+ * where that is precisely the pair on the page.
+ *
+ * `ours` says the duplicated node carries our emitter marker, so we emitted it.
+ * A node without the marker is the theme's, and the finding is then phrased
+ * about the page repeating a node rather than about our output.
+ */
+export function duplicateNodes(nodes: LdNode[]): {
+  type: string;
+  count: number;
+  ours: boolean;
+}[] {
+  const seen = new Map<string, { type: string; count: number; ours: boolean }>();
+  for (const node of nodes) {
+    const id = typeof node.id === "string" ? node.id : "";
+    if (id === "") continue; // No id, nothing to be identical to.
+    for (const type of node.types) {
+      // JSON, not a separator character: a URL may legally contain almost
+      // anything, and a key that can collide would merge two different nodes.
+      const key = JSON.stringify([id, type]);
+      const entry = seen.get(key);
+      if (entry) entry.count += 1;
+      else seen.set(key, { type, count: 1, ours: isOurNode(node) });
+    }
+  }
+  return [...seen.values()].filter((entry) => entry.count > 1);
+}
+
 function sameAddress(a: string, b: string): boolean {
   const strip = (value: string) => value.split("#")[0].replace(/\/$/, "");
   return strip(a) === strip(b);
@@ -520,9 +563,9 @@ export function readingOf(page: PageRead, offer: OfferFacts | null): PageRow {
     else ids.add(canonical);
   }
   const distinct = ids.size + idless;
-  const ours = productNodes.some((n) => isOurNodeId(n.id));
+  const ours = productNodes.some((n) => isOurNode(n));
   const emitters = [
-    ...(productNodes.some((n) => !isOurNodeId(n.id)) ? ["theme"] : []),
+    ...(productNodes.some((n) => !isOurNode(n)) ? ["theme"] : []),
     ...(ours ? ["app"] : []),
   ];
   if (distinct !== 1) {
@@ -530,6 +573,20 @@ export function readingOf(page: PageRead, offer: OfferFacts | null): PageRow {
       code: "B1",
       source: "B",
       detail: { productNodes: distinct, emitters, ids: [...ids] },
+    });
+  }
+
+  // B7, over every node type and not only Product: the same node twice on one
+  // page. Raised from the raw ids, so B1's merge cannot hide it.
+  const duplicates = duplicateNodes(nodes);
+  if (duplicates.length > 0) {
+    findings.push({
+      code: "B7",
+      source: "B",
+      detail: {
+        duplicates: duplicates.map((d) => ({ type: d.type, count: d.count, ours: d.ours })),
+        ours: duplicates.some((d) => d.ours),
+      },
     });
   }
 

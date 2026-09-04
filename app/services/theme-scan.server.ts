@@ -22,6 +22,14 @@ export type LdNode = {
    * is actually determined - see deriveMissingReasons.
    */
   hasAggregateRating?: boolean;
+  /**
+   * True when this node carries our own emitter marker (`OUR_NODE_MARKER`), so
+   * it was emitted by this app's block. Absent means the theme's - which is
+   * also what every node stored before the marker shipped reads as, and that is
+   * the safe direction (see isOurNode). Never inferred from the `@id`: extend
+   * mode makes our node share the theme's address on purpose.
+   */
+  ours?: boolean;
 };
 
 export type PageScan = {
@@ -128,6 +136,9 @@ export function extractLdNodes(html: string): LdNode[] {
       ...(node && typeof node === "object" && node.aggregateRating
         ? { hasAggregateRating: true }
         : {}),
+      // Key omitted when absent, for the same reason: a stored node from
+      // before the marker shipped keeps the shape it had.
+      ...(objectCarriesOurMarker(node) ? { ours: true } : {}),
     });
   }
   return nodes;
@@ -162,7 +173,7 @@ export function extractLdObjects(html: string): any[] {
 //
 //  - organizationPairIsInformational: the SEO screen's components render this
 //    judgement client side.
-//  - isOurNodeId: an @id our own block would have set. The extension sets
+//  - isOurNode: whether our own block emitted this node, by its marker. Was
 //    `#product` on the Product node, `#collection` on the CollectionPage node
 //    and `#organization` on the Organization node it emits itself (when
 //    extending the theme's own node it reuses the theme's @id instead).
@@ -170,9 +181,14 @@ export function extractLdObjects(html: string): any[] {
 //    sources without guessing at the other, how the scan keeps our own output
 //    from counting as "the theme emits one", and - since build step 4 - how
 //    the SEO card's B1 aggregate tells a theme node from ours.
-export { organizationPairIsInformational, isOurNodeId } from "./conflicts";
+export {
+  organizationPairIsInformational,
+  isOurNode,
+  objectCarriesOurMarker,
+  OUR_NODE_MARKER,
+} from "./conflicts";
 
-import { isOurNodeId } from "./conflicts";
+import { isOurNode, objectCarriesOurMarker } from "./conflicts";
 
 /**
  * Resolve an `@id` to the form it actually identifies, so a relative id from
@@ -234,7 +250,7 @@ export function detectConflicts(nodes: LdNode[], pageUrl?: string | null): Confl
     let weEmitOne = false;
     for (const node of list) {
       const canonical = canonicalNodeId(node.id, pageUrl);
-      const emitsOurs = isOurNodeId(node.id);
+      const emitsOurs = isOurNode(node);
       if (canonical === null) {
         distinctCount += 1;
         weEmitOne = weEmitOne || emitsOurs;
@@ -437,7 +453,7 @@ export async function scanThemeForProductLd(
   // class CLAUDE.md rule 3 names, filling the weekly watch history with
   // changes this app produced itself.
   const orgNodes = page.nodes.filter(
-    (n) => n.types.includes("Organization") && !isOurNodeId(n.id),
+    (n) => n.types.includes("Organization") && !isOurNode(n),
   );
 
   return {

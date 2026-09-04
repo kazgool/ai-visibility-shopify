@@ -102,6 +102,15 @@
       {
         "@context": "https://schema.org",
         "@type": "Organization",
+        {%- comment -%}
+          Our emitter marker. The server reads this and nothing else to tell our
+          nodes from the theme's: an @id cannot carry it, because in extend mode
+          our node deliberately shares the theme's address so the two merge into
+          one node. An absolute IRI as a key is valid JSON-LD, needs no
+          @context term, is ignored by consumers that do not know it, and
+          pollutes no schema.org property. See conflicts.ts, OUR_NODE_MARKER.
+        {%- endcomment -%}
+        "https://mrdigital.ro/ns/ai-visibility": "1",
         {%- if av_org_id != blank -%}
         "@id": {{ av_org_id | json }},
         {%- else -%}
@@ -155,6 +164,8 @@
           "@context": "https://schema.org",
           "@type": "Product",
           "@id": {{ shop.url | append: product.url | append: '#product' | json }},
+          {%- comment -%} Our emitter marker - see the Organization node above. {%- endcomment -%}
+          "https://mrdigital.ro/ns/ai-visibility": "1",
           "name": {{ product.title | json }},
           {%- if av_summary %}
           "description": {{ av_summary | json }},
@@ -243,14 +254,28 @@
           "@context": "https://schema.org",
           "@type": "Product",
           "@id": {{ shop.url | append: product.url | append: '#product' | json }},
+          {%- comment -%} Our emitter marker - see the Organization node above. {%- endcomment -%}
+          {%- comment -%}
+            Every optional field below carries a LEADING comma, and the last
+            guaranteed key above carries none. Written the other way round -
+            every optional field with a trailing comma and the last one without -
+            this node emitted invalid JSON whenever the final field was absent:
+            a product with a summary and no facts rendered
+            `"description": "...",}`, which every parser drops silently, so the
+            app published nothing at all for that product and no screen said so.
+            Found 4 September 2026. With leading commas no combination of present
+            and absent fields can trail, and scripts/check-liquid-json.mjs proves
+            it over the whole matrix.
+          {%- endcomment -%}
+          "https://mrdigital.ro/ns/ai-visibility": "1"
           {%- if av_summary %}
-          "description": {{ av_summary | json }},
+          ,"description": {{ av_summary | json }}
           {%- endif %}
           {%- if av_fit != blank %}
-          "audience": { "@type": "Audience", "audienceType": {{ av_fit | json }} },
+          ,"audience": { "@type": "Audience", "audienceType": {{ av_fit | json }} }
           {%- endif %}
           {%- if av_facts %}
-          "additionalProperty": [
+          ,"additionalProperty": [
             {%- for fact in av_facts -%}
               { "@type": "PropertyValue", "name": {{ fact.k | json }}, "value": {{ fact.v | json }} }{% unless forloop.last %},{% endunless %}
             {%- endfor -%}
@@ -359,6 +384,8 @@
           "@context": "https://schema.org",
           "@type": "CollectionPage",
           "@id": {{ shop.url | append: collection.url | append: '#collection' | json }},
+          {%- comment -%} Our emitter marker - see the Organization node above. {%- endcomment -%}
+          "https://mrdigital.ro/ns/ai-visibility": "1",
           "name": {{ collection.title | json }},
           "description": {{ av_c_summary | json }},
           "url": {{ shop.url | append: collection.url | json }},
