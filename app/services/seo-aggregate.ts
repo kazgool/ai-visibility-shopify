@@ -90,6 +90,10 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   { code: "B3", source: "B", basis: "pagesRead" },
   { code: "B4", source: "B", basis: "pagesRead" },
   { code: "B5", source: "B", basis: "pagesTried" },
+  // B6 is computed in source A's pass, from the catalogue read plus one embed
+  // read per pass, so its denominator is the catalogue and not the pages read
+  // (built 4 September 2026; PRD section 2.1 had assigned it to source B).
+  { code: "B6", source: "A", basis: "catalogue" },
 ];
 
 export type CheckState = "found" | "clean" | "notYetRead";
@@ -295,8 +299,16 @@ export function pagesReadSentence(
   blockedBy: string | null = null,
 ): string {
   const { products, pagesAttempted, pagesRead, couldNotBeRead } = aggregate;
+  // State one of three: the catalogue has never been read, so there is nothing
+  // to scan and the thing to do is the catalogue pass. Said as "not started",
+  // never as a count, because a screen full of zeros reads as finished
+  // (4 September 2026, the same class as the "0 of 50" bug in CLAUDE.md).
   if (products === 0) {
-    return "No products have been read yet, so there are no pages to fetch.";
+    return (
+      "No products have been read into this table yet, so there are no pages to " +
+      "fetch and none of the checks below can run. Run Fill catalogue on the " +
+      "dashboard first; the nightly page read starts the night after that."
+    );
   }
   // The scan is not waiting for a night that will do anything: the shop's own
   // robots.txt turns it away. Promising "starting tonight" here is the one
@@ -318,9 +330,12 @@ export function pagesReadSentence(
       (nights > 1 ? `, so this catalogue takes ${nights} nights.` : ", starting tonight.")
     );
   }
+  // State two of three: every page that was waiting has been read. State three
+  // is the budget, which the `rest` clause names. Neither is ever printed for a
+  // store that has no rows at all - that took the branch above.
   const rest =
     remaining === 0
-      ? ""
+      ? "; every page is up to date"
       : nights <= 1
         ? "; the rest by tomorrow night"
         : `; the rest over the next ${nights} nights`;
@@ -583,6 +598,19 @@ export function describeFinding(finding: Finding): string {
       return `The page tells search engines not to index it (from the ${d.from === "both" ? "meta tag and the header" : d.from === "header" ? "X-Robots-Tag header" : "robots meta tag"}).`;
     case "B4":
       return "Our block was not detected on this page: no product node of ours and no link to the plain text mirror.";
+    case "B6": {
+      const missing = Array.isArray(d.missing) ? d.missing : [];
+      const names = missing.map((m: any) => String(m?.nodeType ?? "")).filter(Boolean);
+      const off = Number(d.offCount ?? 0);
+      // The switched-off count rides along, said plainly, so a merchant who
+      // turned something off is not told it is broken.
+      const aside =
+        off > 0
+          ? ` ${off} more ${off === 1 ? "is" : "are"} switched off on purpose and not counted here.`
+          : "";
+      if (names.length === 0) return label;
+      return `Not being added to this page: ${names.join(", ")}.${aside}`;
+    }
     case "B5":
       switch (d.reason) {
         case "robots":

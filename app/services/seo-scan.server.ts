@@ -27,6 +27,10 @@
 
 import db from "../db.server";
 import { describeGraphqlError } from "./graphql-errors";
+import { businessFor } from "./business.server";
+import { checkAppEmbed } from "./embed-check.server";
+import { deriveMissingReasons } from "./theme-scan.server";
+import { b6Detail, type NodeContext } from "./seo-nodes";
 import type { GraphqlFn } from "./admin.server";
 import { isSeoUnlocked } from "./billing.server";
 import type { ProductInput } from "./facts.server";
@@ -134,6 +138,15 @@ type ExistingRow = {
   handle: string | null;
   findings: unknown;
   offer: unknown;
+  /**
+   * Read for B6. Three of deriveMissingReasons' inputs are things only a page
+   * read can establish - whether the page carried a WebSite node, a
+   * BreadcrumbList, a rating - and source B stored them here on its last pass.
+   * Null when the page has never been read, which B6 reports as "could not be
+   * determined" and never as "missing".
+   */
+  nodes: unknown;
+  scannedAt: Date | null;
 };
 
 /** What one product's row holds after source A. */
@@ -142,6 +155,112 @@ type RowContent = {
   findings: Finding[];
   offer: OfferFacts;
 };
+
+/**
+ * Everything B6 needs that is the same for every product in a pass: the shop's
+ * mode, the app embed's state, and the two Business-screen answers. Read once,
+ * not once per product - a per-product embed read would be one Admin call per
+ * product, which is exactly the shape this app refuses everywhere else.
+ */
+type NodeExpectation = {
+  embedActive: boolean;
+  mode: "extend" | "full" | "unknown";
+  context: NodeContext;
+  hasReturnDays: boolean;
+  hasDeliveryTime: boolean;
+  hasSocialProfiles: boolean;
+};
+
+/**
+ * The per-pass half of B6. Returns null when it could not be established, and
+ * a null turns B6 off for the pass rather than reporting six missing nodes
+ * from one failed Admin call.
+ */
+async function readNodeExpectation(
+  shopId: string,
+  graphql: GraphqlFn,
+): Promise<NodeExpectation | null> {
+  try {
+    // GraphqlFn returns parsed data; checkAppEmbed wants the Response-shaped
+    // client the routes pass. Adapted here rather than changing either.
+    const embed = await checkAppEmbed(async (query, options) => {
+      const data = await graphql<any>(query, (options?.variables ?? {}) as any);
+      return new Response(JSON.stringify({ data }));
+    });
+    const business = await businessFor(shopId);
+    return {
+      embedActive: Boolean(embed.active),
+      mode: embed.mode,
+      context: {
+        outputDisabled: Boolean(embed.outputDisabled),
+        presentButDisabled: Boolean(embed.presentButDisabled),
+        seoUnlocked: true, // computeSourceA only runs behind the key.
+        unreadable: Boolean(embed.unreadable),
+      },
+      hasReturnDays: Boolean(business?.returnDays),
+      hasDeliveryTime: Boolean(business?.deliveryTime) && !business?.deliveryVaries,
+      hasSocialProfiles: Boolean(
+        business?.socialProfiles && Object.keys(business.socialProfiles).length > 0,
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Did the stored page nodes carry this type? Null when no page was ever read. */
+function nodeSeen(row: ExistingRow | undefined, type: string): boolean | null {
+  if (!row || !row.scannedAt) return null;
+  const list = Array.isArray(row.nodes) ? (row.nodes as any[]) : null;
+  if (!list) return null;
+  return list.some((n) => Array.isArray(n?.types) && n.types.map(String).includes(type));
+}
+
+/** Did the stored Product node carry a nested aggregateRating? Null if unread. */
+function ratingSeen(row: ExistingRow | undefined): boolean | null {
+  if (!row || !row.scannedAt) return null;
+  const list = Array.isArray(row.nodes) ? (row.nodes as any[]) : null;
+  if (!list) return null;
+  return list.some((n) => n?.hasAggregateRating === true);
+}
+
+/** B6 for one product, or null when there is nothing missing that we can fix. */
+function b6For(
+  product: ProductInput,
+  row: ExistingRow | undefined,
+  expectation: NodeExpectation,
+): Finding | null {
+  const metafield = (key: string) =>
+    Boolean((product.metafields ?? []).find((m) => m.key === key)?.value);
+
+  const reasons = deriveMissingReasons({
+    embedActive: expectation.embedActive,
+    // The real mode, not a hardcoded "extend": in Full mode the Product node is
+    // emitted regardless of facts, so assuming extend reported a missing node
+    // on every unprocessed product of a Full-mode store.
+    mode: expectation.mode,
+    hasFacts: metafield("facts"),
+    hasSummary: metafield("summary"),
+    hasFitFor: metafield("fit_for"),
+    hasReturnDays: expectation.hasReturnDays,
+    hasDeliveryTime: expectation.hasDeliveryTime,
+    // Page-derived, off this product's own last page read. Null until source B
+    // has read it, which reads as "could not be determined".
+    hasRating: ratingSeen(row),
+    hasWebSiteNode: nodeSeen(row, "WebSite"),
+    hasBreadcrumbNode: nodeSeen(row, "BreadcrumbList"),
+    hasCollectionQuestions: null,
+    hasSocialProfiles: expectation.hasSocialProfiles,
+    seoUnlocked: true,
+    isCollectionPage: false,
+  });
+
+  const detail = b6Detail(reasons, expectation.context);
+  // Source "A", not "B": source A computes and rewrites it. If it carried "B",
+  // source B would own it and erase it on the next page scan without being
+  // able to recompute it.
+  return detail ? { code: "B6", source: "A", detail } : null;
+}
 
 /**
  * Compute A1, A3, A4 and A5 for every product in a catalogue read and store
@@ -190,7 +309,15 @@ async function sourceAPass(
   const products = catalogue.products;
   const existing: ExistingRow[] = await db.seoScan.findMany({
     where: { shopId },
-    select: { id: true, productId: true, handle: true, findings: true, offer: true },
+    select: {
+      id: true,
+      productId: true,
+      handle: true,
+      findings: true,
+      offer: true,
+      nodes: true,
+      scannedAt: true,
+    },
   });
   const byProductId = new Map(existing.map((row) => [row.productId, row]));
 
@@ -237,6 +364,14 @@ async function sourceAPass(
   const toTouch: string[] = [];
   const now = new Date();
 
+  // B6's per-pass half: one embed read and one business read for the whole
+  // catalogue. Null means it could not be established, and then B6 is simply
+  // not computed this pass rather than guessed at.
+  const expectation = products.length > 0 ? await readNodeExpectation(shopId, graphql) : null;
+  if (!expectation) {
+    log?.(`source A ${shopId}: node expectations unavailable this pass, B6 not computed`);
+  }
+
   for (const product of products) {
     const row = byProductId.get(product.id);
     const findings = sourceAFindings({
@@ -247,6 +382,12 @@ async function sourceAPass(
         ? (redirectByProductId.get(product.id) ?? null)
         : null,
     });
+    // B6 last, so the order stays stable for the "did this row change"
+    // comparison (rule 1) whichever findings a product happens to carry.
+    if (expectation) {
+      const b6 = b6For(product, row, expectation);
+      if (b6) findings.push(b6);
+    }
     for (const finding of findings) {
       report.byCode[finding.code] = (report.byCode[finding.code] ?? 0) + 1;
     }

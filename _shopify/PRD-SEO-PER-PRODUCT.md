@@ -200,7 +200,7 @@ whether the app's own block is present, response status, and the
 | B3 | noindex on the page, from meta or `X-Robots-Tag` | B | present or absent |
 | B4 | App block present on the page (the embed check per product, not per theme) | B | present, absent, or unreadable |
 | B5 | Response: status, redirect chain, password page | B | 200, 301 to where, 404, password |
-| B6 | Which of our expected nodes are absent on this page and why (`deriveMissingReasons`, per product) | B | the list, with reasons. **Not built in step 3, deliberately - see 2.3** |
+| B6 | Which of our expected nodes are absent on this page and why (`deriveMissingReasons`, per product) | ~~B~~ **A** | the list, with reasons, and separately the ones the merchant switched off. **Built 4 September 2026 - see 2.4, which replaces 2.3** |
 
 Not in this table and not to be added under it: any score, any keyword, any
 rewritten text. FAQPage rich results are restricted by Google since 2023 to
@@ -320,6 +320,9 @@ password page is deliberately **not** one of them: it is a `status` of
 `"password"` with no source B finding at all, so the aggregate in step 4 can
 only say "could not be read" and can never say "no Product node".
 
+**Superseded 4 September 2026. Kept because the reasoning was wrong in a way
+worth recording, and section 2.4 says why.** The original text:
+
 **B6 is not built, and this is the reason.** `deriveMissingReasons` needs the
 shop's mode, whether the app embed is active, and whether *this product* has
 facts or a summary. Source B reads a page; it reads none of those three. Two
@@ -329,6 +332,54 @@ happens to show would produce a list of "missing nodes" that is really a list
 of nodes the block correctly chose not to emit, on every product, for ever. It
 belongs to step 5, where the product editor already has the product's facts on
 the screen. Every other row of the table in 2.1 is built.
+
+### 2.4 B6 as built, 4 September 2026, and why 2.3 was wrong
+
+2.3 deferred B6 because `deriveMissingReasons` needs the shop's mode, the app
+embed's state and this product's facts, and "source B reads a page; it reads
+none of those three". Every clause of that is true and the conclusion does not
+follow: it says where the data comes from, not whether the check can exist. All
+three are on the server at the moment a `SeoScan` row is written.
+
+**Where it runs.** In source A's pass (`seo-scan.server.ts`), not source B. The
+catalogue read source A already holds carries each product's metafields, so
+`hasFacts`, `hasSummary` and `hasFitFor` cost nothing. The mode and the embed
+state are one `checkAppEmbed` call and one `businessFor` call **per pass**, not
+per product - asserted by a test, because a per-product embed read would be one
+Admin call per product. The three page-derived inputs (`hasRating`,
+`hasWebSiteNode`, `hasBreadcrumbNode`) are read off this product's own stored
+`nodes` from the last source B scan, and are null until source B has read it,
+which B6 reports as "could not be determined" and never as missing.
+
+**It carries `source: "A"`, and section 2.1's table is amended above.** Source A
+computes it, so source A must own it: a `"B"` there would have source B erase it
+on the next page scan without being able to recompute it (the rule in 2.3's
+first paragraph). Its denominator on the SEO card is therefore the catalogue,
+not the pages read.
+
+**The distinction the check is really about.** `deriveMissingReasons` answers
+"is it emitted", and puts "you switched this off", "this needs data you have not
+entered" and "we could not tell" in one shape. `seo-nodes.ts` sorts them into
+four states and only one is a finding:
+
+| State | Meaning | A finding? |
+|---|---|---|
+| `emitted` | the node is on the page | no |
+| `off` | the merchant switched the output off, or the operator has not enabled the module | **no** |
+| `missing` | absent, and a screen in this app can fix it | **yes** |
+| `unknown` | the page was never read, or the cause is outside this app | no |
+
+A node the merchant switched off is not a finding: reporting a deliberate choice
+back as a problem is how a findings screen teaches people to ignore it. The row
+carries the off ones by name in `detail.off` and their count in
+`detail.offCount`, and the screen says "N more are switched off on purpose and
+not counted here", so the distinction is explicit in both places.
+
+**One thing this fixed on the way.** `checkAppEmbed` did not read the block's
+`mode`, and the one caller that needed a mode hardcoded `mode: "extend"`
+(`app.seo.tsx`). A shop in Full mode was therefore told its Product node was
+missing on every product with no facts, when Full mode emits it regardless.
+`EmbedCheckResult` now carries `mode` and `outputDisabled`.
 
 **Two more things the step keeps.** A page that was attempted has its
 `scannedAt` moved even when the request failed, or the ordering would hand the
@@ -497,7 +548,8 @@ later addition to source B once the budget's real cost is known.
 5. **Done, 3 September 2026.** The product editor's "What a crawler sees on
    this page" section and its button (`scanOneProductPage`). Every value on
    the section is read off the row on each render, so the second render shows
-   what was written and not what the action returned. B6 is still not built:
+   what was written and not what the action returned. B6 was still not built at
+   this point:
    this step was the screen it was deferred to, and building it needs the
    shop's mode and embed state as well as the product's facts - three reads
    this section does not make. Deferred again rather than guessed at, and the
@@ -524,3 +576,94 @@ later addition to source B once the budget's real cost is known.
    code and its detail are unchanged.
 7. Two independent QA rounds on a different axis each, adjudicated, before
    any of it is called done. Then `check.bat`, CHANGELOG, deploy, tag.
+
+---
+
+## 9. Reconciliation: this document against what was built, 4 September 2026
+
+Written after steps 1 to 7, B6 and the three-state fix. Every deviation is
+listed. Where the code and this document disagreed, the document is corrected
+here and the deviation is named; where an acceptance row in section 5 is still
+unmet, it is said so rather than reworded to match the code.
+
+### 9.1 Deferrals now resolved
+
+| Deferred | Where it said so | Resolved |
+|---|---|---|
+| B6, "not built in step 3, deliberately" | 2.1 table, 2.3, step 8.3 | Built 4 September 2026, in source A's pass. 2.3 is superseded and kept with the reason its argument was wrong; 2.4 is what was built. |
+| B6, "deferred again" in step 5 | step 8.5 | Same. Step 5's reason (the editor has the facts on screen) turned out to be the wrong place to look: the pass that writes the row has them too, and earlier. |
+| A2's page half | 2.2 amendment | Built in step 3, as specified. |
+
+### 9.2 Deviations from this document, as built
+
+1. **B6's source is `A`, not `B`** (2.1 table, amended in place). Reason in 2.4:
+   whoever computes a finding must own it, or the other source erases it.
+2. **B6's denominator is the catalogue, not the pages read.** Follows from 1.
+3. **The Products list column has four states, not three.** Section 4 says
+   green/amber/grey; step 8.6 says "four states rather than three" and gives the
+   reason (a page that could not be read is neither clean nor blamed on the
+   theme). The code does four. **Section 4's three-state sentence is the stale
+   one** and is superseded by step 8.6.
+4. **B5's denominator is not `pagesRead`.** Section 4 says a B check is counted
+   over the pages read. B5 is the check about pages that did not answer, so
+   counting it over the pages that did answer put its numerator outside its own
+   denominator. Its basis is attempted pages excluding the password wall
+   (`seo-aggregate.ts`, QA of 3 September 2026).
+5. **The pages-read sentence counts pages that answered**, not pages attempted.
+   Section 3's example sentence ("212 of 355 pages read") is unchanged in intent;
+   the implementation had used attempted, which on a password-walled store read
+   "355 of 355 pages read" above "355 could not be read".
+6. **`report.stopped` has four values, not three.** Section 3 implied two
+   outcomes, budget or catalogue. As built it is `budget`, `up_to_date`,
+   `no_catalogue`, `robots` - see 9.4.
+7. **The daily budget is a counter, not a `take`.** Recorded as an amendment in
+   step 8.6 and built that way; the spend is written one page at a time rather
+   than once at the end (QA of 3 September 2026).
+8. **`checkAppEmbed` now reads the block's `mode` and `enabled`.** Not in this
+   document at all; needed by B6, and it corrected a hardcoded
+   `mode: "extend"`. See 2.4.
+9. **A shop's robots.txt block is recorded in a Setting** (`seo_scan_robots_block`)
+   so a screen can read it. Section 5's row says the Disallow "is reported as
+   B5"; as first built it was reported only into a JobRun no screen reads.
+10. **`products/delete` removes the `SeoScan` row.** Not specified anywhere; a
+    row left behind counted in every denominator on the card.
+
+### 9.3 Section 5 acceptance rows still unmet
+
+Said rather than reworded.
+
+1. **"Every source A check answers correctly on a product with every field
+   present, one with every field absent, and one whose variants were not read -
+   all three shapes through all five checks."** Source A has four checks:
+   `sourceAFindings` runs A1, A3, A4, A5. A2 needs the page and is raised by
+   source B; B6 is a fifth source A finding now but is not part of
+   `sourceAFindings` and has its own tests. The row is unmeetable as written and
+   needs amending to "all four", with A2 named where it actually runs. **Not
+   amended here: it is an acceptance row and Marius approves the wording.**
+2. **"Every count on the SEO card has its denominator and the 'pages read'
+   sentence - assert on the rendered strings."** The assertions are on
+   `aggregateFindings` and `pagesReadSentence`, not on a rendered component. The
+   CHANGELOG says so. Still unmet as written.
+3. **Eleven by-hand rows across section 5 are still not done**, because the step
+   2 migration has not been applied to any database and no browser has been
+   opened. Listed at the end of `QA-SEO-PER-PRODUCT.md`.
+
+### 9.4 The three states a page pass can end in
+
+Added 4 September 2026 after a real reading failure: on a shop where source A had
+never run, the pass printed "Stopped on: catalogue" and zero of everything, which
+reads as finished when nothing had started. The same class as the "0 of 50" bug
+in CLAUDE.md - a screen computing its headline from a set that was empty for a
+reason nobody said out loud.
+
+| State | Means | Said as |
+|---|---|---|
+| `no_catalogue` | not one `SeoScan` row exists for this shop | "no products have been read yet", and it names Fill catalogue as the thing to do first |
+| `up_to_date` | rows exist and none were waiting | "every page that was waiting has been read" |
+| `budget` | stopped early with pages still waiting | "the daily budget ran out with N still waiting" |
+| `robots` | the shop's own robots.txt turned the scan away | the Disallow that matched |
+
+Distinguished in three places and never conflated: `SourceBReport.stopped` plus
+a new `rows` count (the JobRun report), the runner's output
+(`scripts/run-seo-scan.ts`), and `pagesReadSentence` on the SEO card. Tested for
+all three.

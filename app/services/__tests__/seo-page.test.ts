@@ -13,6 +13,20 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const mockFindMany = vi.fn();
 const mockUpdate = vi.fn();
 const mockCount = vi.fn();
+
+/**
+ * The pass makes two count() calls and they mean different things: one asks how
+ * many rows this shop has at all (`rows`, which is what tells "nothing to scan"
+ * apart from "nothing left to scan"), and one asks how many are still waiting
+ * (`remaining`). Answering both with one number is how the three states got
+ * conflated in the first place, so the stub tells them apart the way the code
+ * does - by the waiting query's `handle`/`OR` clause.
+ */
+function counts({ rows: total, waiting }: { rows: number; waiting: number }) {
+  mockCount.mockImplementation(async (args: any) =>
+    args?.where?.OR ? waiting : total,
+  );
+}
 const mockSettingFindUnique = vi.fn();
 const mockSettingUpsert = vi.fn();
 const mockScanFindUnique = vi.fn();
@@ -427,7 +441,7 @@ describe("the nightly pass", () => {
     const all = rows(12);
     mockFindMany.mockImplementation(answerFindMany(all));
     // Seven rows are still waiting after tonight's five.
-    mockCount.mockResolvedValue(7);
+    counts({ rows: 12, waiting: 7 });
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     const report = await scanShopPages({
@@ -448,9 +462,12 @@ describe("the nightly pass", () => {
     expect(noSleep).toHaveBeenCalledWith(REQUEST_INTERVAL_MS);
   });
 
-  it("says the catalogue is finished when nothing is left", async () => {
+  // The three states, one test each. They are never the same sentence: a shop
+  // with no rows has not finished, it has not started (4 September 2026 - it
+  // used to report "catalogue" with zero of everything, which reads as done).
+  it("says every page is up to date when rows exist and none are waiting", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(3)));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     const report = await scanShopPages({
@@ -460,8 +477,50 @@ describe("the nightly pass", () => {
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });
 
-    expect(report.stopped).toBe("catalogue");
+    expect(report.stopped).toBe("up_to_date");
+    expect(report.rows).toBe(3);
     expect(report.nightsToFinish).toBe(0);
+  });
+
+  it("says no catalogue has been read when the shop has no rows at all", async () => {
+    mockFindMany.mockImplementation(answerFindMany([]));
+    counts({ rows: 0, waiting: 0 });
+    const logged: string[] = [];
+    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep, log: (m) => logged.push(m) },
+    });
+
+    // Not "catalogue", which read as finished, and not a page fetched.
+    expect(report.stopped).toBe("no_catalogue");
+    expect(report.rows).toBe(0);
+    expect(report.scanned).toBe(0);
+    expect(productUrls).toEqual([]);
+    // And the log names the thing to do first rather than reporting zeros.
+    expect(logged.join(" ")).toContain("no products have been read yet");
+    expect(logged.join(" ")).toContain("Fill catalogue");
+  });
+
+  it("says the budget stopped it when pages are still waiting", async () => {
+    mockFindMany.mockImplementation(answerFindMany(rows(4)));
+    counts({ rows: 12, waiting: 8 });
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 4,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(report.stopped).toBe("budget");
+    expect(report.rows).toBe(12);
+    expect(report.remaining).toBe(8);
+    expect(report.nightsToFinish).toBe(2);
   });
 
   it("reads the never-scanned pages before the oldest ones", async () => {
@@ -471,7 +530,7 @@ describe("the nightly pass", () => {
       { ...rows(1)[0], id: "never", productId: "p-never", handle: "never", scannedAt: null },
     ];
     mockFindMany.mockImplementation(answerFindMany(all));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     await scanShopPages({
@@ -500,7 +559,7 @@ describe("the nightly pass", () => {
     mockFindMany.mockImplementation(async () => [
       { id: "row0", productId: "p0", handle: "p0", offer: OFFER, findings: stored, scannedAt: null },
     ]);
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const { impl } = routedFetch(() => reply(PASSWORD_FORM, { url: `${ORIGIN}/password` }));
 
     const report = await scanShopPages({
@@ -524,7 +583,7 @@ describe("the nightly pass", () => {
     mockFindMany.mockImplementation(async () => [
       { id: "row0", productId: "p0", handle: "p0", offer: null, findings: [], scannedAt: null },
     ]);
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const impl = vi.fn(async (url: string) => {
       if (url.endsWith("/robots.txt")) return reply(ROBOTS_OPEN);
       throw new Error("ECONNRESET");
@@ -543,7 +602,7 @@ describe("the nightly pass", () => {
 
   it("counts a page that answered from a cache", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(1)));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const { impl } = routedFetch(() =>
       reply(CLEAN, { url: URL_A, headers: { "cache-control": "max-age=300", age: "42" } }),
     );
@@ -561,7 +620,7 @@ describe("the nightly pass", () => {
 
   it("a Disallow covering the products path stops the scan, and is itself B5", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(10)));
-    mockCount.mockResolvedValue(10);
+    counts({ rows: 10, waiting: 10 });
     const { impl, productUrls } = routedFetch(
       () => reply(CLEAN, { url: URL_A }),
       "User-agent: *\nDisallow: /products/",
@@ -603,7 +662,7 @@ describe("the nightly pass", () => {
 
   it("clears the robots block the night the merchant fixes robots.txt", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(2)));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     await scanShopPages({
@@ -620,7 +679,7 @@ describe("the nightly pass", () => {
 
   it("an unreachable robots.txt does not stop the scan", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(1)));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const impl = vi.fn(async (url: string) => {
       if (url.endsWith("/robots.txt")) return reply("", { status: 404 });
       return reply(CLEAN, { url: URL_A });
@@ -634,12 +693,12 @@ describe("the nightly pass", () => {
     });
 
     expect(report.scanned).toBe(1);
-    expect(report.stopped).toBe("catalogue");
+    expect(report.stopped).toBe("up_to_date");
   });
 
   it("unlocks the storefront once, not once per page", async () => {
     mockFindMany.mockImplementation(answerFindMany(rows(3)));
-    mockCount.mockResolvedValue(0);
+    counts({ rows: 3, waiting: 0 });
     const unlocks: string[] = [];
     const impl = vi.fn(async (url: string, _init?: any) => {
       if (url.endsWith("/robots.txt")) return reply(ROBOTS_OPEN);
@@ -794,7 +853,7 @@ describe("the daily allowance", () => {
   it("lets the nightly pass read only what is left of the budget, and records what it spent", async () => {
     settings(497);
     mockFindMany.mockImplementation(answerFindMany(rows(12)));
-    mockCount.mockResolvedValue(9);
+    counts({ rows: 12, waiting: 9 });
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     const report = await scanShopPages({
@@ -819,7 +878,7 @@ describe("the daily allowance", () => {
 
   it("fetches nothing at all once the allowance is gone", async () => {
     settings(500);
-    mockCount.mockResolvedValue(40);
+    counts({ rows: 40, waiting: 40 });
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     const report = await scanShopPages({

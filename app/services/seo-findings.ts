@@ -29,7 +29,8 @@ export type FindingCode =
   | "B2"
   | "B3"
   | "B4"
-  | "B5";
+  | "B5"
+  | "B6";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -59,6 +60,9 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   B3: "The page tells search engines not to index it",
   B4: "The app block was not detected on the page",
   B5: "The page could not be read as a crawler would read it",
+  // B6 says "should be here and is not". A node the merchant switched off is
+  // not counted (seo-nodes.ts), so the label can promise that without lying.
+  B6: "Structured data this app should be adding is missing",
 };
 
 /**

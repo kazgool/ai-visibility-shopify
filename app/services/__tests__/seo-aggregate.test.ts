@@ -130,11 +130,13 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // Every check that ran and found nothing. A2 needs the page as well as
     // the catalogue, so it is counted over the 20 pages read, not over 50 -
     // this is the grouping the sentence exists for.
+    // B6 joined the list on 4 September 2026 and is counted over the catalogue,
+    // because source A computes it from the read it already has.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A2", "A4", "A5", "B1", "B3", "B4", "B5",
+      "A2", "A4", "A5", "B1", "B3", "B4", "B5", "B6",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "5 checks found nothing on 20 products; 2 checks found nothing on 50 products.",
+      "5 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
     );
   });
 
@@ -186,11 +188,15 @@ describe("an empty store", () => {
     expect(cleanSentence(aggregate)).toBeNull();
   });
 
-  it("divides by nothing in the pages-read sentence", () => {
-    expect(pagesReadSentence(aggregate, 500)).toBe(
-      "No products have been read yet, so there are no pages to fetch.",
-    );
-    expect(pagesReadSentence(aggregate, 0)).toContain("no pages to fetch");
+  // The first of the three states the sentence must never conflate: nothing to
+  // scan because the catalogue was never read. It names the catalogue pass, and
+  // it does not print a count, because a screen of zeros reads as finished.
+  it("says the catalogue has not been read, and names what to do", () => {
+    const sentence = pagesReadSentence(aggregate, 500);
+    expect(sentence).toContain("No products have been read into this table yet");
+    expect(sentence).toContain("Fill catalogue");
+    expect(sentence).not.toContain("0 of 0");
+    expect(pagesReadSentence(aggregate, 0)).toContain("Fill catalogue");
   });
 
   it("has no structured-data verdict at all", () => {
@@ -222,8 +228,8 @@ describe("a store where source B has never run", () => {
   });
 
   it("collapses only the A checks that ran, and says 50 rather than 0", () => {
-    expect(aggregate.clean.map((r) => r.code)).toEqual(["A3", "A4", "A5"]);
-    expect(cleanSentence(aggregate)).toBe("3 checks found nothing on 50 products.");
+    expect(aggregate.clean.map((r) => r.code)).toEqual(["A3", "A4", "A5", "B6"]);
+    expect(cleanSentence(aggregate)).toBe("4 checks found nothing on 50 products.");
   });
 
   it("puts the not-yet-read rows after the ones that found something", () => {
@@ -511,7 +517,13 @@ describe("counting", () => {
     });
   });
 
-  it("has no row for B6, which is not built", () => {
-    expect(CHECKS.some((c) => (c.code as string) === "B6")).toBe(false);
+  // B6 was deferred through steps 3 and 5 and built on 4 September 2026. It is
+  // computed in source A's pass, so its basis is the catalogue and not the
+  // pages read - a deviation from PRD section 2.1, recorded there.
+  it("has a row for B6, counted over the catalogue", () => {
+    const b6 = CHECKS.find((c) => (c.code as string) === "B6");
+    expect(b6).toBeDefined();
+    expect(b6!.source).toBe("A");
+    expect(b6!.basis).toBe("catalogue");
   });
 });

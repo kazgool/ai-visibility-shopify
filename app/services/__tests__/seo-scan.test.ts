@@ -22,6 +22,16 @@ vi.mock("../../db.server", () => ({
   },
 }));
 vi.mock("../billing.server", () => ({ isSeoUnlocked: vi.fn() }));
+// B6's per-pass half: one embed read and one business read for the whole
+// catalogue (built 4 September 2026).
+const mockCheckAppEmbed = vi.fn();
+const mockBusinessFor = vi.fn();
+vi.mock("../embed-check.server", () => ({
+  checkAppEmbed: (...a: unknown[]) => mockCheckAppEmbed(...a),
+}));
+vi.mock("../business.server", () => ({
+  businessFor: (...a: unknown[]) => mockBusinessFor(...a),
+}));
 
 import db from "../../db.server";
 import { isSeoUnlocked } from "../billing.server";
@@ -495,7 +505,12 @@ describe("computeSourceA", () => {
       complete: true,
     });
 
-    expect(graphql).toHaveBeenCalledTimes(REDIRECT_LOOKUP_CAP);
+    // A4's lookups only. B6's one theme-settings read per pass is not a
+    // per-product cost and is not what the cap protects against.
+    const lookups = graphql.mock.calls.filter((c: any[]) =>
+      String(c[0]).includes("FindRedirect"),
+    );
+    expect(lookups).toHaveLength(REDIRECT_LOOKUP_CAP);
     expect(report?.redirectsChecked).toBe(REDIRECT_LOOKUP_CAP);
     // Exactly the ones that were looked up carry A4. The ten past the cap were
     // not asked about, so they are silent rather than accused.
@@ -664,8 +679,12 @@ describe("computeSourceA", () => {
       { id: "row-3", productId: product.id, handle: "old-chair", findings: [], offer: null },
     ]);
     vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    // Only A4's lookups are counted. B6 adds one theme-settings read per pass
+    // (4 September 2026) and that is a per-pass cost, not a per-product one -
+    // which is what these assertions are about.
     const paths: string[] = [];
-    const graphql = (async (_q: string, variables: any) => {
+    const graphql = (async (q: string, variables: any) => {
+      if (!q.includes("FindRedirect")) return {};
       paths.push(variables.query);
       return { urlRedirects: { nodes: [] } };
     }) as any;
@@ -698,20 +717,123 @@ describe("computeSourceA", () => {
     expect(report?.created).toBe(0);
   });
 
-  it("makes no Admin call at all when no handle changed", async () => {
+  it("looks up no redirect at all when no handle changed", async () => {
     const product = complete();
     resetDb([
       { id: "row-4", productId: product.id, handle: product.handle, findings: [], offer: null },
     ]);
     vi.mocked(isSeoUnlocked).mockResolvedValue(true);
-    const graphql = vi.fn();
+    const graphql = vi.fn(async () => ({}));
 
     const report = await computeSourceA("shop", graphql as any, {
       products: [product],
       complete: true,
     });
 
-    expect(graphql).not.toHaveBeenCalled();
+    const lookups = graphql.mock.calls.filter((c: any[]) =>
+      String(c[0]).includes("FindRedirect"),
+    );
+    expect(lookups).toHaveLength(0);
     expect(report?.redirectsChecked).toBe(0);
+  });
+});
+
+
+// --- B6 through the pass that writes it ------------------------------------
+
+describe("B6 on the row source A writes", () => {
+  /** An embed that is on, in extend mode, with everything readable. */
+  function embedOn(over: Record<string, unknown> = {}) {
+    // Cleared, not just re-stubbed: this file has no global beforeEach, so call
+    // counts accumulate across every computeSourceA test above.
+    mockCheckAppEmbed.mockClear();
+    mockBusinessFor.mockClear();
+    mockCheckAppEmbed.mockResolvedValue({
+      active: true,
+      presentButDisabled: false,
+      staleReference: false,
+      themeId: "gid://shopify/OnlineStoreTheme/1",
+      themeName: "Dawn",
+      mode: "extend",
+      outputDisabled: false,
+      ...over,
+    });
+  }
+
+  it("writes B6 as a source A finding, so source B cannot erase it", async () => {
+    // No facts and no summary, so extend mode has nothing to add: a real
+    // missing Product node, and the Business screen is empty too.
+    const product = complete({ metafields: [] });
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+
+    const report = await computeSourceA("shop", noGraphql, {
+      products: [product],
+      complete: true,
+    });
+
+    expect(report?.byCode.B6).toBe(1);
+    const written = seoScan.create.mock.calls[0][0].data.findings;
+    const b6 = written.find((f: any) => f.code === "B6");
+    expect(b6).toBeDefined();
+    // Source A owns it: it is computed from source A's read, and a "B" here
+    // would have source B erase it on the next page scan without being able to
+    // recompute it.
+    expect(b6.source).toBe("A");
+    expect(b6.detail.missing.map((m: any) => m.nodeType)).toContain("Product");
+  });
+
+  it("writes no B6 at all when the merchant switched the output off", async () => {
+    const product = complete({ metafields: [] });
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn({ active: false, presentButDisabled: true });
+    mockBusinessFor.mockResolvedValue({});
+
+    const report = await computeSourceA("shop", noGraphql, {
+      products: [product],
+      complete: true,
+    });
+
+    expect(report?.byCode.B6).toBeUndefined();
+    const written = seoScan.create.mock.calls[0][0].data.findings;
+    expect(written.find((f: any) => f.code === "B6")).toBeUndefined();
+  });
+
+  it("computes the embed state once per pass, not once per product", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+
+    await computeSourceA("shop", noGraphql, {
+      products: Array.from({ length: 25 }, (_, i) =>
+        complete({ id: `gid://shopify/Product/${i}`, handle: `h-${i}`, metafields: [] }),
+      ),
+      complete: true,
+    });
+
+    expect(mockCheckAppEmbed).toHaveBeenCalledTimes(1);
+    expect(mockBusinessFor).toHaveBeenCalledTimes(1);
+  });
+
+  it("computes no B6 rather than guessing when the embed read fails", async () => {
+    const product = complete({ metafields: [] });
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    mockCheckAppEmbed.mockRejectedValue(new Error("Admin call failed"));
+    mockBusinessFor.mockResolvedValue({});
+
+    const report = await computeSourceA("shop", noGraphql, {
+      products: [product],
+      complete: true,
+    });
+
+    // The pass still succeeds; B6 is simply absent. One failed Admin call must
+    // not report six missing nodes on every product.
+    expect(report?.error).toBeUndefined();
+    expect(report?.byCode.B6).toBeUndefined();
   });
 });

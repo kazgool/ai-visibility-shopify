@@ -624,7 +624,22 @@ export type SourceBReport = {
   /** ceil(remaining / budget). Zero when robots.txt stopped the scan. */
   nightsToFinish: number;
   byCode: Record<string, number>;
-  stopped: "budget" | "catalogue" | "robots";
+  /**
+   * Why the pass ended, and the three states are never conflated.
+   *
+   * `no_catalogue` - there is not one SeoScan row for this shop, so the
+   *   catalogue has never been read and there is nothing to scan yet. This used
+   *   to report as `catalogue` with zero of everything, which reads as
+   *   "finished" when nothing started - the same class as the "0 of 50" bug in
+   *   CLAUDE.md, and fixed on 4 September 2026.
+   * `up_to_date` - rows exist and every one of them was scanned this pass or
+   *   later. Genuinely finished.
+   * `budget` - stopped early with pages still waiting.
+   * `robots` - the shop's own robots.txt turned the scan away.
+   */
+  stopped: "budget" | "up_to_date" | "no_catalogue" | "robots";
+  /** Rows this shop has at all. Zero is what `no_catalogue` is read from. */
+  rows: number;
   /** Set when robots.txt stopped the scan; it is itself finding B5. */
   robots?: Finding;
   /** How many answered from a cache (an Age header above zero). */
@@ -679,7 +694,8 @@ export async function scanShopPages(input: {
     remaining: 0,
     nightsToFinish: 0,
     byCode: {},
-    stopped: "catalogue",
+    stopped: "up_to_date",
+    rows: 0,
     fromCache: 0,
   };
 
@@ -691,6 +707,10 @@ export async function scanShopPages(input: {
         OR: [{ scannedAt: null }, { scannedAt: { lt: startedAt } }],
       },
     });
+
+  // Counted before anything else, because "nothing to scan" and "nothing left
+  // to scan" are different sentences and only this number tells them apart.
+  report.rows = await db.seoScan.count({ where: { shopId } });
 
   const robots = await fetchRobots(origin, fetchImpl);
   const blocked = robots.fetched ? productsDisallow(robots.content) : null;
@@ -785,9 +805,23 @@ export async function scanShopPages(input: {
   }
 
   report.remaining = await waiting();
+  // Three states, never conflated. A shop with no rows has not finished; it has
+  // not started, and the thing to do is the catalogue pass, not another night.
   report.stopped =
-    report.scanned >= allowance && report.remaining > 0 ? "budget" : "catalogue";
+    report.rows === 0
+      ? "no_catalogue"
+      : report.scanned >= allowance && report.remaining > 0
+        ? "budget"
+        : "up_to_date";
   report.nightsToFinish = budget > 0 ? Math.ceil(report.remaining / budget) : 0;
+
+  if (report.stopped === "no_catalogue") {
+    log?.(
+      `seo_scan ${origin}: no products have been read yet, so there are no pages to fetch - ` +
+        `run a catalogue pass first (Fill catalogue)`,
+    );
+    return report;
+  }
 
   log?.(
     `seo_scan ${origin}: ${report.scanned} pages read, ${report.password} behind the password form, ` +

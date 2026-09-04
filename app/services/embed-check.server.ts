@@ -27,6 +27,23 @@ export type EmbedCheckResult = {
   themeName: string | null;
   /** The settings file could not be read; unknown is not "off". */
   unreadable?: boolean;
+  /**
+   * The block's own `mode` setting, extend or full, as the merchant saved it.
+   *
+   * Read here from 4 September 2026, for check B6. Until then the one caller
+   * that needed a mode hardcoded `mode: "extend"` (app.seo.tsx), so a shop in
+   * Full mode was told its Product node was missing whenever the product had
+   * no facts - which in Full mode is emitted regardless. "unknown" when the
+   * settings file could not be read or our block is not in it, and unknown is
+   * never treated as either mode.
+   */
+  mode: "extend" | "full" | "unknown";
+  /**
+   * The merchant switched "Enable AI Visibility output" off inside an embed
+   * that is otherwise active. A deliberate choice, and the difference between
+   * "this node should be here and is not" and "you turned it off" (B6).
+   */
+  outputDisabled: boolean;
 };
 
 // The block type in settings_data.json contains the extension uid
@@ -81,6 +98,8 @@ export async function checkAppEmbed(
       themeId: null,
       themeName: null,
       unreadable: true,
+      mode: "unknown",
+      outputDisabled: false,
     };
   }
 
@@ -91,7 +110,14 @@ export async function checkAppEmbed(
   };
   if (!content) {
     // A theme with no settings_data.json has no embeds enabled at all.
-    return { active: false, presentButDisabled: false, staleReference: false, ...base };
+    return {
+      active: false,
+      presentButDisabled: false,
+      staleReference: false,
+      ...base,
+      mode: "unknown",
+      outputDisabled: false,
+    };
   }
 
   let settings: any;
@@ -105,6 +131,8 @@ export async function checkAppEmbed(
       staleReference: false,
       ...base,
       unreadable: true,
+      mode: "unknown",
+      outputDisabled: false,
     };
   }
 
@@ -118,11 +146,20 @@ export async function checkAppEmbed(
   let present = false;
   let enabled = false;
   let stale = false;
+  // The block's own settings, from our block only. Both are merchant choices
+  // and B6 reads them: `mode` decides whether a Product node is emitted
+  // unconditionally, and `enabled: false` means the merchant switched the
+  // output off deliberately.
+  let mode: "extend" | "full" | "unknown" = "unknown";
+  let outputDisabled = false;
   for (const block of Object.values<any>(blocks)) {
     const type = String(block?.type ?? "");
     const ours = type.includes(`/blocks/${EXTENSION_HANDLE}/`) || type.includes(EXTENSION_UID);
     if (!ours) continue;
     present = true;
+    const rawMode = String(block?.settings?.mode ?? "");
+    if (rawMode === "full" || rawMode === "extend") mode = rawMode;
+    if (block?.settings?.enabled === false) outputDisabled = true;
     if (block?.disabled === true) continue;
     if (type.includes(EXTENSION_UID)) {
       enabled = true;
@@ -138,6 +175,8 @@ export async function checkAppEmbed(
     presentButDisabled: present && !enabled && !stale,
     staleReference: stale && !enabled,
     ...base,
+    mode,
+    outputDisabled,
   };
 }
 

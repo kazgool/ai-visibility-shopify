@@ -173,7 +173,25 @@ async function main() {
   const seconds = Math.round((Date.now() - started) / 100) / 10;
 
   console.log("");
-  console.log(`Done in ${seconds}s. Stopped on: ${report.stopped}`);
+
+  // Three states, said differently, because "0 of everything" under the word
+  // "catalogue" read as finished when nothing had started (4 September 2026).
+  if (report.stopped === "no_catalogue") {
+    console.log(`Nothing to scan after ${seconds}s: this shop has no products read yet.`);
+    console.log("  The per-product table is empty, so there are no page addresses to fetch.");
+    console.log("  Run a catalogue pass first: Fill catalogue on the app's dashboard.");
+    console.log("  This is not a finished scan and nothing is wrong with the storefront.");
+    await db.$disconnect();
+    return;
+  }
+
+  const ended =
+    report.stopped === "up_to_date"
+      ? "every page that was waiting has been read"
+      : report.stopped === "budget"
+        ? `the daily budget ran out with ${report.remaining} still waiting`
+        : "robots.txt turned the scan away";
+  console.log(`Done in ${seconds}s: ${ended}.`);
 
   if (report.stopped === "robots") {
     const detail = (report.robots?.detail ?? {}) as Record<string, unknown>;

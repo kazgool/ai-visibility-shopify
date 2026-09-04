@@ -16,6 +16,74 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### B6, and a scan that said "finished" when nothing had started (4 September 2026)
+
+**Check B6 is built**, after being deferred twice. The deferral's reason was that
+`deriveMissingReasons` needs the shop's mode, the app embed's state and this
+product's facts, and "source B reads a page; it reads none of those three". True,
+and it says where the data comes from rather than whether the check can exist:
+all three are on the server at the moment a `SeoScan` row is written. So B6 is
+computed in source A's pass - the catalogue read already carries each product's
+metafields, and the mode and embed state are one `checkAppEmbed` and one
+`businessFor` call **per pass**, asserted by a test because per product would be
+one Admin call per product. The three page-derived inputs come off this product's
+own stored `nodes` from the last page scan, and are null until it has been read,
+which reads as "could not be determined" and never as missing.
+
+It carries `source: "A"`, a documented deviation from PRD section 2.1: whoever
+computes a finding must own it, or the other source erases what it cannot
+recompute. Its denominator is therefore the catalogue, not the pages read.
+
+**A node the merchant switched off is not a finding.** `deriveMissingReasons`
+answers "is it emitted" and puts "you turned this off", "this needs data you have
+not entered" and "we could not tell" in one shape. `seo-nodes.ts` sorts them into
+four states - `emitted`, `off`, `missing`, `unknown` - and only `missing` is a
+finding. The row names the switched-off ones in `detail.off` with a count, and
+the screen says "N more are switched off on purpose and not counted here", so the
+distinction is explicit in the row and on both screens. Reporting a deliberate
+choice back as a problem is how a findings screen teaches people to ignore it.
+
+Two things this found on the way. `checkAppEmbed` never read the block's `mode`,
+and the one caller that needed one hardcoded `mode: "extend"` - so a Full-mode
+shop was told its Product node was missing on every product without facts, when
+Full mode emits it regardless. `EmbedCheckResult` now carries `mode` and
+`outputDisabled`. And the first classifier treated "Could not be determined" as
+missing, because unlike the other non-findings that sentence does carry a
+fixScreen: it reported three missing nodes on every product of a store whose
+pages had never been scanned. Caught by its own test, fixed in the classifier.
+
+**The scan no longer says "finished" when nothing has started.** On a shop where
+source A has never run there are no rows to scan, and the pass reported
+`stopped: "catalogue"` with zero of everything - which reads as done. Same class
+as the "0 of 50" bug in CLAUDE.md. `SourceBReport` now carries a `rows` count and
+four outcomes, and the three that were conflated are distinguished everywhere the
+pass is reported: **`no_catalogue`** (nothing to scan; names Fill catalogue as
+the thing to do first), **`up_to_date`** (nothing left to scan), and
+**`budget`** (stopped early, N still waiting), plus `robots`. Said differently in
+the runner's output, in the JobRun report and in the SEO card's own sentence.
+Three tests, one per state.
+
+**The PRD is reconciled with what was built.** New section 9: every deferral now
+resolved, ten deviations from the document with the reason for each, section 2.3
+superseded and kept because its argument was wrong in a way worth recording, and
+section 2.4 for B6 as built. Section 5 has three acceptance rows still unmet -
+the "all five checks" row is unmeetable as written because source A has four,
+the rendered-strings row is still asserted against the aggregate, and eleven
+by-hand rows wait on a migration nobody has applied. Named rather than reworded
+to match the code.
+
+**Tested.** 21 new tests in `seo-nodes.test.ts` (one per reason B6 can produce,
+including the switched-off case producing nothing at all, and the sentence
+pairing so a reworded reason fails instead of drifting), 4 in `seo-scan.test.ts`
+driving B6 through the pass that writes it, and 3 in `seo-page.test.ts` for the
+three states. `npx tsc --noEmit` clean, 49 files and 705 tests green, the build
+and the Liquid check green, and green again with `.env` renamed away.
+
+**Not verified by hand.** No browser was opened and the step 2 migration has
+still not been applied to any database, so every screen reads an empty table
+until it is - which is now the one state the card describes as "not started"
+rather than as zero.
+
 ### A Shopify internal error is no longer an Application Error (4 September 2026)
 
 The SEO screen's Scan returned 500 twice, at 04:30:20 and 04:58:26. With the
