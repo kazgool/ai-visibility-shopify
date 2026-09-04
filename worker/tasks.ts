@@ -49,6 +49,7 @@ import {
 } from "../app/services/seo-watch";
 import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
 import { crawlerHitCutoff } from "../app/services/retention";
+import { describeGraphqlError } from "../app/services/graphql-errors";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -144,7 +145,7 @@ export const bulk_extract: Task = async (payload, helpers) => {
       data: {
         status: "failed",
         finishedAt: new Date(),
-        report: { error: String(error) } as any,
+        report: { error: describeError(error) } as any,
       },
     });
     throw error;
@@ -256,7 +257,7 @@ export const crawler_check: Task = async (payload, helpers) => {
         data: {
           status: "failed",
           finishedAt: new Date(),
-          report: { error: String(error) } as any,
+          report: { error: describeError(error) } as any,
         },
       });
     }
@@ -318,10 +319,16 @@ async function markGoneIfSessionless(
   return true;
 }
 
-/** `String(new Response())` is "[object Response]" - name the status instead. */
+/**
+ * `String(new Response())` is "[object Response]" - name the status instead.
+ * Everything else goes through the one formatter, so a job that failed on a
+ * Shopify GraphQL error records every message and path in its JobRun report
+ * rather than "An error occurred while fetching from the API" (4 September
+ * 2026).
+ */
 function describeError(error: unknown): string {
   if (error instanceof Response) return `Response ${error.status} ${error.statusText}`;
-  return String(error);
+  return describeGraphqlError(error);
 }
 
 export const poll_changes: Task = async (_payload, helpers) => {
@@ -593,7 +600,7 @@ export const reconcile_mirrors: Task = async (payload, helpers) => {
         data: {
           status: "failed",
           finishedAt: new Date(),
-          report: { error: String(error) } as any,
+          report: { error: describeError(error) } as any,
         },
       });
     }
@@ -709,7 +716,7 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
       data: {
         status: "failed",
         finishedAt: new Date(),
-        report: { error: String(error) } as any,
+        report: { error: describeError(error) } as any,
       },
     });
     throw error;
@@ -1144,7 +1151,7 @@ export const bulk_collections: Task = async (payload, helpers) => {
         data: {
           status: "failed",
           finishedAt: new Date(),
-          report: { error: String(error) } as any,
+          report: { error: describeError(error) } as any,
         },
       });
     }
@@ -1237,7 +1244,7 @@ export const seo_queue_build: Task = async (payload, helpers) => {
   } catch (error) {
     await db.jobRun.update({
       where: { id: jobRunId },
-      data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },
+      data: { status: "failed", finishedAt: new Date(), report: { error: describeError(error) } as any },
     });
     throw error;
   }
@@ -1358,7 +1365,7 @@ export const seo_apply: Task = async (payload, helpers) => {
     await invalidateQueue(shopId);
     await db.jobRun.update({
       where: { id: jobRunId },
-      data: { status: "failed", finishedAt: new Date(), report: { error: String(error) } as any },
+      data: { status: "failed", finishedAt: new Date(), report: { error: describeError(error) } as any },
     });
     throw error;
   }

@@ -8,6 +8,7 @@
 // Runs server side, never on a page view.
 
 import db from "../db.server";
+import { describeGraphqlBody, named } from "./graphql-errors";
 import { NAMESPACE } from "./facts.server";
 
 /** One top-level JSON-LD node, after @graph is flattened. */
@@ -712,14 +713,26 @@ async function mirrorThemeScanMetafield(
   graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
   result: ThemeScanResult,
 ): Promise<void> {
-  const idRes = await graphql(SHOP_ID);
+  const idRes = await named("ShopId", () => graphql(SHOP_ID));
   const idJson = await idRes.json();
+  // A 200 carrying top-level errors reaches some callers as a value rather
+  // than a throw, and reading `data?.shop?.id` off it returns undefined - so
+  // this used to return silently and the metafield was never written, with
+  // nothing logged. Say what the API said (4 September 2026).
+  const idFailure = describeGraphqlBody(idJson, "ShopId");
+  if (idFailure) throw new Error(idFailure);
   const shopGid = idJson.data?.shop?.id;
   if (!shopGid) return;
 
   const organizationId = result.organizationEmitters.find((id) => id !== "") ?? "";
 
-  const res = await graphql(SET_METAFIELD, {
+  const value = JSON.stringify({
+    hasOrganizationLd: result.hasOrganizationLd,
+    organizationId,
+  });
+
+  const res = await named("SetShopThemeScan", () =>
+    graphql(SET_METAFIELD, {
     variables: {
       metafields: [
         {
@@ -727,18 +740,24 @@ async function mirrorThemeScanMetafield(
           namespace: NAMESPACE,
           key: "theme_scan",
           type: "json",
-          value: JSON.stringify({
-            hasOrganizationLd: result.hasOrganizationLd,
-            organizationId,
-          }),
+          value,
         },
       ],
     },
-  });
+    }),
+  );
   const json = await res.json();
+  // Top-level errors first: throttling, an access-scope refusal and a document
+  // Shopify will not run all arrive as HTTP 200 with `errors` and no `data`,
+  // and reading userErrors off that finds an empty array and reports success.
+  const failure = describeGraphqlBody(json, "SetShopThemeScan");
+  if (failure) throw new Error(`${failure} | valueBytes=${Buffer.byteLength(value)}`);
   const errors = json.data?.metafieldsSet?.userErrors ?? [];
   if (errors.length) {
-    throw new Error(`metafieldsSet (shop theme_scan): ${JSON.stringify(errors)}`);
+    throw new Error(
+      `metafieldsSet (shop theme_scan): ${JSON.stringify(errors)} | ` +
+        `valueBytes=${Buffer.byteLength(value)}`,
+    );
   }
 }
 

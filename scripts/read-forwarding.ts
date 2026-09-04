@@ -21,6 +21,7 @@
 // private infrastructure without putting personal data on a screen.
 
 import db from "../app/db.server";
+import { describeGraphqlError } from "../app/services/graphql-errors";
 
 /** RFC1918, loopback, link-local and the shared CGNAT range. */
 function isPrivate(ip: string): boolean {
@@ -156,7 +157,7 @@ async function main() {
 }
 
 main().catch(async (error) => {
-  console.error(error);
+  console.error(describeGraphqlError(error, "read-forwarding"));
   await db.$disconnect();
   process.exit(1);
 });

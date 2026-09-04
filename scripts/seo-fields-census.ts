@@ -16,6 +16,7 @@
 // guess when there is more than one.
 
 import db from "../app/db.server";
+import { describeGraphqlError } from "../app/services/graphql-errors";
 import { adminGraphql } from "../app/services/admin.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { catalogueQuery } from "../app/services/eligibility";
@@ -216,7 +217,7 @@ async function main() {
 }
 
 main().catch(async (error) => {
-  console.error(error);
+  console.error(describeGraphqlError(error, "seo-fields-census"));
   await db.$disconnect();
   process.exit(1);
 });

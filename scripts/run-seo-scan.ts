@@ -39,6 +39,7 @@
 // login. Same rule as scripts/seo-fields-census.ts, for the same reason.
 
 import db from "../app/db.server";
+import { describeGraphqlError } from "../app/services/graphql-errors";
 import { DEFAULT_DAILY_BUDGET, dailyBudget, cappedBudget } from "../app/services/seo-page.server";
 import { scanProductPagesForShop } from "../worker/tasks";
 
@@ -202,7 +203,7 @@ main().catch(async (error) => {
     console.error(`run-seo-scan: ${error.message}`);
     console.error("  npx tsx scripts/run-seo-scan.ts <shop-domain> [--limit N]");
   } else {
-    console.error(error);
+    console.error(describeGraphqlError(error, "run-seo-scan"));
   }
   await db.$disconnect();
   process.exit(1);

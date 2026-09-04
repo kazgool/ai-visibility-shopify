@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
+import { describeGraphqlError } from "../services/graphql-errors";
 import db from "../db.server";
 import { scanThemeForProductLd, recordNarrowThemeScan } from "../services/theme-scan.server";
 
@@ -38,7 +39,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // robots findings or the weekly watch history.
     await recordNarrowThemeScan(shopRow.id, themeId, result, admin.graphql);
   } catch (error) {
-    console.warn(`theme scan failed for ${shop}: ${String(error)}`);
+    // The formatter, not String(error): a Shopify GraphQL failure here used
+    // to log one generic sentence and drop every message it carried.
+    console.warn(describeGraphqlError(error, `themes/publish ${shop}`));
   }
 
   return new Response();

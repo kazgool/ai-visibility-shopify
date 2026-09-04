@@ -3,6 +3,7 @@
 
 import { run } from "graphile-worker";
 import * as tasks from "./tasks";
+import { describeGraphqlError } from "../app/services/graphql-errors";
 
 async function main() {
   const runner = await run({
@@ -38,6 +39,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  // The formatter, not the object: a boot failure on a Shopify call used to
+  // print a Response at Node's default depth and say nothing.
+  console.error(describeGraphqlError(err, "worker boot"));
   process.exit(1);
 });

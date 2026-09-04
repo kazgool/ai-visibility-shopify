@@ -61,6 +61,17 @@ export const REQUEST_INTERVAL_MS = 500;
 /** The path space the whole scan lives in, and the one robots.txt is asked about. */
 export const PRODUCTS_PATH = "/products/";
 
+/**
+ * Deliberately NOT `describeGraphqlError`, and this is the reason.
+ *
+ * Every error this module catches is a `fetch` to a merchant's storefront -
+ * this file makes no Admin GraphQL call at all - and the string goes into
+ * finding B5's detail, which the product editor renders as "The page could not
+ * be reached: ...". A log formatter belongs in a log: stack frames and an
+ * "Error:" prefix on a merchant's screen are noise, and the existing test
+ * "turns a thrown request into a read that says so" asserts the bare message.
+ * `describeGraphqlError` is for what is logged; this is for what is shown.
+ */
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

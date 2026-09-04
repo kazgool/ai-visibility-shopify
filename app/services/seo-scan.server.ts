@@ -26,6 +26,7 @@
 //     every pass and rewrite all of them.
 
 import db from "../db.server";
+import { describeGraphqlError } from "./graphql-errors";
 import type { GraphqlFn } from "./admin.server";
 import { isSeoUnlocked } from "./billing.server";
 import type { ProductInput } from "./facts.server";
@@ -161,7 +162,10 @@ export async function computeSourceA(
   try {
     return await sourceAPass(shopId, graphql, catalogue, log);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // The formatter: a source A failure is almost always the one Admin call
+    // this module makes (A4's redirect lookup), and its GraphQL errors are
+    // what the JobRun report needs to carry.
+    const message = describeGraphqlError(error, "source A");
     log?.(`source A ${shopId}: failed, the pass continues - ${message}`);
     return {
       products: catalogue.products.length,

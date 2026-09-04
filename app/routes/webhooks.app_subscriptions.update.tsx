@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
+import { describeGraphqlError } from "../services/graphql-errors";
 import db from "../db.server";
 import { planFromName, recordPlan } from "../services/billing.server";
 import { adminGraphql } from "../services/admin.server";
@@ -72,7 +73,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // cached column as it was and let the next poll_changes/sweep_missing
       // pass (which check live, not cached) or the merchant's next visit to
       // app.tsx correct it.
-      console.error(`app_subscriptions/update: failed to re-read plan for ${shop}: ${error}`);
+      console.error(
+        describeGraphqlError(error, `app_subscriptions/update: re-read plan for ${shop}`),
+      );
     }
   } else {
     // CANCELLED, EXPIRED, FROZEN, DECLINED, or anything else not ACTIVE:
