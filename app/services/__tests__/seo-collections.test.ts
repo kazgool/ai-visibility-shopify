@@ -344,3 +344,55 @@ describe("revert", () => {
     expect(graphql).not.toHaveBeenCalled();
   });
 });
+
+// --- A10 and A11 on the collections report (build step 4a) ------------------
+
+describe("A10 and A11 on the collections queue", () => {
+  function collection(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "gid://shopify/Collection/1",
+      handle: "chairs",
+      title: "Chairs",
+      descriptionHtml: "<p>" + Array.from({ length: 60 }, (_, i) => `w${i}`).join(" ") + "</p>",
+      productsCount: { count: 12 },
+      seo: { title: "Chairs - Acme", description: "Every chair we sell." },
+      metafields: [],
+      ...overrides,
+    } as any;
+  }
+
+  it("counts both over the collections read, never over the catalogue", () => {
+    const queue = buildCollectionSeoQueue([
+      collection({ id: "gid://shopify/Collection/1", handle: "a" }),
+      collection({ id: "gid://shopify/Collection/2", handle: "b", descriptionHtml: "<p>Chairs.</p>" }),
+      collection({ id: "gid://shopify/Collection/3", handle: "c", productsCount: { count: 1 } }),
+    ]);
+
+    expect(queue.checked).toBe(3);
+    expect(queue.thinDescription.map((c) => c.handle)).toEqual(["b"]);
+    expect(queue.thinDescription[0].words).toBe(1);
+    expect(queue.thinMembership.map((c) => c.handle)).toEqual(["c"]);
+    expect(queue.thinMembership[0].products).toBe(1);
+  });
+
+  it("says nothing about a collection with a real description and real members", () => {
+    const queue = buildCollectionSeoQueue([collection()]);
+    expect(queue.thinDescription).toEqual([]);
+    expect(queue.thinMembership).toEqual([]);
+  });
+
+  it("neither check stops the writer from proposing a meta title", () => {
+    // A collection with one product and no description still gets a proposal.
+    // Whether it should exist at all is the merchant's question, not ours.
+    const queue = buildCollectionSeoQueue([
+      collection({
+        descriptionHtml: "<p>Our chairs.</p>",
+        productsCount: { count: 0 },
+        seo: { title: null, description: null },
+      }),
+    ]);
+    expect(queue.thinDescription).toHaveLength(1);
+    expect(queue.thinMembership).toHaveLength(1);
+    expect(queue.rows[0].titleSuggestion).toBeTruthy();
+  });
+});

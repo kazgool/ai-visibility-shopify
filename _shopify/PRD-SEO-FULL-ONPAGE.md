@@ -730,9 +730,175 @@ ours. Extension change, so it ships with the deploy.
 
 ### 8.5 One defect found next door and not fixed here
 
+**Closed 4 September 2026 as the first item of step 4a - see section 9.0.**
+
+
 On a shop with a storefront password, A7 reports nothing at all: the nightly
 pass unlocks the storefront and then calls `fetchSitemap` with the plain fetch,
 so the sitemap answers with the password form. Found while writing
 `read-onpage-checks.ts`, which passes the cookie and reads the file. Not fixed
 in this step - A7 belongs to the step that built it, and a fix that arrives
 inside an unrelated wave is how a class of defect comes to be half closed.
+
+---
+
+## 9. Build step 4a as built, 4 September 2026: A10 to A16
+
+### 9.0 The A7 defect from step 4, closed
+
+Section 8.5 recorded it and deliberately left it: on a shop with a storefront
+password the pass unlocked the storefront for the pages and then called
+`fetchSitemap` with the plain fetch, so the file answered 200 with the password
+form and A7 reported nothing. `fetchSitemap` now takes a `cookie` option and the
+pass passes the one it already holds. Two tests, in both directions: with the
+password the fetch carries the cookie and A7 fires on the one product the file
+omits; without one the read still fails and A7 still stays silent, because a
+sitemap that could not be fetched is not a sitemap that omits every product.
+
+### 9.1 What was built
+
+A10 to A16 except A14, all computed at the end of the catalogue pass where
+source A already runs, all from the Admin API, and not one of them fetches a
+page. The pure checks are in `app/services/seo-catalogue.ts`.
+
+A10 and A11 carry the collection denominator and live on `CollectionSeoQueue`,
+exactly where A6 lives and for the same reason: their denominator is the
+collections that check read and never the catalogue. A12, A13, A15 and A16 carry
+the product denominator, are in `CHECKS` with `basis: "catalogue"`, and appear
+on the findings card, in the product editor and in the weekly diff's vocabulary
+like every other code.
+
+### 9.2 A14 is not built, and this is a failed acceptance criterion, not a rewording
+
+Section 5b's table asks for "automatic geo or currency redirection switched on
+under Markets: on or off from the Markets settings". **The setting is not
+exposed by the Admin API.** Established by listing every field of the relevant
+types against a live shop on 4 September 2026, with this app's own token, rather
+than from memory:
+
+```
+Market fields:      assignedCustomization, catalogs, catalogsCount, conditions,
+                    currencySettings, delivery, discounts, discountsCount,
+                    handle, id, metafield, metafields, name, priceInclusions,
+                    status, type, webPresences
+MarketWebPresence:  alternateLocales, defaultLocale, domain, id, markets,
+                    rootUrls, subfolderSuffix
+Shop, fields matching redirect/geo/localise/currency/market:
+                    currencyCode, currencyFormats, currencySettings,
+                    marketingSmsConsentEnabledAtCheckout
+```
+
+None of them is the redirect preference. A check that could only ever answer
+"could not be determined" is a promise rather than a finding - the same argument
+this document's own section 2.3 made about B6 before B6 turned out to be
+computable, and here it holds. So `A14` is not a code, not a label and not a row;
+`seo-catalogue.ts` and `seo-findings.ts` both say why at the point where it would
+have been, and a test asserts the absence is deliberate.
+
+**The criterion is recorded as unmet.** What would meet it, for Marius to
+decide: read the storefront's own behaviour - request a product page with a
+non-local `Accept-Language` and see whether it answers with a redirect. That is
+a page fetch, so it belongs to a B code and to the page budget, not to step 4a.
+
+### 9.3 Two Admin scopes are missing, and one has been missing since A4 was written
+
+Verified against `mrdigital-dev` on 4 September 2026 with this app's own token:
+
+| Query | Answer |
+|---|---|
+| `urlRedirects` | `Access denied for urlRedirects field.` |
+| `menus` | `Access denied for menus field.` |
+| `markets` | `Access denied ... Required access: read_markets` |
+
+Three things follow, and the first is the one worth stopping on:
+
+1. **A4 has never been able to check a redirect on this store.** `lookupRedirect`
+   queries `urlRedirects`, catches the failure and returns null, and A4 reads
+   null as "not checked". That is the correct behaviour and it is why nobody
+   noticed: the check has been honest about not knowing, for as long as it has
+   existed, and no screen said the reason.
+2. **`read_markets` is in the toml and not yet in the session.** The scope was
+   added earlier today; the dev store's stored token still carries the old set,
+   so B9 reads "could not be read" there until the app is re-authorised on that
+   store.
+3. **One scope would unlock three checks.** `urlRedirects` and `menus` both sit
+   under Online Store - Navigation in the Shopify admin, so
+   `read_online_store_navigation` covers A4, A13 and A16 together. **Not added:
+   the scope decision is Marius's.** A13 and A16 are built to start working the
+   moment it lands, with no further code.
+
+### 9.4 Deviations from section 5b
+
+1. **A13 has two halves, and only one of them can be a row.** A redirect to the
+   home page from `/collections/old-range` or `/pages/about-us-2019` names no
+   product, and on a migrated store those are the majority. The half whose path
+   names a product in this catalogue is a finding on that product's row; the rest
+   is recorded per shop in Setting `seo_home_redirects` and stated as a line
+   under the row. This is exactly the shape A7's withdrawn-product half already
+   has, and it is the only way to give A13 the product denominator section 5b
+   asks for without dropping most of what it finds.
+2. **A15's denominator is the images the read carries, which today is the
+   featured image alone.** The bulk query asks for `featuredImage` and no other
+   media, and section 5b says "from the media URLs already in the bulk read". So
+   the row reads "1 of 1" on most products, and it says so rather than implying
+   it looked at a gallery. Widening the bulk read to `media(first: N)` is a
+   separate decision with a cost on every pass.
+3. **A15's predicate is deliberately narrower than "contains IMG".** A filename
+   with any word in it passes, including `chair-img-2.jpg`. A filter that removes
+   noise and value together is worse than the noise, and the value it would
+   remove here is a merchant's own naming (`DICTIONARY-PORT` section 10.1).
+4. **A16 answers from the Admin API, not from a crawl.** "Linked from no menu"
+   is read from the shop's menus, three levels deep, by `resourceId` and by the
+   `/products/<handle>` in a hand-typed `url`. A product linked only from a body
+   of text on a page is an orphan by this check and is not one to a crawler. The
+   method line says so.
+5. **A new card state, `couldNotRun`.** Not in this document at all, and
+   unavoidable: A13 and A16 have a full product denominator and a count of zero
+   whenever their Admin read is refused, which is the exact shape of a check that
+   ran and passed. The state, its Setting (`seo_checks_unavailable`) and the
+   reason printed on the row are what keep the two apart.
+6. **A12 compares after `cleanOutput`.** Two descriptions that differ only in
+   how an imported catalogue encoded an ampersand are one description to Google's
+   duplicate clustering, and now to this check.
+
+### 9.5 What these checks find on the dev store, 4 September 2026
+
+`npx tsx scripts/read-catalogue-checks.ts mrdigital-dev.myshopify.com`
+(read-only: one bulk export, one collections read, the two Admin queries, and no
+write of any kind):
+
+```
+Products read: 50 of 50 announced (complete)
+Collections read: 2
+
+URL redirects: COULD NOT BE READ - the Admin API refused the query
+Menus:         COULD NOT BE READ - the Admin API refused the query
+
+Collection checks, count of collections read:
+  A10     2 of 2     Collection description empty or under 50 words
+  A11     0 of 2     Collection holding no products, or one
+       A10 example: sofas has 0 words
+
+Product checks, count of products read:
+  A12     0 of 50    Description shared word for word with another product
+  A13   could not be checked
+  A15     1 of 50    Image filename is a camera or upload default
+       example (oslo-dining-set-and-6-chairs):
+       {"count":1,"images":1,"names":["F4DA3683-12A0-46C5-8C19-A90FABB3DB2D.png"]}
+  A16   could not be checked
+```
+
+A15's one hit is a real UUID filename on a real product, which is the only
+evidence worth having that the predicate fires on what it was written for. A12's
+zero is a genuine zero on a seeded fixture whose descriptions are all distinct;
+it says nothing about a real catalogue. A13 and A16 print "could not be checked"
+and not a zero, which is the whole of 9.4 item 5 working.
+
+### 9.6 One thing left undone on purpose
+
+With `read_online_store_navigation` present, every pass would read the whole
+redirect list for A13 **and** make up to 50 single-redirect lookups for A4, for
+data the list already holds. Folding A4 into the list is a change to A4's
+semantics and to its tests, and a wave that reaches into a neighbouring check
+while nobody is looking is how a class of defect ends up half closed. Recorded
+here rather than done.

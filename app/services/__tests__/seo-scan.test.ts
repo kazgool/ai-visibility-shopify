@@ -28,6 +28,15 @@ vi.mock("../../db.server", () => ({
       findUnique: vi.fn(async () => null),
       upsert: vi.fn(async () => ({})),
     },
+    // A13 and A16 record, per pass, which checks could not run and which
+    // home-page redirects had no product row (build step 4a). Both are one
+    // Setting write; they are asserted below and elsewhere only have to not
+    // throw, or every assertion in this file would read the error branch.
+    setting: {
+      findUnique: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({})),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    },
   },
 }));
 vi.mock("../billing.server", () => ({ isSeoUnlocked: vi.fn() }));
@@ -463,6 +472,7 @@ describe("source A over one product", () => {
 // --- persistence -----------------------------------------------------------
 
 const seoScan = (db as any).seoScan;
+const setting = (db as any).setting;
 
 function resetDb(existing: any[] = []) {
   seoScan.findMany.mockReset().mockResolvedValue(existing);
@@ -470,6 +480,10 @@ function resetDb(existing: any[] = []) {
   seoScan.update.mockReset().mockResolvedValue({});
   seoScan.updateMany.mockReset().mockResolvedValue({ count: 0 });
   seoScan.deleteMany.mockReset().mockResolvedValue({ count: 0 });
+  // The two Setting writes the pass makes for A13 and A16 (build step 4a).
+  setting.findUnique.mockReset().mockResolvedValue(null);
+  setting.upsert.mockReset().mockResolvedValue({});
+  setting.deleteMany.mockReset().mockResolvedValue({ count: 0 });
 }
 
 const noGraphql = (async () => ({})) as any;
@@ -844,5 +858,183 @@ describe("B6 on the row source A writes", () => {
     // not report six missing nodes on every product.
     expect(report?.error).toBeUndefined();
     expect(report?.byCode.B6).toBeUndefined();
+  });
+});
+
+// --- A12 to A16 inside the pass (build step 4a) -----------------------------
+
+describe("the section 5b checks inside source A's pass", () => {
+  /** A graphql stub that answers the three queries the pass now makes. */
+  function admin(answers: {
+    redirects?: { path: string; target: string }[] | "denied";
+    menus?: { resourceId?: string; url?: string }[] | "denied";
+  }) {
+    return vi.fn(async (query: string) => {
+      if (String(query).includes("AllRedirects")) {
+        if (answers.redirects === "denied") throw new Error("Access denied for urlRedirects field.");
+        return {
+          urlRedirects: {
+            nodes: answers.redirects ?? [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        };
+      }
+      if (String(query).includes("MenusForSeo")) {
+        if (answers.menus === "denied") throw new Error("Access denied for menus field.");
+        return { menus: { nodes: [{ id: "m1", handle: "main", items: answers.menus ?? [] }] } };
+      }
+      if (String(query).includes("FindRedirect")) return { urlRedirects: { nodes: [] } };
+      return {};
+    }) as any;
+  }
+
+  function findingsOnCreate(index = 0): any[] {
+    return seoScan.create.mock.calls[index][0].data.findings as any[];
+  }
+
+  it("names the other product when two share a description, and never a group of one", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const shared = "<p>A dining chair in solid oak with a natural oil finish.</p>";
+    const products = [
+      complete({ id: "gid://shopify/Product/1", handle: "chair-a", descriptionHtml: shared }),
+      complete({ id: "gid://shopify/Product/2", handle: "chair-b", descriptionHtml: shared }),
+      complete({ id: "gid://shopify/Product/3", handle: "table-a", descriptionHtml: "<p>A table.</p>" }),
+    ];
+
+    const report = await computeSourceA("shop", admin({}), { products, complete: true });
+
+    expect(report?.byCode.A12).toBe(2);
+    expect(findingsOnCreate(0).find((f) => f.code === "A12").detail.others).toEqual(["chair-b"]);
+    expect(findingsOnCreate(2).some((f) => f.code === "A12")).toBe(false);
+  });
+
+  it("attaches a home-page redirect to the product whose address it names", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const graphql = admin({
+      redirects: [
+        { path: "/products/a-chair", target: "/" },
+        { path: "/collections/old-range", target: "/" },
+        { path: "/products/a-chair-2", target: "/products/a-chair" },
+      ],
+    });
+
+    const report = await computeSourceA("shop", graphql, {
+      products: [complete({ handle: "a-chair" })],
+      complete: true,
+    });
+
+    expect(report?.byCode.A13).toBe(1);
+    const a13 = findingsOnCreate().find((f) => f.code === "A13");
+    expect(a13.detail.redirects).toEqual([{ path: "/products/a-chair", target: "/" }]);
+
+    // The collection redirect has no product row, so it is recorded per shop
+    // rather than dropped - the same shape A7's withdrawn half already has.
+    const write = setting.upsert.mock.calls.find(
+      (c: any) => c[0].create.key === "seo_home_redirects",
+    );
+    expect(JSON.parse(write[0].create.value).paths).toEqual(["/collections/old-range"]);
+  });
+
+  it("records A13 and A16 as checks that could not run when the Admin read is refused", async () => {
+    // The state on this app's own dev store today: neither `urlRedirects` nor
+    // `menus` is readable with the scopes it carries. Both must read as
+    // "could not be checked" and never as "nothing found".
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const graphql = admin({ redirects: "denied", menus: "denied" });
+
+    const report = await computeSourceA("shop", graphql, {
+      products: [complete({ collections: [] })],
+      complete: true,
+    });
+
+    expect(report?.byCode.A13).toBeUndefined();
+    expect(report?.byCode.A16).toBeUndefined();
+    const write = setting.upsert.mock.calls.find(
+      (c: any) => c[0].create.key === "seo_checks_unavailable",
+    );
+    expect(Object.keys(JSON.parse(write[0].create.value)).sort()).toEqual(["A13", "A16"]);
+  });
+
+  it("fires A15 on a camera filename and stays silent on a name a person wrote", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+
+    const report = await computeSourceA("shop", admin({}), {
+      products: [
+        complete({ id: "gid://shopify/Product/1", imageUrl: "https://cdn/IMG_0001.jpg" }),
+        complete({ id: "gid://shopify/Product/2", imageUrl: "https://cdn/aarhus-chair-oak.jpg" }),
+      ],
+      complete: true,
+    });
+
+    expect(report?.byCode.A15).toBe(1);
+    expect(findingsOnCreate(0).find((f) => f.code === "A15").detail).toMatchObject({
+      count: 1,
+      images: 1,
+    });
+  });
+
+  it("fires A16 only on a product in neither a collection nor a menu", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const graphql = admin({
+      menus: [{ resourceId: "gid://shopify/Product/2" }, { url: "/products/chair-c" }],
+    });
+
+    const report = await computeSourceA("shop", graphql, {
+      products: [
+        complete({
+          id: "gid://shopify/Product/1",
+          handle: "chair-a",
+          collections: [{ handle: "chairs", title: "Chairs" }],
+        }),
+        complete({ id: "gid://shopify/Product/2", handle: "chair-b", collections: [] }),
+        complete({ id: "gid://shopify/Product/3", handle: "chair-c", collections: [] }),
+        complete({ id: "gid://shopify/Product/4", handle: "chair-d", collections: [] }),
+      ],
+      complete: true,
+    });
+
+    expect(report?.byCode.A16).toBe(1);
+    expect(findingsOnCreate(3).find((f) => f.code === "A16").detail.handle).toBe("chair-d");
+  });
+
+  it("makes one redirects query and one menus query for the whole catalogue", async () => {
+    // Never per product. The whole reason both reads sit above the loop.
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const graphql = admin({});
+
+    await computeSourceA("shop", graphql, {
+      products: [
+        complete({ id: "gid://shopify/Product/1", handle: "a" }),
+        complete({ id: "gid://shopify/Product/2", handle: "b" }),
+        complete({ id: "gid://shopify/Product/3", handle: "c" }),
+      ],
+      complete: true,
+    });
+
+    const count = (needle: string) =>
+      graphql.mock.calls.filter((c: any[]) => String(c[0]).includes(needle)).length;
+    expect(count("AllRedirects")).toBe(1);
+    expect(count("MenusForSeo")).toBe(1);
+  });
+
+  it("asks Shopify nothing at all on an empty read", async () => {
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    const graphql = admin({});
+
+    await computeSourceA("shop", graphql, { products: [], complete: true });
+
+    expect(graphql.mock.calls.filter((c: any[]) => String(c[0]).includes("AllRedirects"))).toEqual(
+      [],
+    );
+    expect(graphql.mock.calls.filter((c: any[]) => String(c[0]).includes("MenusForSeo"))).toEqual(
+      [],
+    );
   });
 });

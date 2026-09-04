@@ -16,6 +16,98 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The sitemap is read through the storefront password, and seven catalogue checks (4 September 2026)
+
+`PRD-SEO-FULL-ONPAGE.md` section 5b, build step 4a, plus the A7 defect step 4
+found and left. No extension changed.
+
+**A7 now works on a shop with a storefront password.** The nightly pass unlocked
+the storefront for the pages and then called `fetchSitemap` with the plain
+fetch, so the file answered 200 with the password form, the fetcher correctly
+refused to read HTML as XML, and A7 reported nothing at all - on every
+development store and on every client store before it goes live, which is
+exactly the period when the operator is looking at the screen. `fetchSitemap`
+takes a `cookie` option and the pass passes the one it already has. Two tests:
+with the password the fetch carries the cookie and A7 fires on the one product
+the file omits; without a password the read still fails and A7 still says
+nothing, because a sitemap that could not be fetched is not a sitemap that omits
+every product.
+
+**A10 to A16, computed at the end of the catalogue pass, no page fetched.**
+`app/services/seo-catalogue.ts`, pure. A10 and A11 carry the collection
+denominator and are rendered from the collections report, like A6; A12, A13, A15
+and A16 carry the product denominator and are rows on the findings card and
+lines in the product editor.
+
+| Code | What the row says |
+|---|---|
+| A10 | the word count of a collection description that is empty or under 50 words |
+| A11 | the product count of a collection holding none or one |
+| A12 | the handles sharing this product's description word for word; it never says to rewrite |
+| A13 | the old path and the target of a redirect from this product's address that lands on the home page, with Matthew Edgar's reason quoted in the method line |
+| A15 | how many of the product's image files carry a camera or upload default name, count of the images the read carries |
+| A16 | the product is in no collection and no menu links to it |
+
+**A14 is not built, and this is the reason.** It asks whether automatic geo or
+currency redirection is switched on under Markets. The setting is not exposed by
+the Admin API: every field of `Market` and of `Shop` was listed against a live
+shop on 4 September 2026 (`Market` has seventeen, none of them this) and none
+carries it. A check that could only ever answer "could not be determined" is a
+promise, not a finding, so the code does not exist and the acceptance criterion
+is recorded as unmet rather than reworded. What would meet it, if Marius wants
+it: read the storefront's own behaviour on the next page pass, which is a page
+fetch and therefore not step 4a.
+
+**A fourth state on the findings card: "could not be checked".** A13 and A16
+each need one Admin query that a shop's token can refuse. Rendered as "clean"
+they would claim a check ran and passed; rendered as "not yet read" they would
+promise a night that will answer them. `CheckState` gains `couldNotRun`, the
+pass records which checks were refused and why in a Setting
+(`seo_checks_unavailable`, rewritten in full each pass so a scope that arrives
+clears it with nothing to migrate), and the card prints the reason on the row.
+
+**Two scopes are missing, and one of them has been missing all along.** Verified
+against the dev store on 4 September 2026, with the app's own token:
+
+- `urlRedirects` answers `Access denied`. That is the query **A4** has been
+  making since it was written, so A4 has been reporting "not checked" on every
+  renamed product rather than a redirect verdict, silently, and nobody saw it
+  because "not checked" is the honest thing it says when the lookup fails.
+- `menus` answers `Access denied`.
+- `markets` answers `Access denied` naming `read_markets` - the scope added
+  earlier today. The toml carries it; the dev store's session still carries the
+  old scopes, so B9 stays "could not be read" until the app is re-authorised on
+  that store.
+
+Both `urlRedirects` and `menus` sit under Online Store - Navigation in the
+Shopify admin, so one scope, `read_online_store_navigation`, would unlock A4,
+A13 and A16 together. Not added: the scope decision is Marius's, and A13 and A16
+are built so that they start working the moment it lands, with no further code.
+
+**A13's other half is recorded per shop.** A redirect to the home page from
+`/collections/old-range` or `/pages/about-us-2019` names no product row, and on a
+migrated store those are the majority. Setting `seo_home_redirects`, a line under
+the row on the card - the same shape A7's withdrawn-product half already had.
+
+**44 new tests.** 34 in `seo-catalogue.test.ts` (A10 on 0, 49 and 50 words; A11
+on 0, 1 and 2 products; A12 on two sharing, one alone and never a group of one;
+A13 on a home-page target, a product target, no redirects and the unmatched
+half; A15 on IMG_0001.jpg, a UUID with and without hyphens, and a descriptive
+filename; A16 on a product in a collection, one in a menu by id, one in a menu by
+address and one in neither; and the fourth card state), 7 in `seo-scan.test.ts`
+(all four running inside the pass, one redirects query and one menus query for
+the whole catalogue, nothing asked at all on an empty read, and a refused read
+recorded rather than counted as zero), 3 in `seo-collections.test.ts` and 2 in
+`seo-page.test.ts` for A7. 1022 tests green.
+
+**`scripts/read-catalogue-checks.ts`** (new, read-only: one bulk export, one
+collections read, the two Admin queries, and no write of any kind) prints what
+these checks find on a real catalogue. On `mrdigital-dev`, 50 products and 2
+collections: A10 fires on 2 of 2 collections (one has no description at all),
+A11 on 0 of 2, A12 on 0 of 50, A15 on 1 of 50 - a real
+`F4DA3683-12A0-46C5-8C19-A90FABB3DB2D.png` - and A13 and A16 print "could not be
+checked" rather than a zero.
+
 ### Fifteen on-page checks, B10 to B24 (4 September 2026)
 
 `PRD-SEO-FULL-ONPAGE.md` sections 3 and 5a, build step 4. Extension changed

@@ -1477,3 +1477,95 @@ describe("B21 across the pass", () => {
     expect(findings.some((f) => f.code === "B21")).toBe(false);
   });
 });
+
+// --- A7 and the storefront password -----------------------------------------
+
+describe("A7 on a shop with a storefront password", () => {
+  /**
+   * A storefront that answers everything with the password form until the
+   * unlock cookie is presented - which is every development store, and every
+   * client store before it goes live.
+   */
+  function walledFetch(sitemapXml: string) {
+    const sitemapCalls: { url: string; cookie: string | null }[] = [];
+    const impl = vi.fn(async (url: string, init: any = {}) => {
+      if (url.endsWith("/robots.txt")) return reply(ROBOTS_OPEN);
+      if (url.endsWith("/password")) {
+        return {
+          ok: true,
+          status: 302,
+          url,
+          headers: new Headers({ "set-cookie": "storefront_digest=abc; path=/" }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      const cookie = (init.headers ?? {}).Cookie ?? null;
+      if (url.includes("/sitemap")) {
+        sitemapCalls.push({ url, cookie });
+        // The wall answers 200 with HTML, which is the whole difficulty: it is
+        // not an error, it is a different document.
+        return cookie ? reply(sitemapXml) : reply(PASSWORD_FORM);
+      }
+      return cookie ? reply(CLEAN, { url: URL_A }) : reply(PASSWORD_FORM, { url: URL_A });
+    });
+    return { impl, sitemapCalls };
+  }
+
+  const SITEMAP_WITHOUT_P0 = `<?xml version="1.0"?><urlset><url><loc>${ORIGIN}/products/p1</loc></url></urlset>`;
+
+  it("sends the unlock to the sitemap, so A7 fires on a product the file omits", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl, sitemapCalls } = walledFetch(SITEMAP_WITHOUT_P0);
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      password: "massive",
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    // The fetch carries the cookie the pass already had for the pages.
+    expect(sitemapCalls).toHaveLength(1);
+    expect(sitemapCalls[0].cookie).toBe("storefront_digest=abc");
+    expect(report.sitemap?.read).toBe(true);
+    expect(report.sitemap?.urls).toBe(1);
+
+    // p0 is not in the file, p1 is. One A7, on p0 alone.
+    const a7 = mockUpdate.mock.calls
+      .map((call: any) => ({
+        id: call[0].where.id,
+        finding: (call[0].data.findings as any[]).find((f) => f.code === "A7"),
+      }))
+      .filter((row) => row.finding);
+    expect(a7).toHaveLength(1);
+    expect(a7[0].id).toBe("row0");
+    expect(a7[0].finding.source).toBe("A+B");
+  });
+
+  it("still says nothing at all when there is no password to send", async () => {
+    // The other direction, and the one that must not regress: without the
+    // cookie the sitemap answers with the password form, the read fails, and
+    // A7 stays silent. A sitemap that could not be fetched is not a sitemap
+    // that omits every product.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl } = walledFetch(SITEMAP_WITHOUT_P0);
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(report.sitemap?.read).toBe(false);
+    const anyA7 = mockUpdate.mock.calls.some((call: any) =>
+      (call[0].data.findings as any[]).some((f) => f.code === "A7"),
+    );
+    expect(anyA7).toBe(false);
+  });
+});

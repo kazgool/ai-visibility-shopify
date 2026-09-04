@@ -391,7 +391,7 @@ export function productHandleOf(url: string): string | null {
 export async function fetchSitemap(
   origin: string,
   fetchImpl: typeof fetch,
-  options: { maxSitemaps?: number } = {},
+  options: { maxSitemaps?: number; cookie?: string | null } = {},
 ): Promise<{ read: SitemapRead | null; fetches: number; error?: string }> {
   const maxSitemaps = options.maxSitemaps ?? 20;
   let fetches = 0;
@@ -399,8 +399,21 @@ export async function fetchSitemap(
   const get = async (url: string): Promise<string | null> => {
     fetches += 1;
     try {
+      const headers: Record<string, string> = {
+        "User-Agent": SCAN_USER_AGENT,
+        Accept: "application/xml,text/xml",
+      };
+      // The same unlock the page reads use, and for the same reason. Without
+      // it every sitemap on a password-protected shop answers 200 with the
+      // password form, this function correctly refuses to read HTML as XML,
+      // and A7 reports nothing at all - on every development store and on
+      // every client store still behind a password, which is exactly the
+      // period when the operator is looking at the screen. Found 4 September
+      // 2026 while writing scripts/read-onpage-checks.ts, which passed the
+      // cookie and read 50 product URLs where the pass read none.
+      if (options.cookie) headers.Cookie = options.cookie;
       const res = await fetchImpl(url, {
-        headers: { "User-Agent": SCAN_USER_AGENT, Accept: "application/xml,text/xml" },
+        headers,
         redirect: "follow",
       });
       if (!res.ok) return null;
@@ -1656,7 +1669,7 @@ export async function scanShopPages(input: {
           fetches: 0,
           error: report.rows === 0 ? "no products have been read yet" : "no allowance left today",
         }
-      : await fetchSitemap(origin, fetchImpl);
+      : await fetchSitemap(origin, fetchImpl, { cookie });
   // The sitemap costs storefront requests like any page, so it is charged to
   // the same daily budget rather than being quietly free.
   if (sitemap.fetches > 0) await spendPages(shopId, sitemap.fetches, startedAt);

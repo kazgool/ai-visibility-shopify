@@ -142,13 +142,15 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // and both B checks need the page itself.
     // B10 to B24 joined on 4 September (sections 3 and 5a), all fifteen read
     // off the page and so all fifteen over the 20 pages read.
+    // A12, A13, A15 and A16 joined on 4 September (section 5b), all four over
+    // the catalogue, so the catalogue group grows from three to seven.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A2", "A4", "A5", "A7", "B1", "B10", "B11", "B12", "B13", "B14", "B15",
-      "B16", "B17", "B18", "B19", "B20", "B21", "B22", "B23", "B24", "B3",
-      "B4", "B5", "B6", "B7", "B8", "B9",
+      "A12", "A13", "A15", "A16", "A2", "A4", "A5", "A7", "B1", "B10", "B11",
+      "B12", "B13", "B14", "B15", "B16", "B17", "B18", "B19", "B20", "B21",
+      "B22", "B23", "B24", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "24 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
+      "24 checks found nothing on 20 products; 7 checks found nothing on 50 products.",
     );
   });
 
@@ -240,8 +242,10 @@ describe("a store where source B has never run", () => {
   });
 
   it("collapses only the A checks that ran, and says 50 rather than 0", () => {
-    expect(aggregate.clean.map((r) => r.code)).toEqual(["A3", "A4", "A5", "B6"]);
-    expect(cleanSentence(aggregate)).toBe("4 checks found nothing on 50 products.");
+    expect(aggregate.clean.map((r) => r.code)).toEqual([
+      "A12", "A13", "A15", "A16", "A3", "A4", "A5", "B6",
+    ]);
+    expect(cleanSentence(aggregate)).toBe("8 checks found nothing on 50 products.");
   });
 
   it("puts the not-yet-read rows after the ones that found something", () => {

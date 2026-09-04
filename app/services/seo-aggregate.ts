@@ -92,6 +92,22 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   // denominator that is not its own - see CheckBasis. The SEO screen reads A6
   // from the collections check's own report.
   { code: "A7", source: "B", basis: "pagesRead" },
+  // A12, A13, A15 and A16 (PRD-SEO-FULL-ONPAGE section 5b), built 4 September
+  // 2026. All four are computed in source A's pass from the Admin API, so all
+  // four are counted over the catalogue. A10 and A11 are deliberately NOT here
+  // and never will be: they count collections, and the SEO screen reads them
+  // from the collections report the same way it reads A6 - a denominator that
+  // is not this aggregate's is never borrowed into it.
+  //
+  // A14 does not exist. The Markets setting it asks about is not exposed by the
+  // Admin API (seo-catalogue.ts says where that was established).
+  { code: "A12", source: "A", basis: "catalogue" },
+  // A13 and A16 each need one Admin query the shop's token can refuse. When it
+  // does, the pass records the code in `couldNotRun` and the row says so - a
+  // check that was never asked must not render as a check that passed.
+  { code: "A13", source: "A", basis: "catalogue" },
+  { code: "A15", source: "A", basis: "catalogue" },
+  { code: "A16", source: "A", basis: "catalogue" },
   { code: "B1", source: "B", basis: "pagesRead" },
   { code: "B2", source: "B", basis: "pagesRead" },
   { code: "B3", source: "B", basis: "pagesRead" },
@@ -140,7 +156,24 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
  * about the shop that the rows cannot carry, so the pass records it and the
  * screen passes it in (`applicability` on buildFindingsAggregate).
  */
-export type CheckState = "found" | "clean" | "notYetRead" | "notApplicable";
+/**
+ * `couldNotRun` is the fourth state and the newest, added 4 September 2026 with
+ * A13 and A16.
+ *
+ * It is not `notYetRead`, which means the read those checks depend on has not
+ * happened yet and will. It is not `notApplicable`, which means the question
+ * does not arise on this shop. It means the read was attempted this pass and
+ * refused - an Admin scope the shop's token does not carry, or a query the
+ * plan does not expose - so the check has an answer nobody has been allowed to
+ * see. Rendered as "clean" it would claim a check ran and passed, which is the
+ * failure every other state on this list exists to prevent.
+ */
+export type CheckState =
+  | "found"
+  | "clean"
+  | "notYetRead"
+  | "notApplicable"
+  | "couldNotRun";
 
 export type CheckRow = {
   code: FindingCode;
@@ -153,6 +186,8 @@ export type CheckRow = {
   denominator: number;
   /** Products the check could not be asked of: never read, or unreadable. */
   notRead: number;
+  /** Why the check could not run at all. Only set when the state says so. */
+  reason?: string;
 };
 
 export type FindingsAggregate = {
@@ -266,6 +301,13 @@ export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): v
 export type CheckApplicability = {
   /** Enabled markets. One means B9 has nothing to ask. */
   markets?: number | null;
+  /**
+   * Codes whose read was attempted and refused on the last pass, with the
+   * reason the pass recorded. A code here renders as "could not run" whatever
+   * its count, because a count of zero from a read that never happened is not
+   * a measurement (see CheckState).
+   */
+  couldNotRun?: Record<string, string> | null;
 };
 
 export function buildFindingsAggregate(
@@ -291,15 +333,27 @@ export function buildFindingsAggregate(
     const count = counts.get(code) ?? 0;
     // A count with no denominator is not zero, it is unknown. This is the
     // rule the card's "not yet read" line exists for.
+    const refused = applicability.couldNotRun?.[code];
     const state: CheckState =
       code === "B9" && singleMarket
         ? "notApplicable"
-        : denominator === 0
-          ? "notYetRead"
-          : count > 0
-            ? "found"
-            : "clean";
-    return { code, label: CHECK_LABEL[code], source, state, count, denominator, notRead };
+        : refused
+          ? "couldNotRun"
+          : denominator === 0
+            ? "notYetRead"
+            : count > 0
+              ? "found"
+              : "clean";
+    return {
+      code,
+      label: CHECK_LABEL[code],
+      source,
+      state,
+      count,
+      denominator,
+      notRead,
+      ...(refused ? { reason: refused } : {}),
+    };
   });
 
   // Order: what this store is actually wrong about, most first. Ties break on
@@ -320,6 +374,11 @@ export function buildFindingsAggregate(
   const notApplicable = built
     .filter((r) => r.state === "notApplicable")
     .sort((a, b) => a.code.localeCompare(b.code));
+  // Its own group, before the not-applicable one: a refused read is a thing
+  // somebody can fix, and a question that does not arise is not.
+  const couldNotRun = built
+    .filter((r) => r.state === "couldNotRun")
+    .sort((a, b) => a.code.localeCompare(b.code));
 
   return {
     products,
@@ -328,7 +387,7 @@ export function buildFindingsAggregate(
     pagesRead,
     couldNotBeRead: couldNot,
     neverScanned: products - pagesAttempted,
-    rows: [...found, ...notYetRead, ...notApplicable],
+    rows: [...found, ...notYetRead, ...couldNotRun, ...notApplicable],
     clean,
   };
 }
@@ -701,6 +760,31 @@ export function describeFinding(finding: Finding): string {
       if (names.length === 0) return label;
       return `Not being added to this page: ${names.join(", ")}.${aside}`;
     }
+    case "A12": {
+      const others = Array.isArray(d.others) ? d.others : [];
+      const n = Number(d.sharedWith ?? others.length);
+      const named = others.join(", ");
+      const more = n > others.length ? `, and ${n - others.length} more` : "";
+      // Names the group and stops. What to do about two products that share a
+      // description is a question about the catalogue, and sometimes the answer
+      // is that they are genuinely two sizes of one thing.
+      return `This description is word for word the same as ${n} other product${n === 1 ? "" : "s"}: ${named}${more}.`;
+    }
+    case "A13": {
+      const list = Array.isArray(d.redirects) ? d.redirects : [];
+      const shown = list.map((r: any) => `${r.path} to ${r.target}`).join("; ");
+      const n = Number(d.count ?? list.length);
+      return (
+        `${n} redirect${n === 1 ? "" : "s"} from this product's address land on the home page: ${shown}. ` +
+        "Google treats a redirect to the home page as a soft 404, so the old address earns nothing and the visitor lands somewhere that does not answer their question."
+      );
+    }
+    case "A15": {
+      const names = Array.isArray(d.names) ? d.names : [];
+      return `${d.count} of ${d.images} image file${Number(d.images) === 1 ? "" : "s"} on this product carry a camera or upload default name: ${names.join(", ")}.`;
+    }
+    case "A16":
+      return "This product is in no collection and no menu links to it, so the only route to it is the sitemap.";
     case "B8": {
       const where = d.canonical ? `"${d.canonical}"` : "the canonical";
       const why =

@@ -25,6 +25,11 @@ import { stripTags } from "../engine/normalize";
 import { ENGINE_VERSION, NAMESPACE, parseState, type ProductState } from "./facts.server";
 import type { CollectionNode } from "./collections.server";
 import {
+  checkCollectionDescription,
+  checkCollectionSize,
+  type CollectionCheck,
+} from "./seo-catalogue";
+import {
   classifyMetaField,
   mayWriteSeo,
   type MetaFieldOwner,
@@ -158,6 +163,17 @@ export type CollectionSeoQueue = {
   protectedRows: CollectionProtectedRow[];
   /** Every collection A6 fires on, for the row's link. */
   findings: CollectionFinding[];
+  /**
+   * A10 and A11 (PRD-SEO-FULL-ONPAGE section 5b), built 4 September 2026.
+   *
+   * They live on this report and not in the product aggregate because their
+   * denominator is `checked` - the collections this pass read - and never the
+   * catalogue. A6 has been here for the same reason since it was written: one
+   * number quoted under the other's heading is how a count stops meaning
+   * anything.
+   */
+  thinDescription: CollectionCheck[];
+  thinMembership: CollectionCheck[];
 };
 
 /**
@@ -170,6 +186,8 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
   const rows: CollectionQueueRow[] = [];
   const protectedRows: CollectionProtectedRow[] = [];
   const findings: CollectionFinding[] = [];
+  const thinDescription: CollectionCheck[] = [];
+  const thinMembership: CollectionCheck[] = [];
   let missingTitle = 0;
   let missingDescription = 0;
   let outsideApp = 0;
@@ -195,6 +213,14 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
 
     const finding = checkCollectionMetaFields(collection);
     if (finding) findings.push(finding);
+
+    // A10 and A11. Neither is a reason to skip the writer below: a collection
+    // with one product and no description still gets a meta title proposed, and
+    // whether it should exist at all is the merchant's question, not ours.
+    const a10 = checkCollectionDescription(collection);
+    if (a10) thinDescription.push(a10);
+    const a11 = checkCollectionSize(collection);
+    if (a11) thinMembership.push(a11);
 
     const titleWritable = mayWriteSeo(owner, "seo_title");
     const descriptionWritable = mayWriteSeo(owner, "seo_description");
@@ -275,6 +301,8 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
     rows,
     protectedRows,
     findings,
+    thinDescription,
+    thinMembership,
   };
 }
 

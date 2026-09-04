@@ -25,6 +25,7 @@ import {
   type ThemeNodeAggregate,
 } from "./seo-aggregate";
 import { findingsOf } from "./seo-findings";
+import { unavailableChecks } from "./seo-scan.server";
 import { marketsInfo } from "./seo-page.server";
 
 /** Rows per round trip. Large enough to be few queries, small enough to hold. */
@@ -110,7 +111,14 @@ export async function readSeoAggregates(shopId: string): Promise<SeoScanAggregat
   return {
     // The markets count decides whether B9 applies at all, and no row carries
     // it - the nightly pass records it per shop (PRD section 2).
-    findings: buildFindingsAggregate(findings, { markets: (await marketsInfo(shopId))?.count ?? null }),
+    findings: buildFindingsAggregate(findings, {
+      markets: (await marketsInfo(shopId))?.count ?? null,
+      // Which checks were asked for and refused on the last catalogue pass
+      // (A13 and A16 need an Admin scope this app may not carry). A refused
+      // read rendered as "clean" would claim a check ran and passed, which is
+      // the failure every state on that list exists to prevent.
+      couldNotRun: await unavailableChecks(shopId),
+    }),
     themeNodes: buildThemeNodeAggregate(themeNodes),
   };
 }

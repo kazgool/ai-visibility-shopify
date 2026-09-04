@@ -598,9 +598,11 @@ describe("the vocabulary", () => {
     // over the wrong denominator.
     const counted = CHECKS.map((c) => c.code).sort();
     const labelled = Object.keys(CHECK_LABEL).sort();
-    // A6 is the one code with a denominator of its own (collections, not
-    // products), so it is labelled and deliberately not in CHECKS.
-    expect(labelled.filter((code) => code !== "A6")).toEqual(counted);
+    // A6, A10 and A11 are the three codes with a denominator of their own -
+    // collections, not products - so they are labelled and deliberately not in
+    // CHECKS. The SEO screen renders them from the collections report.
+    const COLLECTION_CODES = ["A6", "A10", "A11"];
+    expect(labelled.filter((code) => !COLLECTION_CODES.includes(code))).toEqual(counted);
   });
 
   it("carries all fifteen new codes in both", () => {

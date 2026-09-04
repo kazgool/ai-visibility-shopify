@@ -65,6 +65,7 @@ import {
 } from "../components/SeoCollectionsPanel";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
 import { CHECK_LABEL, CHECK_METHOD } from "../services/seo-findings";
+import { homeRedirectsFor } from "../services/seo-scan.server";
 import {
   describeGraphqlError,
   isInternalServerError,
@@ -204,7 +205,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // nightly page read" rows and a night that has already decided to fetch
   // nothing. The sentence at the top of the card has to say so (QA, 3
   // September 2026).
-  const [scan, scanBudget, scanRobotsBlock, staleSitemap] = shop
+  const [scan, scanBudget, scanRobotsBlock, staleSitemap, homeRedirects] = shop
     ? await Promise.all([
         readSeoAggregates(shop.id),
         dailyBudget(shop.id),
@@ -212,8 +213,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // A7's other half. It cannot be a row - a withdrawn product has no row
         // to put it on - so the nightly pass records it per shop.
         staleSitemapEntries(shop.id),
+        // A13's other half, and the same shape for the same reason: a redirect
+        // from a deleted product or a collection names no product row.
+        homeRedirectsFor(shop.id),
       ])
-    : [null, DEFAULT_DAILY_BUDGET, null, null];
+    : [null, DEFAULT_DAILY_BUDGET, null, null, null];
 
   // The since-card (PRD-SEO-FULL-ONPAGE §1.2). Two rows, both already
   // computed: the before, written once at unlock, and the rolling current,
@@ -236,6 +240,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     unlocked: true as const,
     staleSitemap,
+    homeRedirects,
     collections: {
       queueJob: collectionQueueJob,
       applyJob: collectionApplyJob,
@@ -1484,6 +1489,7 @@ function FindingsPerProductCard({
   blockedBy,
   collectionReport,
   staleSitemap,
+  homeRedirects,
 }: {
   aggregate: FindingsAggregate;
   budget: number;
@@ -1493,11 +1499,14 @@ function FindingsPerProductCard({
   collectionReport: CollectionSeoQueue | null;
   /** A7's other half: handles the sitemap lists that have no product row. */
   staleSitemap: { handles: string[]; total: number } | null;
+  /** A13's other half: home-page redirects whose path names no product. */
+  homeRedirects: { paths: string[]; total: number } | null;
 }) {
   const clean = cleanSentence(aggregate);
   const found = aggregate.rows.filter((r) => r.state === "found");
   const notYetRead = aggregate.rows.filter((r) => r.state === "notYetRead");
   const notApplicable = aggregate.rows.filter((r) => r.state === "notApplicable");
+  const couldNotRun = aggregate.rows.filter((r) => r.state === "couldNotRun");
 
   return (
     <Card>
@@ -1598,6 +1607,60 @@ function FindingsPerProductCard({
               </Text>
             </InlineStack>
 
+            {/* A10 and A11 count collections, like A6, so they carry the
+                collections denominator and never the catalogue's. Rendered
+                here rather than from the aggregate for exactly that reason. */}
+            {(
+              [
+                ["A10", collectionReport?.thinDescription?.length ?? null],
+                ["A11", collectionReport?.thinMembership?.length ?? null],
+              ] as const
+            ).map(([code, count]) => (
+              <InlineStack key={code} align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {CHECK_LABEL[code]}
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    From the collections check. Counted over collections, not over products.
+                  </Text>
+                  {CHECK_METHOD[code] ? (
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      {CHECK_METHOD[code]}
+                    </Text>
+                  ) : null}
+                </BlockStack>
+                <Text
+                  as="span"
+                  fontWeight={count === null ? undefined : "semibold"}
+                  tone={count === null ? "subdued" : undefined}
+                >
+                  {count === null || !collectionReport
+                    ? "Not checked yet"
+                    : `${count} of ${collectionReport.checked}`}
+                </Text>
+              </InlineStack>
+            ))}
+
+            {/* A read that was asked for and refused. Not "clean", which would
+                claim the check ran and passed, and not "not yet read", which
+                would promise a night that will answer it. */}
+            {couldNotRun.map((row) => (
+              <InlineStack key={row.code} align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {row.label}
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    {row.reason ?? "This check could not be run on the last pass."}
+                  </Text>
+                </BlockStack>
+                <Text as="span" tone="subdued">
+                  Could not be checked
+                </Text>
+              </InlineStack>
+            ))}
+
             {notApplicable.map((row) => (
               <InlineStack key={row.code} align="space-between" blockAlign="center" wrap={false}>
                 <BlockStack gap="050">
@@ -1618,6 +1681,12 @@ function FindingsPerProductCard({
             {staleSitemap && staleSitemap.total > 0 ? (
               <Text as="p" tone="subdued" variant="bodySm">
                 {`${staleSitemap.total} URL${staleSitemap.total === 1 ? "" : "s"} in this shop's sitemap point at products that are no longer published: ${staleSitemap.handles.slice(0, 5).join(", ")}${staleSitemap.total > 5 ? ", and others" : ""}. Shopify owns the sitemap and regenerates it; there is nothing to edit, and the entries drop out on their own.`}
+              </Text>
+            ) : null}
+
+            {homeRedirects && homeRedirects.total > 0 ? (
+              <Text as="p" tone="subdued" variant="bodySm">
+                {`${homeRedirects.total} redirect${homeRedirects.total === 1 ? "" : "s"} in this shop point at the home page from an address that is not a product: ${homeRedirects.paths.slice(0, 5).join(", ")}${homeRedirects.total > 5 ? ", and others" : ""}. Google treats those as soft 404s, so the old addresses earn nothing. They have no product row, which is why they are counted here rather than on one.`}
               </Text>
             ) : null}
 
@@ -1788,6 +1857,7 @@ export default function Seo() {
             blockedBy={data.scanRobotsBlock}
             collectionReport={data.collections.report as unknown as CollectionSeoQueue | null}
             staleSitemap={data.staleSitemap}
+            homeRedirects={data.homeRedirects}
           />
         ) : null}
 

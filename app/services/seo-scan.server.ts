@@ -44,6 +44,18 @@ import {
   type Finding,
   type OfferFacts,
 } from "./seo-scan";
+import {
+  REDIRECT_READ_CAP,
+  checkDuplicateDescription,
+  checkHomeRedirect,
+  checkImageFilenames,
+  checkOrphan,
+  duplicateDescriptions,
+  homePageRedirects,
+  type MenuLinks,
+  type RedirectEntry,
+  type RedirectRead,
+} from "./seo-catalogue";
 
 /**
  * How many renamed products get a redirect lookup in one pass. A rename is
@@ -134,6 +146,200 @@ export async function lookupRedirect(
     const nodes = data?.urlRedirects?.nodes;
     if (!Array.isArray(nodes)) return null;
     return nodes.some((n: any) => n?.path === path);
+  } catch {
+    return null;
+  }
+}
+
+// --- A13 and A16: the two per-pass Admin reads -----------------------------
+
+const ALL_REDIRECTS = `#graphql
+  query AllRedirects($first: Int!, $after: String) {
+    urlRedirects(first: $first, after: $after) {
+      nodes { path target }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+const SHOP_MENUS = `#graphql
+  query MenusForSeo {
+    menus(first: 25) {
+      nodes {
+        id
+        handle
+        items {
+          type
+          resourceId
+          url
+          items {
+            type
+            resourceId
+            url
+            items { type resourceId url }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Every URL redirect the shop holds, up to the cap, for A13.
+ *
+ * Returns null rather than throwing, and null is the whole point: this query
+ * needs an access scope this app does not carry today. Verified against a live
+ * shop on 4 September 2026, which answered
+ * `Access denied for urlRedirects field` - the same answer A4's single-redirect
+ * lookup has been getting since it was written, which is why A4 has been
+ * reporting "not checked" on every renamed product rather than a redirect
+ * verdict. A13 reads null as "could not run" and never as "no redirect points
+ * at the home page".
+ */
+export async function readUrlRedirects(graphql: GraphqlFn): Promise<RedirectRead | null> {
+  try {
+    const entries: RedirectEntry[] = [];
+    let after: string | null = null;
+    let partial = false;
+    for (let page = 0; page < 20; page += 1) {
+      const data: any = await graphql<any>(ALL_REDIRECTS, { first: 250, after });
+      const nodes = data?.urlRedirects?.nodes;
+      if (!Array.isArray(nodes)) return null;
+      for (const node of nodes) {
+        entries.push({ path: String(node?.path ?? ""), target: String(node?.target ?? "") });
+      }
+      if (entries.length >= REDIRECT_READ_CAP) {
+        partial = Boolean(data?.urlRedirects?.pageInfo?.hasNextPage);
+        break;
+      }
+      if (!data?.urlRedirects?.pageInfo?.hasNextPage) break;
+      after = String(data.urlRedirects.pageInfo.endCursor ?? "");
+      if (after === "") break;
+    }
+    return { entries, partial, read: entries.length };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every product a menu links to, by id and by handle, for A16.
+ *
+ * Both forms, because a menu item picked from the product list carries a
+ * `resourceId` and one typed by hand carries only a `url`; a product linked by
+ * either is linked. Three levels deep, which is what Shopify's navigation
+ * allows.
+ *
+ * Null on refusal, for the same reason and with the same consequence as
+ * `readUrlRedirects`: this query needs a scope this app does not carry today
+ * (verified 4 September 2026, `Access denied for menus field`), and a product
+ * reported as an orphan because nobody was allowed to look at the menus would
+ * be an accusation rather than a finding.
+ */
+export async function readMenus(graphql: GraphqlFn): Promise<MenuLinks | null> {
+  try {
+    const data = await graphql<any>(SHOP_MENUS);
+    const nodes = data?.menus?.nodes;
+    if (!Array.isArray(nodes)) return null;
+
+    const productIds = new Set<string>();
+    const handles = new Set<string>();
+    const walk = (items: any[] | undefined) => {
+      for (const item of items ?? []) {
+        const resourceId = typeof item?.resourceId === "string" ? item.resourceId : "";
+        if (resourceId.includes("/Product/")) productIds.add(resourceId);
+        const url = typeof item?.url === "string" ? item.url : "";
+        const match = /\/products\/([^/?#]+)/.exec(url);
+        if (match) handles.add(match[1]);
+        walk(item?.items);
+      }
+    };
+    for (const menu of nodes) walk(menu?.items);
+    return { productIds, handles };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which checks were attempted this pass and could not be asked, with the
+ * reason, so the SEO card can say so instead of rendering them as clean.
+ *
+ * A Setting rather than a column, because it is one fact per shop per pass and
+ * nothing about a product - the same shape `seo_scan_robots_block` and
+ * `seo_markets` already use. Rewritten in full every pass, so a scope that
+ * arrives clears the entry on the next catalogue read with nothing to migrate.
+ */
+export const UNAVAILABLE_SETTING_KEY = "seo_checks_unavailable";
+
+export async function recordUnavailableChecks(
+  shopId: string,
+  unavailable: Record<string, string>,
+): Promise<void> {
+  const value = JSON.stringify(unavailable);
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: UNAVAILABLE_SETTING_KEY } },
+    create: { shopId, key: UNAVAILABLE_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+export async function unavailableChecks(shopId: string): Promise<Record<string, string>> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: UNAVAILABLE_SETTING_KEY } },
+  });
+  if (!row?.value) return {};
+  try {
+    const parsed = JSON.parse(row.value);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A13's other half: redirects to the home page whose path names no product in
+ * this catalogue - a deleted product, a collection, a page. They have no row to
+ * sit on and are the majority on a migrated store, so they are recorded per
+ * shop and the card states them under the row. Exactly the shape A7's
+ * withdrawn-product half already has (`recordStaleSitemapEntries`).
+ */
+export const HOME_REDIRECT_SETTING_KEY = "seo_home_redirects";
+
+export const HOME_REDIRECT_CAP = 50;
+
+export async function recordHomeRedirects(
+  shopId: string,
+  entries: RedirectEntry[] | null,
+): Promise<void> {
+  if (entries === null) {
+    await db.setting
+      .deleteMany({ where: { shopId, key: HOME_REDIRECT_SETTING_KEY } })
+      .catch(() => undefined);
+    return;
+  }
+  const value = JSON.stringify({
+    paths: entries.slice(0, HOME_REDIRECT_CAP).map((e) => e.path),
+    total: entries.length,
+    at: new Date().toISOString(),
+  });
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: HOME_REDIRECT_SETTING_KEY } },
+    create: { shopId, key: HOME_REDIRECT_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+export async function homeRedirectsFor(
+  shopId: string,
+): Promise<{ paths: string[]; total: number; at: string } | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: HOME_REDIRECT_SETTING_KEY } },
+  });
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
@@ -331,8 +537,35 @@ async function sourceAPass(
   const byProductId = new Map(existing.map((row) => [row.productId, row]));
 
   // A3 is a question about the catalogue, not about a product, so it is
-  // answered once for the whole read.
+  // answered once for the whole read. A12 is the same question about the
+  // description text, and is answered the same way.
   const duplication = duplicationByProduct(products);
+  const sharedDescriptions = duplicateDescriptions(products);
+
+  // A13 and A16: one Admin query each, per pass, never per product. Both can be
+  // refused by a token without the scope, and a refusal is recorded as a check
+  // that could not run rather than allowed to read as a clean result. Skipped
+  // entirely on an empty read, where there is nothing to attach either to.
+  const unavailable: Record<string, string> = {};
+  const redirects = products.length > 0 ? await readUrlRedirects(graphql) : null;
+  if (products.length > 0 && redirects === null) {
+    unavailable.A13 =
+      "The shop's URL redirects could not be read. This app's access does not include them, " +
+      "so nothing is known about where a redirect points.";
+  }
+  const homeRedirects = homePageRedirects(redirects);
+  // The half that has no product row: a redirect from a deleted product, a
+  // collection or a page. Recorded per shop, exactly as A7's withdrawn-product
+  // half is, and null clears it so a refused read never leaves a stale list on
+  // the screen.
+  await recordHomeRedirects(shopId, homeRedirects ? homeRedirects.unmatched : null);
+
+  const menus = products.length > 0 ? await readMenus(graphql) : null;
+  if (products.length > 0 && menus === null) {
+    unavailable.A16 =
+      "The shop's menus could not be read. This app's access does not include navigation, " +
+      "so a product with no collection cannot be told apart from one a menu links to.";
+  }
 
   // A4 first, because it is the only part that costs a request. Only products
   // whose stored handle differs from the one just read are candidates; a
@@ -391,6 +624,22 @@ async function sourceAPass(
         ? (redirectByProductId.get(product.id) ?? null)
         : null,
     });
+    // A12, A13, A15 and A16, in code order, before B6, so the order stays
+    // stable for the "did this row change" comparison (rule 1) whichever
+    // findings a product happens to carry. Each returns null when its input was
+    // not available, and a null is never a pass.
+    const a12 = checkDuplicateDescription(sharedDescriptions.get(product.id));
+    if (a12) findings.push(a12);
+    const a13 = checkHomeRedirect(
+      homeRedirects?.byHandle.get((product.handle ?? "").trim()),
+      redirects,
+    );
+    if (a13) findings.push(a13);
+    const a15 = checkImageFilenames(product);
+    if (a15) findings.push(a15);
+    const a16 = checkOrphan(product, menus);
+    if (a16) findings.push(a16);
+
     // B6 last, so the order stays stable for the "did this row change"
     // comparison (rule 1) whichever findings a product happens to carry.
     if (expectation) {
@@ -490,6 +739,15 @@ async function sourceAPass(
         report.removed += count;
       }
     }
+  }
+
+  // Which checks were asked for and refused, written in full so a scope that
+  // arrives clears the entry on the next pass with nothing to migrate.
+  await recordUnavailableChecks(shopId, unavailable);
+  if (Object.keys(unavailable).length > 0) {
+    log?.(
+      `source A ${shopId}: ${Object.keys(unavailable).join(", ")} could not run - the Admin read was refused`,
+    );
   }
 
   // The "today" half of the since-card, from the read this pass already holds.

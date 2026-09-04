@@ -68,16 +68,12 @@ async function main() {
   const cookie = password ? await storefrontCookie(origin, password) : null;
   console.log(`Storefront password: ${password ? (cookie ? "unlocked" : "refused") : "not given"}`);
 
-  // The sitemap is fetched with the unlock cookie here. The nightly pass does
-  // not do this - `fetchSitemap` is called with the plain fetch - so on a shop
-  // with a storefront password A7 reports nothing at all. That is a finding
-  // about the pass and not about this script, and it is written down rather
-  // than fixed here: A7 belongs to the step that built it.
-  const withCookie = cookie
-    ? ((input: any, init: any = {}) =>
-        fetch(input, { ...init, headers: { ...(init.headers ?? {}), Cookie: cookie } })) as typeof fetch
-    : fetch;
-  const sitemap = await fetchSitemap(origin, withCookie);
+  // The same unlock the pages get. Writing this script is how it was noticed
+  // that the nightly pass did not do it (4 September 2026): `fetchSitemap` was
+  // called with the plain fetch, so on any shop with a storefront password the
+  // file answered with the password form and A7 reported nothing at all. The
+  // pass now takes a `cookie` option and this script and it read the same way.
+  const sitemap = await fetchSitemap(origin, fetch, { cookie });
   if (!sitemap.read) {
     console.log(`No product sitemap: ${sitemap.error}. Nothing to read.`);
     return;

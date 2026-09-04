@@ -27,6 +27,22 @@ export type FindingCode =
   | "A5"
   | "A6"
   | "A7"
+  // A10 to A16: the catalogue checks of PRD-SEO-FULL-ONPAGE section 5b, built
+  // 4 September 2026. All source A - every one is computed from the Admin API
+  // at the end of the catalogue pass, and not one of them fetches a page.
+  //
+  // A14 is deliberately absent. The setting it asks about (automatic geo or
+  // currency redirection under Markets) is not exposed by the Admin API: every
+  // field of `Market` and of `Shop` was listed against a live shop on 4
+  // September 2026 and none of them carries it. A code whose check could only
+  // ever answer "could not be determined" would render as a promise on every
+  // screen for ever.
+  | "A10"
+  | "A11"
+  | "A12"
+  | "A13"
+  | "A15"
+  | "A16"
   | "B1"
   | "B2"
   | "B3"
@@ -85,6 +101,14 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   // Shopify owns sitemap.xml and offers no way to edit it, so this row can
   // only ever report. The fix is always a product setting.
   A7: "Not listed in the shop's sitemap",
+  // A10 and A11 carry the collection denominator, like A6, and are rendered
+  // from the collections report rather than from the product aggregate.
+  A10: "Collection description empty or under 50 words",
+  A11: "Collection holding no products, or one",
+  A12: "Description shared word for word with another product",
+  A13: "A redirect from this product's address lands on the home page",
+  A15: "Image filename is a camera or upload default",
+  A16: "In no collection and linked from no menu",
   B1: "No Product node on the page, or two of them",
   B2: "Canonical points somewhere other than this page",
   B3: "The page tells search engines not to index it",
@@ -141,6 +165,29 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
  * they are.
  */
 export const CHECK_METHOD: Partial<Record<FindingCode, string>> = {
+  A10:
+    "The word count of the collection's own description text. 50 words is what " +
+    "Craftshift and Charle report seeing on collections that do well; it is an " +
+    "observation, not a rule, and this row states the count rather than a target.",
+  A11: "The product count Shopify reports for the collection. No judgement about what a collection is for.",
+  A12:
+    "The description text compared after the same cleaning this app applies to " +
+    "everything it publishes, so two descriptions that differ only in how an " +
+    "imported catalogue encoded an ampersand count as one. The row names the " +
+    "group and stops there.",
+  A13:
+    "Matthew Edgar, quoting John Mueller: a redirect to the home page is treated " +
+    "as a soft 404, so the old address earns nothing and the visitor lands " +
+    "somewhere that does not answer their question. Read once per pass from the " +
+    "shop's URL redirects; the right target is a question only you can answer.",
+  A15:
+    "The filename alone, without the CDN's size suffix: a camera or phone prefix " +
+    "such as IMG_ or DSC_ followed by digits, or a UUID. A filename with any " +
+    "word in it passes, including one that happens to contain \"img\".",
+  A16:
+    "The product's collections from the catalogue read, and one menus query per " +
+    "pass. No page is fetched and no link is followed, so this is what the Admin " +
+    "API knows and not what a crawler would find.",
   B10:
     "Google: \"there's no limit on how long a title element can be, the title " +
     "link is truncated as needed, typically to fit the device width.\" " +
