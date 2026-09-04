@@ -19,6 +19,15 @@ vi.mock("../../db.server", () => ({
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
+    // The pass ends by refreshing the shop's rolling `current` figures, the
+    // "today" column of the since-card (build step 2). It is asserted in
+    // seo-snapshot.server.test.ts; here it only has to not throw, or every
+    // assertion in this file would be reading computeSourceA's error branch.
+    seoSnapshot: {
+      findFirst: vi.fn(async () => null),
+      findUnique: vi.fn(async () => null),
+      upsert: vi.fn(async () => ({})),
+    },
   },
 }));
 vi.mock("../billing.server", () => ({ isSeoUnlocked: vi.fn() }));

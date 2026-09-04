@@ -436,14 +436,29 @@ function answerFindMany(all: Row[]) {
   };
 }
 
-function routedFetch(pages: (url: string) => Response, robots = ROBOTS_OPEN) {
+/**
+ * `sitemap` defaults to a 404, so these tests keep asserting on product pages
+ * alone. The pass fetches the shop's sitemap once (PRD-SEO-FULL-ONPAGE section
+ * 2, check A7); a fetch that answers with anything but XML leaves A7 silent,
+ * which is the state every store here is in.
+ */
+function routedFetch(
+  pages: (url: string) => Response,
+  robots = ROBOTS_OPEN,
+  sitemap: (url: string) => Response = () => reply("not found", { status: 404 }),
+) {
   const productUrls: string[] = [];
+  const sitemapUrls: string[] = [];
   const impl = vi.fn(async (url: string) => {
     if (url.endsWith("/robots.txt")) return reply(robots);
+    if (url.includes("/sitemap")) {
+      sitemapUrls.push(url);
+      return sitemap(url);
+    }
     productUrls.push(url);
     return pages(url);
   });
-  return { impl, productUrls };
+  return { impl, productUrls, sitemapUrls };
 }
 
 const noSleep = vi.fn(async () => {});
@@ -459,15 +474,21 @@ describe("the nightly pass", () => {
     mockFindMany.mockImplementation(answerFindMany(all));
     // Seven rows are still waiting after tonight's five.
     counts({ rows: 12, waiting: 7 });
-    const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+    const { impl, productUrls, sitemapUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
 
     const report = await scanShopPages({
       shopId: "shop1",
       origin: ORIGIN,
-      budget: 5,
+      // Six, not five: the one sitemap fetch is charged to the same allowance
+      // (PRD-SEO-FULL-ONPAGE section 2), so a budget of five would read four
+      // pages. Stated here rather than hidden, because a budget that quietly
+      // means something other than what an operator set is the failure this
+      // whole allowance exists to prevent.
+      budget: 6,
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });
 
+    expect(sitemapUrls).toEqual([`${ORIGIN}/sitemap.xml`]);
     expect(productUrls).toHaveLength(5);
     expect(report.scanned).toBe(5);
     expect(report.remaining).toBe(7);
@@ -553,7 +574,8 @@ describe("the nightly pass", () => {
     await scanShopPages({
       shopId: "shop1",
       origin: ORIGIN,
-      budget: 3,
+      // Four: three pages plus the one sitemap fetch the pass now makes.
+      budget: 4,
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });
 
@@ -868,7 +890,7 @@ describe("the daily allowance", () => {
   });
 
   it("lets the nightly pass read only what is left of the budget, and records what it spent", async () => {
-    settings(497);
+    settings(496);
     mockFindMany.mockImplementation(answerFindMany(rows(12)));
     counts({ rows: 12, waiting: 9 });
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));
@@ -880,16 +902,18 @@ describe("the daily allowance", () => {
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });
 
-    // 500 budget less the 497 already spent today: three pages, not twelve.
+    // 500 budget less the 496 already spent today leaves four requests, and
+    // the sitemap takes the first of them: three pages, not twelve.
     expect(mockFindMany.mock.calls[0][0].take).toBe(3);
     expect(productUrls).toHaveLength(3);
     expect(report.scanned).toBe(3);
     expect(report.stopped).toBe("budget");
-    // One write per page, as it is spent, and the counter reaches the budget.
+    // One write per page as it is spent, plus one for the sitemap, and the
+    // counter reaches the budget.
     const spends = mockSettingUpsert.mock.calls.filter(
       (c: any) => c[0].create.key === SPEND_SETTING_KEY,
     );
-    expect(spends).toHaveLength(3);
+    expect(spends).toHaveLength(4);
     expect(spends[spends.length - 1][0].update.value).toContain('"pages":500');
   });
 

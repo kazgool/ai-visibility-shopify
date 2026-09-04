@@ -14,7 +14,7 @@ import {
 import { catalogueQuery } from "../app/services/eligibility";
 import { prefsFor } from "../app/services/eligibility.server";
 import { reconcileMirrors } from "../app/services/mirror-reconcile.server";
-import { adminGraphql } from "../app/services/admin.server";
+import { adminGraphql, type GraphqlFn } from "../app/services/admin.server";
 import {
   mayProcessAutomatically,
   mayProcessAutomaticallyCached,
@@ -24,16 +24,26 @@ import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
 import {
+  runCollectionSeoApply,
+  runCollectionSeoQueueBuild,
+  type CollectionSeoApplyItem,
+} from "../app/services/seo-bulk.server";
+import {
   cappedBudget,
   dailyBudget,
   scanShopPages,
+  type MarketsInfo,
   type SourceBReport,
 } from "../app/services/seo-page.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
 import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
-import { isSeoUnlocked } from "../app/services/billing.server";
+import {
+  grantSeoUnlock,
+  isSeoUnlocked,
+  syncSeoUnlockMetafield,
+} from "../app/services/billing.server";
 import {
   scanStorefront,
   recordThemeScan,
@@ -957,6 +967,54 @@ export type SeoScanShopOutcome =
   | { ran: true; budget: number; report: SourceBReport }
   | { ran: false; reason: SeoScanSkip };
 
+// One query per pass, never per product (PRD section 2, B9). `enabled` is
+// asked for because a market that is switched off has no storefront and no
+// hreflang to declare, and counting it would report every page as missing
+// links for a market nobody can reach.
+const MARKETS_SEO = `#graphql
+  query MarketsForSeo {
+    markets(first: 50) {
+      nodes {
+        id
+        enabled
+        webPresence { rootUrls { locale } }
+      }
+    }
+  }
+`;
+
+/**
+ * The shop's enabled markets and every locale across them.
+ *
+ * Returns null rather than throwing: B9 is one row on a card, and a shop whose
+ * plan does not expose `markets`, or whose token lacks the scope, must not
+ * lose its whole nightly page scan over it. Null reads as "not established"
+ * everywhere downstream and never as "one market".
+ */
+async function readMarkets(
+  graphql: GraphqlFn,
+  logger: { info: (message: string) => void },
+  domain: string,
+): Promise<MarketsInfo | null> {
+  try {
+    const data = await graphql<any>(MARKETS_SEO);
+    const nodes = data?.markets?.nodes;
+    if (!Array.isArray(nodes)) return null;
+    const enabled = nodes.filter((m: any) => m?.enabled !== false);
+    const locales = new Set<string>();
+    for (const market of enabled) {
+      for (const root of market?.webPresence?.rootUrls ?? []) {
+        const locale = String(root?.locale ?? "").trim().toLowerCase();
+        if (locale) locales.add(locale);
+      }
+    }
+    return { count: enabled.length, locales: [...locales].sort() };
+  } catch (error) {
+    logger.info(`seo_scan_products ${domain}: markets not readable, B9 not checked - ${describeError(error)}`);
+    return null;
+  }
+}
+
 /**
  * One shop's night of source B, exactly as the nightly task runs it.
  *
@@ -1024,6 +1082,7 @@ export async function scanProductPagesForShop(
       origin,
       password: passwordSetting?.value,
       budget,
+      markets: await readMarkets(graphql, logger, shop.domain),
       deps: { log: (message) => logger.info(message) },
     });
 
@@ -1053,6 +1112,134 @@ export async function scanProductPagesForShop(
     throw error;
   }
 }
+
+/**
+ * The collections half of the meta writer (PRD-SEO-FULL-ONPAGE section 2).
+ *
+ * Deliberately its own kind rather than a second half of `seo_queue`: pressing
+ * Preview on the products tab must not pay for a collections read, and each
+ * tab's report has to say what it is about. The entitlement order is the same
+ * as `seo_queue_build`'s, and for the same reasons.
+ */
+export const seo_collection_queue: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = payload as { shopId: string; jobRunId: string };
+
+  if (!(await isSeoUnlocked(shopId))) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "refused",
+        finishedAt: new Date(),
+        report: { refused: true, reason: "SEO module not enabled for this shop" } as any,
+      },
+    });
+    return;
+  }
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        report: { error: `Unknown shop ${shopId}` } as any,
+      },
+    });
+    return;
+  }
+
+  const graphql = await adminGraphql(shop.domain);
+  if (!(await mayProcessAutomatically(shop, graphql))) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "refused",
+        finishedAt: new Date(),
+        report: {
+          refused: true,
+          reason: "This shop has no active subscription, so the SEO module cannot run.",
+        } as any,
+      },
+    });
+    return;
+  }
+
+  await db.jobRun.update({
+    where: { id: jobRunId },
+    data: { status: "running", startedAt: new Date() },
+  });
+
+  try {
+    const queue = await runCollectionSeoQueueBuild(shopId, {
+      onProgress: async (done, total) => {
+        await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
+      },
+    });
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "done", finishedAt: new Date(), report: queue as any },
+    });
+    helpers.logger.info(
+      `seo_collection_queue ${shop.domain}: ${queue.checked} collections, ` +
+        `${queue.withFinding} with a meta field absent, ${queue.rows.length} proposed`,
+    );
+  } catch (error) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "failed", finishedAt: new Date(), report: { error: describeError(error) } as any },
+    });
+    throw error;
+  }
+};
+
+/** Write the operator-approved collection rows. Never runs on a schedule. */
+export const seo_collection_apply: Task = async (payload, helpers) => {
+  const { shopId, jobRunId, items } = payload as {
+    shopId: string;
+    jobRunId: string;
+    items: CollectionSeoApplyItem[];
+  };
+
+  await db.jobRun.update({
+    where: { id: jobRunId },
+    data: { status: "running", startedAt: new Date(), total: items.length },
+  });
+
+  try {
+    const report = await runCollectionSeoApply(shopId, items, {
+      onProgress: async (done, total) => {
+        await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
+      },
+    });
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: report.refused ? "refused" : "done",
+        finishedAt: new Date(),
+        report: report as any,
+      },
+    });
+    // Every "done" collections queue describes a state this write has just made
+    // false, exactly as an applied product queue does (the 1 September bug).
+    if (!report.refused) {
+      await db.jobRun.updateMany({
+        where: { shopId, kind: "seo_collection_queue", status: "done" },
+        data: { status: "stale" },
+      });
+    }
+    helpers.logger.info(
+      `seo_collection_apply ${shopId}: ${report.written} written, ${report.skipped} skipped, ` +
+        `${report.unchanged} unchanged`,
+    );
+  } catch (error) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "failed", finishedAt: new Date(), report: { error: describeError(error) } as any },
+    });
+    throw error;
+  }
+};
 
 /**
  * Collection capsules (PRD §4.8). Reads each collection with its members'
@@ -1170,6 +1357,83 @@ export const bulk_collections: Task = async (payload, helpers) => {
  * queue build for a shop without `seo_unlocked` is refused before the
  * (expensive) bulk export even starts.
  */
+/**
+ * Take the before-snapshot, then store the SEO key (PRD-SEO-FULL-ONPAGE §1.1
+ * and build step 2's structural fix).
+ *
+ * **Why this is a job and not the plans action.** The snapshot runs a bulk
+ * operation and polls it. On a 20,000-product store that is minutes, and the
+ * embedded iframe gives up long before the row exists - so the operator saw a
+ * timeout while the shop stayed locked, or worse, a retry that started a
+ * second bulk operation. Nothing heavy runs on a request path (ARCHITECTURE
+ * §1) and this was heavy.
+ *
+ * **The ordering guarantee is unchanged and still lives in one function.**
+ * `grantSeoUnlock` takes the snapshot and only then writes the key, so no
+ * write of ours can precede the before. Moving the call here moved the wait,
+ * not the rule: if the snapshot throws, the key is never written, the JobRun
+ * is failed with the reason, and the plans screen shows that sentence.
+ *
+ * The code was already validated in the action - the key itself never reaches
+ * the queue, only the fact that a valid one was entered. A payload cannot
+ * unlock a shop by itself, because a job is only ever enqueued by that action.
+ */
+export const seo_snapshot: Task = async (payload, helpers) => {
+  const { shopId, jobRunId, reason } = payload as {
+    shopId: string;
+    jobRunId: string;
+    reason: string;
+  };
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        report: { error: `Unknown shop ${shopId}` } as any,
+      },
+    });
+    return;
+  }
+
+  await db.jobRun.update({
+    where: { id: jobRunId },
+    data: { status: "running", startedAt: new Date() },
+  });
+
+  try {
+    const graphql = await adminGraphql(shop.domain);
+    const result = await grantSeoUnlock(shopId, reason, graphql);
+    // The metafield mirror, exactly as the action used to do it right after
+    // the grant: the Liquid block reads the shop metafield, not this database
+    // row, and a key stored without the resync leaves the storefront believing
+    // the module is still off.
+    await syncSeoUnlockMetafield(shopId, graphql);
+
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "done", finishedAt: new Date(), report: result as any },
+    });
+    helpers.logger.info(
+      `seo_snapshot ${shop.domain}: ${result.written ? "snapshot written" : "snapshot already existed"}, key stored`,
+    );
+  } catch (error) {
+    const message = describeError(error);
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        report: { error: message } as any,
+      },
+    });
+    helpers.logger.info(`seo_snapshot ${shop.domain}: failed, no key stored - ${message}`);
+    throw error;
+  }
+};
+
 export const seo_queue_build: Task = async (payload, helpers) => {
   const { shopId, jobRunId } = payload as { shopId: string; jobRunId: string };
 

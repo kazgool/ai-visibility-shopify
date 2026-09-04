@@ -21,8 +21,11 @@ async function main() {
       bulk_collections: tasks.bulk_collections,
       seo_watch: tasks.seo_watch,
       seo_scan_products: tasks.seo_scan_products,
+      seo_snapshot: tasks.seo_snapshot,
       seo_queue_build: tasks.seo_queue_build,
       seo_apply: tasks.seo_apply,
+      seo_collection_queue: tasks.seo_collection_queue,
+      seo_collection_apply: tasks.seo_collection_apply,
       prune_crawler_hits: tasks.prune_crawler_hits,
     },
     // Freshness in layers: webhooks fire instantly, the poll closes the gap

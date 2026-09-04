@@ -1,0 +1,37 @@
+-- Down path for 20260904120000_seo_snapshot. Written before the migration it
+-- reverses, per PRD-SEO-FULL-ONPAGE build step 1 and the CLAUDE.md rule that a
+-- Postgres schema change needs its way back thought out before the migration
+-- runs, not after.
+--
+-- Prisma has no down migrations, so this is run by hand:
+--
+--   psql "$DIRECT_URL" -f prisma/down/20260904120000_seo_snapshot.down.sql
+--   DELETE FROM "_prisma_migrations" WHERE migration_name = '20260904120000_seo_snapshot';
+--
+-- The second line matters: without it `prisma migrate deploy` believes the
+-- table is still there and never recreates it, and the next deploy boots
+-- against a schema that does not match the client.
+--
+-- UNLIKE SeoScan, THIS DROP LOSES SOMETHING THAT CANNOT BE READ AGAIN.
+-- Every other table in this schema holds either a fact re-readable from
+-- Shopify in one catalogue pass or a page read the nightly task repeats.
+-- SeoSnapshot holds what the shop looked like on the day the engagement
+-- began, and that day is gone: re-running the reader tomorrow produces
+-- tomorrow's numbers under yesterday's date, which is worse than no row at
+-- all. So before running this, dump it:
+--
+--   psql "$DIRECT_URL" -c "\copy (SELECT * FROM \"SeoSnapshot\") TO 'seo-snapshot-backup.csv' CSV HEADER"
+--
+-- and keep the file. A restored row is re-inserted with its original
+-- takenAt and takenBy; it is the only correct way back.
+--
+-- Nothing else references it - the only foreign key points from SeoSnapshot
+-- to Shop, not the other way, so no cascade reaches any other table, and no
+-- code path outside app/services/seo-snapshot.server.ts and the two scripts
+-- reads it.
+--
+-- It is written as DROP TABLE IF EXISTS rather than DROP TABLE so that
+-- running it twice, or running it against a database where the migration
+-- never landed, is not an error in the middle of an incident.
+
+DROP TABLE IF EXISTS "SeoSnapshot";

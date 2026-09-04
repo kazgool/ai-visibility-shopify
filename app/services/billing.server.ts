@@ -8,6 +8,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE } from "./facts.server";
+import { takeSeoSnapshot, type TakeSnapshotResult } from "./seo-snapshot.server";
 
 export { PLANS, type PlanHandle } from "./plans";
 import { PLANS, type PlanHandle } from "./plans";
@@ -77,13 +78,44 @@ export function checkSeoUnlockKey(candidate: string): boolean {
 
 const SEO_UNLOCK_KEY_SETTING = "seo_unlocked";
 
-/** Same write pattern as `grantComp`: a per-shop Setting row, no expiry. */
-export async function grantSeoUnlock(shopId: string, reason: string) {
+/**
+ * Same write pattern as `grantComp`: a per-shop Setting row, no expiry - plus
+ * the one thing this used to be missing.
+ *
+ * **The before-snapshot is taken first, and the key is stored second.** Until
+ * 4 September 2026 this function wrote the Setting row and nothing else, so
+ * the moment the engagement began left no trace and no screen could ever say
+ * what it changed (PRD-SEO-FULL-ONPAGE §1.1; the audit of 2 September raised
+ * it and it stayed open for two days). The order is the whole guarantee: with
+ * the key stored first, a catalogue pass could fire between the two writes and
+ * the "before" would already contain our own output.
+ *
+ * So a snapshot that cannot be taken means no key. `takeSeoSnapshot` throws on
+ * a short catalogue read, and that throw is deliberately not caught here: the
+ * operator retypes the key and gets a real before, rather than an unlocked
+ * shop whose starting point is lost for good. A second call - the key retyped,
+ * a form submitted twice - finds the row already there, writes no second one,
+ * and still refreshes the Setting row, so re-entering the key remains harmless.
+ *
+ * The bulk read is why this takes a `graphql`, and why the only caller is now
+ * the `seo_snapshot` worker task rather than the plans action: on a large
+ * catalogue it is minutes of polling, which the embedded iframe will not wait
+ * for. Moving the call moved the wait, not the rule - the ordering is still
+ * enforced here, in one function, and the manual script calls it directly
+ * because a terminal has no timeout.
+ */
+export async function grantSeoUnlock(
+  shopId: string,
+  reason: string,
+  graphql: GraphqlFn,
+): Promise<TakeSnapshotResult> {
+  const snapshot = await takeSeoSnapshot(shopId, graphql, "unlock");
   await db.setting.upsert({
     where: { shopId_key: { shopId, key: SEO_UNLOCK_KEY_SETTING } },
     create: { shopId, key: SEO_UNLOCK_KEY_SETTING, value: reason },
     update: { value: reason },
   });
+  return snapshot;
 }
 
 /** Does this shop have the seo_unlocked switch on? */
@@ -137,33 +169,38 @@ const SET_SEO_UNLOCK_METAFIELD = `#graphql
  * mirror; it reads the current value from the database itself (via
  * `isSeoUnlocked`) rather than trusting the caller to say which direction it
  * moved, so grant and revoke can share this one function.
+ *
+ * It takes `GraphqlFn` - the parsed-data client from admin.server.ts - and not
+ * the raw Remix `admin.graphql`, which returns a Response and takes its
+ * variables under an `options.variables` key. It used to take the Remix shape,
+ * and when the `seo_snapshot` worker task began calling it on 5 September 2026
+ * the worker's client type-checked cleanly against it (GraphqlFn is generic, so
+ * `T` simply unified with `Response`) and would have failed at runtime on
+ * `idRes.json is not a function`, with the mutation's variables nested one
+ * level too deep. One shape, and the compiler can see the difference.
  */
 export async function syncSeoUnlockMetafield(
   shopId: string,
-  graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
+  graphql: GraphqlFn,
 ): Promise<void> {
   const unlocked = await isSeoUnlocked(shopId);
 
-  const idRes = await graphql(SEO_UNLOCK_SHOP_ID);
-  const idJson = await idRes.json();
-  const shopGid = idJson.data?.shop?.id;
+  const idData = await graphql<any>(SEO_UNLOCK_SHOP_ID);
+  const shopGid = idData?.shop?.id;
   if (!shopGid) throw new Error("Could not resolve shop id");
 
-  const res = await graphql(SET_SEO_UNLOCK_METAFIELD, {
-    variables: {
-      metafields: [
-        {
-          ownerId: shopGid,
-          namespace: NAMESPACE,
-          key: "seo_unlocked",
-          type: "boolean",
-          value: unlocked ? "true" : "false",
-        },
-      ],
-    },
+  const data = await graphql<any>(SET_SEO_UNLOCK_METAFIELD, {
+    metafields: [
+      {
+        ownerId: shopGid,
+        namespace: NAMESPACE,
+        key: "seo_unlocked",
+        type: "boolean",
+        value: unlocked ? "true" : "false",
+      },
+    ],
   });
-  const json = await res.json();
-  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  const errors = data?.metafieldsSet?.userErrors ?? [];
   if (errors.length) {
     throw new Error(`metafieldsSet (shop seo_unlocked): ${JSON.stringify(errors)}`);
   }

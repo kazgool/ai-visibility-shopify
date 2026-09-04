@@ -8,7 +8,11 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("../admin.server", () => ({ sleep: async () => {} }));
+// sleep moved out of admin.server into its own module (see app/services/sleep.ts):
+// mocking it here is what keeps the bulk-operation poll from really waiting two
+// seconds per iteration, and catalogue.server no longer imports admin.server at
+// all, so a mock of that module would now be inert.
+vi.mock("../sleep", () => ({ sleep: async () => {} }));
 vi.mock("../../db.server", () => ({ default: { setting: { upsert: vi.fn() } } }));
 
 import { fetchAllProducts, productsBulkQuery } from "../catalogue.server";

@@ -32,11 +32,31 @@ export type SeoFieldState = {
   prev: string;
 };
 
-export type ProductSeoInput = {
+/**
+ * Everything the three-state classifier needs: an id, this app's `state`
+ * metafield, and Shopify's own `seo` pair.
+ *
+ * **A collection has exactly this shape**, and that is not a coincidence -
+ * Shopify gives `Collection` the same `seo { title description }` pair it
+ * gives `Product`, and this app writes collections' `state` metafield with the
+ * same `{ source, at, engine }` entries `writeCollections` already uses. So
+ * extending A6 to collections (PRD-SEO-FULL-ONPAGE section 2) needed no second
+ * classifier and no second rule: it needed this type to stop being named after
+ * products, and the collections read to ask for `seo`.
+ *
+ * Reimplementing the three states for collections would have been the real
+ * risk. The rule that a non-empty value with no state entry is human is the
+ * product's core promise, and a second copy of it is a second thing to get
+ * wrong the next time it is refined.
+ */
+export type MetaFieldOwner = {
   id: string;
   metafields?: { key: string; value: string }[];
   seo?: { title: string | null; description: string | null } | null;
 };
+
+/** The name every existing product-side caller uses. Same type. */
+export type ProductSeoInput = MetaFieldOwner;
 
 /**
  * Does this app own this field right now? Same rule as mayWrite in
@@ -45,7 +65,7 @@ export type ProductSeoInput = {
  * touched, and a non-empty value with no state entry is treated as human -
  * it came from somewhere else (the merchant, a previous SEO app, an import).
  */
-export function mayWriteSeo(product: ProductSeoInput, key: SeoKey): boolean {
+export function mayWriteSeo(product: MetaFieldOwner, key: SeoKey): boolean {
   const state = parseState({ id: product.id, title: "", metafields: product.metafields });
   const entry = state[key] as SeoFieldState | undefined;
   if (entry?.source === "human") return false;
@@ -66,7 +86,7 @@ export function mayWriteSeo(product: ProductSeoInput, key: SeoKey): boolean {
 //              directly, an import, or a different app - never touched
 //  - "missing" empty and available for the SEO queue to propose
 
-export function classifyMetaField(product: ProductSeoInput, key: SeoKey): MetaFieldStatus {
+export function classifyMetaField(product: MetaFieldOwner, key: SeoKey): MetaFieldStatus {
   const state = parseState({ id: product.id, title: "", metafields: product.metafields });
   const entry = state[key] as SeoFieldState | undefined;
   const current = key === "seo_title" ? product.seo?.title : product.seo?.description;

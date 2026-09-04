@@ -12,6 +12,7 @@
 // GraphQL only - a single REST call is grounds for App Store rejection.
 
 import { unauthenticated } from "../shopify.server";
+import { sleep } from "./sleep";
 
 const API_VERSION = "2026-07";
 
@@ -100,6 +101,7 @@ export async function adminGraphql(shopDomain: string): Promise<GraphqlFn> {
   };
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Defined in ./sleep so that a module which only needs to wait does not have
+// to import this one, and through it shopify.server. Re-exported here because
+// every caller inside this file and several outside it already had the import.
+export { sleep } from "./sleep";

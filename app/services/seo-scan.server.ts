@@ -33,6 +33,7 @@ import { deriveMissingReasons } from "./theme-scan.server";
 import { b6Detail, type NodeContext } from "./seo-nodes";
 import type { GraphqlFn } from "./admin.server";
 import { isSeoUnlocked } from "./billing.server";
+import { recordCurrentFacts } from "./seo-snapshot.server";
 import type { ProductInput } from "./facts.server";
 import {
   duplicationByProduct,
@@ -78,6 +79,13 @@ export type SourceAReport = {
   redirectsChecked: number;
   /** One count per finding code, for the JobRun report and the SEO card. */
   byCode: Record<string, number>;
+  /**
+   * Whether this pass refreshed the shop's rolling `current` figures, the
+   * "today" half of the since-card (PRD-SEO-FULL-ONPAGE section 1.2). False on
+   * a short read, where writing them would put a `products` total below the
+   * real catalogue behind every difference on the card.
+   */
+  currentFacts?: { written: boolean; reason?: string };
   /**
    * Set when source A failed. Source A is an addition to passes that already
    * did their job without it, so it is best effort in the same sense
@@ -295,6 +303,7 @@ export async function computeSourceA(
       keptOnShortRead: 0,
       redirectsChecked: 0,
       byCode: {},
+      currentFacts: { written: false, reason: "source_a_failed" },
       error: message,
     };
   }
@@ -481,6 +490,25 @@ async function sourceAPass(
         report.removed += count;
       }
     }
+  }
+
+  // The "today" half of the since-card, from the read this pass already holds.
+  // Last, after every SeoScan write above, so the findings it counts are the
+  // ones this pass just stored rather than the previous pass's.
+  // In its own try, and not inside the pass's: every SeoScan row above is
+  // already written by this point, and a failure to refresh the card's "today"
+  // column must not turn a successful pass into a reported failure with its
+  // counts lost. Same best-effort rule source A itself follows towards the
+  // catalogue pass that hosts it.
+  try {
+    report.currentFacts = await recordCurrentFacts(shopId, products, catalogue.complete);
+  } catch (error) {
+    report.currentFacts = { written: false, reason: describeGraphqlError(error, "current facts") };
+  }
+  if (!report.currentFacts.written) {
+    log?.(
+      `source A ${shopId}: current figures not refreshed (${report.currentFacts.reason})`,
+    );
   }
 
   log?.(

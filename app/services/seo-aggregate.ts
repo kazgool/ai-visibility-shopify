@@ -85,6 +85,13 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   { code: "A3", source: "A", basis: "catalogue" },
   { code: "A4", source: "A", basis: "catalogue" },
   { code: "A5", source: "A", basis: "catalogue" },
+  // A7 is computed in source B's pass, from a fetch of the shop's sitemap that
+  // source A never makes, so its denominator is the pages read and not the
+  // catalogue. A6 is deliberately NOT in this list: it counts collections, and
+  // this aggregate counts product rows. Mixing the two would give a row a
+  // denominator that is not its own - see CheckBasis. The SEO screen reads A6
+  // from the collections check's own report.
+  { code: "A7", source: "B", basis: "pagesRead" },
   { code: "B1", source: "B", basis: "pagesRead" },
   { code: "B2", source: "B", basis: "pagesRead" },
   { code: "B3", source: "B", basis: "pagesRead" },
@@ -96,9 +103,19 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   { code: "B6", source: "A", basis: "catalogue" },
   // B7 is a page fact: the same node twice in the page's own markup.
   { code: "B7", source: "B", basis: "pagesRead" },
+  { code: "B8", source: "B", basis: "pagesRead" },
+  { code: "B9", source: "B", basis: "pagesRead" },
 ];
 
-export type CheckState = "found" | "clean" | "notYetRead";
+/**
+ * `notApplicable` exists for exactly one check so far, and for a reason worth
+ * stating: B9 asks about hreflang, and a shop with one market has no hreflang
+ * to declare. It produces no finding, which without this state reads as
+ * "clean" - a claim that a check ran and passed. The applicability is a fact
+ * about the shop that the rows cannot carry, so the pass records it and the
+ * screen passes it in (`applicability` on buildFindingsAggregate).
+ */
+export type CheckState = "found" | "clean" | "notYetRead" | "notApplicable";
 
 export type CheckRow = {
   code: FindingCode;
@@ -215,7 +232,21 @@ export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): v
   }
 }
 
-export function buildFindingsAggregate(counters: FindingsCounters): FindingsAggregate {
+/**
+ * Facts about the shop that no row can carry, and that decide whether a check
+ * applies at all. Absent means "not established", which is not the same as
+ * "does not apply": B9 on a shop whose markets could not be read stays a
+ * normal check rather than being quietly excused.
+ */
+export type CheckApplicability = {
+  /** Enabled markets. One means B9 has nothing to ask. */
+  markets?: number | null;
+};
+
+export function buildFindingsAggregate(
+  counters: FindingsCounters,
+  applicability: CheckApplicability = {},
+): FindingsAggregate {
   const { bulkRead, pagesAttempted, pagesRead, passwordPages, couldNot, counts } = counters;
   const products = counters.products;
   const pagesTried = pagesAttempted - passwordPages;
@@ -223,13 +254,26 @@ export function buildFindingsAggregate(counters: FindingsCounters): FindingsAggr
   const basisOf = (basis: CheckBasis): number =>
     basis === "catalogue" ? bulkRead : basis === "pagesRead" ? pagesRead : pagesTried;
 
+  // B9 asks about hreflang. A shop with one market has none to declare, so the
+  // check does not apply - and "does not apply" must not be rendered as
+  // "clean", which claims a check ran and passed (PRD section 2).
+  const singleMarket =
+    typeof applicability.markets === "number" && applicability.markets <= 1;
+
   const built: CheckRow[] = CHECKS.map(({ code, source, basis }) => {
     const denominator = basisOf(basis);
     const notRead = products - denominator;
     const count = counts.get(code) ?? 0;
     // A count with no denominator is not zero, it is unknown. This is the
     // rule the card's "not yet read" line exists for.
-    const state: CheckState = denominator === 0 ? "notYetRead" : count > 0 ? "found" : "clean";
+    const state: CheckState =
+      code === "B9" && singleMarket
+        ? "notApplicable"
+        : denominator === 0
+          ? "notYetRead"
+          : count > 0
+            ? "found"
+            : "clean";
     return { code, label: CHECK_LABEL[code], source, state, count, denominator, notRead };
   });
 
@@ -246,6 +290,11 @@ export function buildFindingsAggregate(counters: FindingsCounters): FindingsAggr
   const clean = built
     .filter((r) => r.state === "clean")
     .sort((a, b) => a.code.localeCompare(b.code));
+  // Rendered as its own row with its own sentence, never collapsed into the
+  // clean line and never counted in it.
+  const notApplicable = built
+    .filter((r) => r.state === "notApplicable")
+    .sort((a, b) => a.code.localeCompare(b.code));
 
   return {
     products,
@@ -254,7 +303,7 @@ export function buildFindingsAggregate(counters: FindingsCounters): FindingsAggr
     pagesRead,
     couldNotBeRead: couldNot,
     neverScanned: products - pagesAttempted,
-    rows: [...found, ...notYetRead],
+    rows: [...found, ...notYetRead, ...notApplicable],
     clean,
   };
 }

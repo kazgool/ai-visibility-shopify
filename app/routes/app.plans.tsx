@@ -1,6 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useEffect, useState } from "react";
-import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useRevalidator,
+} from "@remix-run/react";
 import {
   Page,
   Card,
@@ -13,6 +19,7 @@ import {
   Banner,
   List,
   Box,
+  Spinner,
   TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -24,7 +31,6 @@ import {
   checkMasterKey,
   checkSeoUnlockKey,
   grantComp,
-  grantSeoUnlock,
   isComped,
   isSeoUnlocked,
   planFromName,
@@ -32,6 +38,8 @@ import {
   startSubscription,
   syncSeoUnlockMetafield,
 } from "../services/billing.server";
+import { adminGraphql } from "../services/admin.server";
+import { enqueue } from "../services/queue.server";
 import { extractProduct } from "../engine";
 import { cleanOutput } from "../engine/normalize";
 
@@ -69,8 +77,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const comped = await isComped(session.shop, shop?.id);
   const seoUnlocked = await isSeoUnlocked(shop?.id);
 
+  // The unlock is a job now, so this screen has to be able to say where that
+  // job is. Progress lives in JobRun, never in the browser (CLAUDE.md).
+  const snapshotJob = shop
+    ? await db.jobRun.findFirst({
+        where: { shopId: shop.id, kind: "seo_snapshot" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
   return {
     comped,
+    snapshot: snapshotJob
+      ? {
+          status: snapshotJob.status,
+          error:
+            typeof (snapshotJob.report as { error?: unknown } | null)?.error === "string"
+              ? String((snapshotJob.report as { error?: unknown }).error)
+              : null,
+        }
+      : null,
     count,
     sample: sample
       ? {
@@ -112,8 +138,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!checkSeoUnlockKey(String(form.get("seoCode") ?? ""))) {
       return { seoCodeError: "That code is not valid." };
     }
-    await grantSeoUnlock(shop.id, `code:${new Date().toISOString()}`);
-    await syncSeoUnlockMetafield(shop.id, admin.graphql);
+
+    // The code is valid, and NOTHING is unlocked here. The before-snapshot has
+    // to be taken before the key is stored (PRD-SEO-FULL-ONPAGE §1.1), and
+    // taking it runs a bulk operation over the whole catalogue - minutes on a
+    // large store, which the embedded iframe will not wait for. So this action
+    // queues the work and returns; `grantSeoUnlock` still holds the ordering
+    // rule, and it now runs in the worker where there is no timeout.
+    //
+    // The jobKey collapses a double submit into one job rather than starting a
+    // second bulk operation, the same way the Report screen's reconcile does.
+    // A job already queued for this shop is simply replaced.
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "seo_snapshot" },
+    });
+    await enqueue(
+      "seo_snapshot",
+      {
+        shopId: shop.id,
+        jobRunId: jobRun.id,
+        reason: `code:${new Date().toISOString()}`,
+      },
+      { jobKey: `seo_snapshot:${shop.id}` },
+    );
     throw redirect(`/app${new URL(request.url).search}`);
   }
 
@@ -126,7 +173,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!shop) return { error: "Shop not found" };
 
     await revokeSeoUnlock(shop.id);
-    await syncSeoUnlockMetafield(shop.id, admin.graphql);
+    await syncSeoUnlockMetafield(shop.id, await adminGraphql(session.shop));
     throw redirect(`/app${new URL(request.url).search}`);
   }
 
@@ -162,10 +209,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Plans() {
-  const { comped, count, sample, currentPlan, renewsAt, seoUnlocked } = useLoaderData<
-    typeof loader
-  >() as {
+  const { comped, count, sample, currentPlan, renewsAt, seoUnlocked, snapshot } =
+    useLoaderData<typeof loader>() as {
     comped: boolean;
+    snapshot: { status: string; error: string | null } | null;
     count: number;
     sample: { title: string; facts: { k: string; v: string }[] } | null;
     currentPlan: PlanHandle | null;
@@ -182,10 +229,25 @@ export default function Plans() {
     | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+
+  // The unlock is a queued job, so this screen polls for it exactly as the
+  // dashboard polls a pass. The alternative - a spinner driven from React
+  // state - restarts on every refresh and would tell a returning operator
+  // nothing at all.
+  const snapshotRunning =
+    !seoUnlocked && (snapshot?.status === "queued" || snapshot?.status === "running");
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!snapshotRunning) return;
+    const id = setInterval(() => revalidator.revalidate(), 2000);
+    return () => clearInterval(id);
+  }, [snapshotRunning, revalidator]);
   const [showCode, setShowCode] = useState(Boolean(result?.codeError));
   // Polaris TextField is controlled; without state it cannot be typed into.
   const [code, setCode] = useState("");
-  const [showSeoCode, setShowSeoCode] = useState(Boolean(result?.seoCodeError));
+  const [showSeoCode, setShowSeoCode] = useState(
+    Boolean(result?.seoCodeError) || snapshot?.status === "failed",
+  );
   const [seoCode, setSeoCode] = useState("");
 
   // Shopify's confirmation page refuses to render inside the admin iframe, so
@@ -443,10 +505,32 @@ export default function Plans() {
                 </Text>
               </BlockStack>
             </Form>
+          ) : snapshotRunning ? (
+            <InlineStack gap="200" blockAlign="center">
+              <Spinner size="small" />
+              <Text as="span" variant="bodySm" tone="subdued">
+                Taking the before snapshot; the SEO screens open when it is saved.
+              </Text>
+            </InlineStack>
           ) : showSeoCode ? (
             <Card>
               <Form method="post">
                 <input type="hidden" name="intent" value="seo_unlock" />
+                {snapshot?.status === "failed" ? (
+                  <Box paddingBlockEnd="300">
+                    <Banner tone="critical" title="The before snapshot could not be taken">
+                      <Text as="p" variant="bodySm">
+                        The code was accepted, but the store could not be read,
+                        so nothing was unlocked. Enter the code again to retry.
+                      </Text>
+                      {snapshot.error ? (
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {snapshot.error}
+                        </Text>
+                      ) : null}
+                    </Banner>
+                  </Box>
+                ) : null}
                 <BlockStack gap="300">
                   <TextField
                     label="Setup code"

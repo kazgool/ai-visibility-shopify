@@ -6,7 +6,7 @@
 
 import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
-import { sleep } from "./admin.server";
+import { sleep } from "./sleep";
 import type { ProductInput, VariantInput } from "./facts.server";
 import { NAMESPACE } from "./facts.server";
 import { catalogueQuery, DEFAULT_PREFS } from "./eligibility";

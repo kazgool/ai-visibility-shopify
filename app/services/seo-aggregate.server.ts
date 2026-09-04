@@ -25,6 +25,7 @@ import {
   type ThemeNodeAggregate,
 } from "./seo-aggregate";
 import { findingsOf } from "./seo-findings";
+import { marketsInfo } from "./seo-page.server";
 
 /** Rows per round trip. Large enough to be few queries, small enough to hold. */
 export const READ_BATCH = 1000;
@@ -107,7 +108,9 @@ export async function readSeoAggregates(shopId: string): Promise<SeoScanAggregat
     foldThemeNodeRow(themeNodes, view);
   });
   return {
-    findings: buildFindingsAggregate(findings),
+    // The markets count decides whether B9 applies at all, and no row carries
+    // it - the nightly pass records it per shop (PRD section 2).
+    findings: buildFindingsAggregate(findings, { markets: (await marketsInfo(shopId))?.count ?? null }),
     themeNodes: buildThemeNodeAggregate(themeNodes),
   };
 }

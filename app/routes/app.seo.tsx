@@ -24,6 +24,7 @@ import {
   Spinner,
   Box,
   Collapsible,
+  Tabs,
   TextField,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
@@ -52,12 +53,30 @@ import {
 } from "../services/seo-aggregate";
 import { readSeoAggregates } from "../services/seo-aggregate.server";
 import {
+  readCurrentFacts,
+  readSeoSnapshot,
+  serialiseFacts,
+} from "../services/seo-snapshot.server";
+import type { FactsRow } from "../services/seo-since";
+import { SeoSinceCard } from "../components/SeoSinceCard";
+import {
+  SeoCollectionsPanel,
+  type CollectionJobLike,
+} from "../components/SeoCollectionsPanel";
+import type { CollectionSeoQueue } from "../services/seo-collections.server";
+import { CHECK_LABEL } from "../services/seo-findings";
+import {
   describeGraphqlError,
   isInternalServerError,
   named,
   shopifyRequestId,
 } from "../services/graphql-errors";
-import { DEFAULT_DAILY_BUDGET, dailyBudget, robotsBlock } from "../services/seo-page.server";
+import {
+  DEFAULT_DAILY_BUDGET,
+  dailyBudget,
+  robotsBlock,
+  staleSitemapEntries,
+} from "../services/seo-page.server";
 import { organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
@@ -157,12 +176,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the queue build (read-only, also carries the term-gap card's data) and
   // the apply (writes the approved rows). Read here, not recomputed in the
   // browser - JobRun is the record.
-  const [queueJob, applyJob] = shop
+  const [queueJob, applyJob, collectionQueueJob, collectionApplyJob] = shop
     ? await Promise.all([
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_queue" }, orderBy: { createdAt: "desc" } }),
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_apply" }, orderBy: { createdAt: "desc" } }),
+        // The Collections tab's own pair. Separate kinds on purpose: each tab
+        // says what its own check found, and pressing Preview on one must not
+        // present the other's numbers.
+        db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "seo_collection_queue" },
+          orderBy: { createdAt: "desc" },
+        }),
+        db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "seo_collection_apply" },
+          orderBy: { createdAt: "desc" },
+        }),
       ])
-    : [null, null];
+    : [null, null, null, null];
 
   // Per-product SEO scan (PRD-SEO-PER-PRODUCT build step 4). Both cards below
   // read one aggregate over the whole SeoScan table, so the Findings card and
@@ -174,12 +204,52 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // nightly page read" rows and a night that has already decided to fetch
   // nothing. The sentence at the top of the card has to say so (QA, 3
   // September 2026).
-  const [scan, scanBudget, scanRobotsBlock] = shop
-    ? await Promise.all([readSeoAggregates(shop.id), dailyBudget(shop.id), robotsBlock(shop.id)])
-    : [null, DEFAULT_DAILY_BUDGET, null];
+  const [scan, scanBudget, scanRobotsBlock, staleSitemap] = shop
+    ? await Promise.all([
+        readSeoAggregates(shop.id),
+        dailyBudget(shop.id),
+        robotsBlock(shop.id),
+        // A7's other half. It cannot be a row - a withdrawn product has no row
+        // to put it on - so the nightly pass records it per shop.
+        staleSitemapEntries(shop.id),
+      ])
+    : [null, DEFAULT_DAILY_BUDGET, null, null];
+
+  // The since-card (PRD-SEO-FULL-ONPAGE §1.2). Two rows, both already
+  // computed: the before, written once at unlock, and the rolling current,
+  // rewritten by the last complete catalogue pass. No catalogue read on this
+  // request - that is the whole reason the current row exists.
+  const [beforeRow, currentRow] = shop
+    ? await Promise.all([readSeoSnapshot(shop.id), readCurrentFacts(shop.id)])
+    : [null, null];
+
+  // isQueueUsable/isQueueStale read a serialised job (finishedAt as a string),
+  // which is what the browser gets; here the row still carries a Date.
+  const collectionQueueView = collectionQueueJob
+    ? {
+        status: collectionQueueJob.status,
+        finishedAt: collectionQueueJob.finishedAt?.toISOString() ?? null,
+        report: collectionQueueJob.report,
+      }
+    : null;
 
   return {
     unlocked: true as const,
+    staleSitemap,
+    collections: {
+      queueJob: collectionQueueJob,
+      applyJob: collectionApplyJob,
+      // The same rule the products tab follows: a report is only trustworthy
+      // in status "done". "stale" means a write has since made its counts
+      // false, so it is presented as null rather than as data known to be
+      // wrong.
+      report: isQueueUsable(collectionQueueView) ? collectionQueueJob!.report : null,
+      stale: isQueueStale(collectionQueueView),
+    },
+    since: {
+      before: beforeRow ? (serialiseFacts(beforeRow) as FactsRow) : null,
+      today: currentRow ? (serialiseFacts(currentRow) as FactsRow) : null,
+    },
     themeScan,
     embed,
     embedLink: embedDeepLink(session.shop),
@@ -236,7 +306,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // one re-runs inside the worker tasks themselves, since a queue can sit
   // for a while between being built and being applied). Read paths (the
   // loader, the scan intent, the password settings) are unaffected.
-  if (intent === "seo_build_queue" || intent === "seo_apply") {
+  if (
+    intent === "seo_build_queue" ||
+    intent === "seo_apply" ||
+    intent === "seo_collection_preview" ||
+    intent === "seo_collection_apply"
+  ) {
     const paid = await named("hasPaidAccess", () =>
       hasPaidAccess(session.shop, shop.id, admin.graphql),
     );
@@ -256,6 +331,60 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const jobRun = await db.jobRun.create({ data: { shopId: shop.id, kind: "seo_queue" } });
     await enqueue("seo_queue_build", { shopId: shop.id, jobRunId: jobRun.id });
+    return { queued: true };
+  }
+
+  // The Collections tab (PRD-SEO-FULL-ONPAGE section 2). Same shape as the two
+  // product intents above, against its own JobRun kinds, so each tab reports
+  // its own check and neither can present the other's numbers.
+  if (intent === "seo_collection_preview") {
+    const active = await db.jobRun.findFirst({
+      where: {
+        shopId: shop.id,
+        kind: "seo_collection_queue",
+        status: { in: ["queued", "running"] },
+      },
+    });
+    if (active) return { error: "A collections preview is already running." };
+
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "seo_collection_queue" },
+    });
+    await enqueue("seo_collection_queue", { shopId: shop.id, jobRunId: jobRun.id });
+    return { queued: true };
+  }
+
+  if (intent === "seo_collection_apply") {
+    const items = form
+      .getAll("items")
+      .map(String)
+      .map((raw) => {
+        try {
+          const parsed = JSON.parse(raw) as {
+            collectionId: string;
+            field: SeoKey;
+            value: string;
+          };
+          if (!parsed?.collectionId || !parsed?.field) return null;
+          return {
+            collectionId: parsed.collectionId,
+            field: parsed.field,
+            value: String(parsed.value ?? ""),
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (i): i is { collectionId: string; field: SeoKey; value: string } => i !== null,
+      );
+
+    if (items.length === 0) return { error: "Nothing was selected to write." };
+
+    const jobRun = await db.jobRun.create({
+      data: { shopId: shop.id, kind: "seo_collection_apply" },
+    });
+    await enqueue("seo_collection_apply", { shopId: shop.id, jobRunId: jobRun.id, items });
     return { queued: true };
   }
 
@@ -972,19 +1101,41 @@ type JobRunLike = {
  * until a preview has produced rows to select from, and every row it will
  * write is listed with a checkbox before the button can do anything.
  */
-function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJob: JobRunLike }) {
+function SeoListingsCard({
+  queueJob,
+  applyJob,
+  collections,
+}: {
+  queueJob: JobRunLike;
+  applyJob: JobRunLike;
+  /** The Collections tab's half, read from its own JobRuns (PRD section 2). */
+  collections: {
+    queueJob: CollectionJobLike;
+    applyJob: CollectionJobLike;
+    report: CollectionSeoQueue | null;
+    stale: boolean;
+  };
+}) {
+  const [tab, setTab] = useState(0);
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const revalidator = useRevalidator();
 
   const building = queueJob?.status === "queued" || queueJob?.status === "running";
   const applying = applyJob?.status === "queued" || applyJob?.status === "running";
+  // The collections jobs poll through this same effect: two intervals on one
+  // card would revalidate twice as often for no extra information.
+  const collectionsBusy =
+    collections.queueJob?.status === "queued" ||
+    collections.queueJob?.status === "running" ||
+    collections.applyJob?.status === "queued" ||
+    collections.applyJob?.status === "running";
 
   useEffect(() => {
-    if (!building && !applying) return;
+    if (!building && !applying && !collectionsBusy) return;
     const id = setInterval(() => revalidator.revalidate(), 2000);
     return () => clearInterval(id);
-  }, [building, applying, revalidator]);
+  }, [building, applying, collectionsBusy, revalidator]);
 
   // A queue's report is only trustworthy in status "done" - see
   // seo-queue-metrics.ts. "stale" means an apply reviewed against this exact
@@ -1066,11 +1217,31 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
 
   return (
     <Card>
+      <BlockStack gap="300">
+        <Text as="h2" variant="headingMd">
+          Write the missing search listings
+        </Text>
+        <Tabs
+          tabs={[
+            { id: "seo-listings-products", content: "Products" },
+            { id: "seo-listings-collections", content: "Collections" },
+          ]}
+          selected={tab}
+          onSelect={setTab}
+          fitted
+        />
+      </BlockStack>
+      <Box paddingBlockStart="400">
+        {tab === 1 ? (
+          <SeoCollectionsPanel
+            queueJob={collections.queueJob}
+            applyJob={collections.applyJob}
+            report={collections.report}
+            stale={collections.stale}
+          />
+        ) : (
       <BlockStack gap="400">
         <BlockStack gap="100">
-          <Text as="h2" variant="headingMd">
-            Write the missing search listings
-          </Text>
           <Text as="p" tone="subdued">
             Meta titles and meta descriptions condensed from each product's
             own title and description. Nothing is invented, nothing is
@@ -1283,6 +1454,8 @@ function SeoListingsCard({ queueJob, applyJob }: { queueJob: JobRunLike; applyJo
           </BlockStack>
         ) : null}
       </BlockStack>
+        )}
+      </Box>
     </Card>
   );
 }
@@ -1309,15 +1482,22 @@ function FindingsPerProductCard({
   aggregate,
   budget,
   blockedBy,
+  collectionReport,
+  staleSitemap,
 }: {
   aggregate: FindingsAggregate;
   budget: number;
   /** The Disallow path that stopped the last nightly pass, or null. */
   blockedBy: string | null;
+  /** A6's source. Its denominator is collections, so it is its own row. */
+  collectionReport: CollectionSeoQueue | null;
+  /** A7's other half: handles the sitemap lists that have no product row. */
+  staleSitemap: { handles: string[]; total: number } | null;
 }) {
   const clean = cleanSentence(aggregate);
   const found = aggregate.rows.filter((r) => r.state === "found");
   const notYetRead = aggregate.rows.filter((r) => r.state === "notYetRead");
+  const notApplicable = aggregate.rows.filter((r) => r.state === "notApplicable");
 
   return (
     <Card>
@@ -1386,6 +1566,51 @@ function FindingsPerProductCard({
                 </Text>
               </InlineStack>
             ))}
+
+            {/* A6 counts collections, not products, so it carries its own
+                denominator and never borrows the catalogue's. */}
+            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+              <BlockStack gap="050">
+                <Text as="p" variant="bodySm">
+                  {CHECK_LABEL.A6}
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  From the collections check. Counted over collections, not over products.
+                </Text>
+              </BlockStack>
+              <Text
+                as="span"
+                fontWeight={collectionReport ? "semibold" : undefined}
+                tone={collectionReport ? undefined : "subdued"}
+              >
+                {collectionReport
+                  ? `${collectionReport.withFinding} of ${collectionReport.checked}`
+                  : "Not checked yet"}
+              </Text>
+            </InlineStack>
+
+            {notApplicable.map((row) => (
+              <InlineStack key={row.code} align="space-between" blockAlign="center" wrap={false}>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {row.label}
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    This shop has one market, so there are no alternate
+                    language versions for a page to declare.
+                  </Text>
+                </BlockStack>
+                <Text as="span" tone="subdued">
+                  Not applicable
+                </Text>
+              </InlineStack>
+            ))}
+
+            {staleSitemap && staleSitemap.total > 0 ? (
+              <Text as="p" tone="subdued" variant="bodySm">
+                {`${staleSitemap.total} URL${staleSitemap.total === 1 ? "" : "s"} in this shop's sitemap point at products that are no longer published: ${staleSitemap.handles.slice(0, 5).join(", ")}${staleSitemap.total > 5 ? ", and others" : ""}. Shopify owns the sitemap and regenerates it; there is nothing to edit, and the entries drop out on their own.`}
+              </Text>
+            ) : null}
 
             {clean ? (
               <Text as="p" tone="subdued" variant="bodySm">
@@ -1538,6 +1763,8 @@ export default function Seo() {
       <BlockStack gap="500">
         {actionData?.error ? <Banner tone="critical">{actionData.error}</Banner> : null}
 
+        <SeoSinceCard before={data.since?.before ?? null} today={data.since?.today ?? null} />
+
         <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
           <MetricTile label="Meta descriptions" {...metaDescriptionMetric} />
           <MetricTile label="Meta titles" {...metaTitleMetric} />
@@ -1550,6 +1777,8 @@ export default function Seo() {
             aggregate={data.scan.findings as unknown as FindingsAggregate}
             budget={data.scanBudget}
             blockedBy={data.scanRobotsBlock}
+            collectionReport={data.collections.report as unknown as CollectionSeoQueue | null}
+            staleSitemap={data.staleSitemap}
           />
         ) : null}
 
@@ -1559,7 +1788,11 @@ export default function Seo() {
           />
         ) : null}
 
-        <SeoListingsCard queueJob={queueJob} applyJob={data.applyJob as any as JobRunLike} />
+        <SeoListingsCard
+          queueJob={queueJob}
+          applyJob={data.applyJob as any as JobRunLike}
+          collections={data.collections as any}
+        />
 
         <TermGapCard report={report} />
 

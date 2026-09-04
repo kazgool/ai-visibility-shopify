@@ -224,6 +224,208 @@ export async function robotsBlock(shopId: string): Promise<string | null> {
   return row?.value ?? null;
 }
 
+// --- markets and the sitemap: two per-shop reads, recorded where a screen
+// --- can find them ---------------------------------------------------------
+
+/** What the last pass found about this shop's markets. Read by the SEO card. */
+export const MARKETS_SETTING_KEY = "seo_markets";
+
+/** Sitemap entries with no product row: withdrawn products still listed. */
+export const SITEMAP_STALE_SETTING_KEY = "seo_sitemap_stale";
+
+/**
+ * Recorded per shop rather than per row, because it is a fact about the shop.
+ *
+ * B9 produces no finding at all on a single-market shop, and a check that
+ * produces no finding reads as "ran and found nothing" - which would claim a
+ * check passed that was never applicable. The card reads this row instead and
+ * says "not applicable" (PRD section 2). Same mechanism as `recordRobotsBlock`,
+ * and for the same reason: a fact the aggregate cannot derive from the rows.
+ */
+export async function recordMarkets(shopId: string, markets: MarketsInfo | null): Promise<void> {
+  if (!markets) {
+    await db.setting.deleteMany({ where: { shopId, key: MARKETS_SETTING_KEY } });
+    return;
+  }
+  const value = JSON.stringify(markets);
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: MARKETS_SETTING_KEY } },
+    create: { shopId, key: MARKETS_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+/** What the SEO card reads to decide whether B9 applies at all. */
+export async function marketsInfo(shopId: string): Promise<MarketsInfo | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: MARKETS_SETTING_KEY } },
+  });
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    const count = Number(parsed?.count);
+    if (!Number.isFinite(count)) return null;
+    return {
+      count,
+      locales: Array.isArray(parsed?.locales) ? parsed.locales.map(String) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The half of A7 that cannot be a row: handles the sitemap lists that this
+ * shop has no product row for.
+ *
+ * A withdrawn product has no `SeoScan` row - source A deletes rows for
+ * products a whole catalogue read did not contain - so there is nothing to
+ * attach the finding to. It is a fact about the shop and is stored as one.
+ * Capped at 50 so an import that unpublished a thousand products cannot put a
+ * thousand handles in a Setting row; the count is kept whole either way, so
+ * the card can say "50 of 340 listed".
+ */
+export const STALE_SITEMAP_CAP = 50;
+
+export type StaleSitemap = { handles: string[]; total: number; at: string };
+
+export async function recordStaleSitemapEntries(
+  shopId: string,
+  handles: string[] | null,
+): Promise<void> {
+  if (handles === null) {
+    // The sitemap could not be read at all. Deleting is right: a stale list
+    // from a week ago presented as tonight's finding is worse than no list.
+    await db.setting.deleteMany({ where: { shopId, key: SITEMAP_STALE_SETTING_KEY } });
+    return;
+  }
+  const value = JSON.stringify({
+    handles: handles.slice(0, STALE_SITEMAP_CAP),
+    total: handles.length,
+    at: new Date().toISOString(),
+  } satisfies StaleSitemap);
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: SITEMAP_STALE_SETTING_KEY } },
+    create: { shopId, key: SITEMAP_STALE_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+export async function staleSitemapEntries(shopId: string): Promise<StaleSitemap | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SITEMAP_STALE_SETTING_KEY } },
+  });
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    if (!Array.isArray(parsed?.handles)) return null;
+    return {
+      handles: parsed.handles.map(String),
+      total: Number(parsed.total) || parsed.handles.length,
+      at: String(parsed.at ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Every `<loc>` in an XML document, in order. */
+export function locsOf(xml: string): string[] {
+  return [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim());
+}
+
+/**
+ * The product handles a `/products/<handle>` URL names, from a sitemap URL.
+ * Anything else - a page, a collection, a blog - is not this check's business
+ * and is skipped rather than counted.
+ */
+export function productHandleOf(url: string): string | null {
+  try {
+    const path = new URL(url).pathname;
+    const match = /^(?:\/[a-z-]{2,10})?\/products\/([^/]+)\/?$/i.exec(path);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The shop's sitemap: the index, then every product sitemap it names.
+ *
+ * Shopify splits `sitemap.xml` into an index that points at
+ * `sitemap_products_1.xml` and so on, so one fetch is never enough and the
+ * number of fetches is the number of sitemaps the shop has - about one per
+ * 5,000 products. They are counted against the same daily budget as pages,
+ * because they are requests to the same storefront.
+ *
+ * Returns null on any failure, and A7 then says nothing at all. A sitemap that
+ * could not be fetched is not a sitemap that omits every product: on a shop
+ * with a storefront password - every development store - the sitemap answers
+ * with the password form, and reading that as "no product is listed" would put
+ * a finding on the entire catalogue.
+ */
+export async function fetchSitemap(
+  origin: string,
+  fetchImpl: typeof fetch,
+  options: { maxSitemaps?: number } = {},
+): Promise<{ read: SitemapRead | null; fetches: number; error?: string }> {
+  const maxSitemaps = options.maxSitemaps ?? 20;
+  let fetches = 0;
+
+  const get = async (url: string): Promise<string | null> => {
+    fetches += 1;
+    try {
+      const res = await fetchImpl(url, {
+        headers: { "User-Agent": SCAN_USER_AGENT, Accept: "application/xml,text/xml" },
+        redirect: "follow",
+      });
+      if (!res.ok) return null;
+      const text = await res.text();
+      // A password form answers 200 with HTML. An XML document it is not.
+      if (!/<(?:urlset|sitemapindex)\b/i.test(text)) return null;
+      return text;
+    } catch {
+      return null;
+    }
+  };
+
+  const index = await get(`${origin}/sitemap.xml`);
+  if (index === null) return { read: null, fetches, error: "sitemap.xml could not be read" };
+
+  const handles = new Set<string>();
+  let urls = 0;
+
+  const addFrom = (xml: string) => {
+    for (const loc of locsOf(xml)) {
+      const handle = productHandleOf(loc);
+      if (handle === null) continue;
+      urls += 1;
+      handles.add(handle);
+    }
+  };
+
+  // An index lists sitemaps; a urlset lists pages. A small shop's sitemap.xml
+  // can be either, so both are handled rather than assumed.
+  if (/<sitemapindex\b/i.test(index)) {
+    const children = locsOf(index).filter((loc) => /sitemap_products/i.test(loc));
+    for (const child of children.slice(0, maxSitemaps)) {
+      const xml = await get(child);
+      if (xml) addFrom(xml);
+    }
+    if (children.length > maxSitemaps) {
+      return {
+        read: null,
+        fetches,
+        error: `the index lists ${children.length} product sitemaps, more than the ${maxSitemaps} this pass reads`,
+      };
+    }
+  } else {
+    addFrom(index);
+  }
+
+  return { read: { handles, urls }, fetches };
+}
+
 // --- robots.txt ------------------------------------------------------------
 
 export type RobotsGroup = { agents: string[]; allow: string[]; disallow: string[] };
@@ -437,6 +639,206 @@ export function extractSchemaOffer(html: string): SchemaOffer | null {
   return null;
 }
 
+// --- B8, B9 and A7: the three checks added by PRD section 2 -----------------
+
+/**
+ * What a pass knows that one page does not, handed to `readingOf` so the three
+ * checks below stay pure functions over a string of HTML plus a value.
+ *
+ * All three are per-pass reads: one `markets` Admin query, one fetch of the
+ * sitemap index and the sitemaps it names. None of them costs anything per
+ * product, which is the only reason they can sit inside a loop that already
+ * has a 500-page budget.
+ */
+export type PageContext = {
+  /** The product's handle, so B8 knows the address the canonical should carry. */
+  handle: string | null;
+  /** Null when the markets query was not made or failed: B9 then says nothing. */
+  markets: MarketsInfo | null;
+  /** Null when the sitemap could not be read: A7 then says nothing. */
+  sitemap: SitemapRead | null;
+};
+
+export type MarketsInfo = {
+  /** How many enabled markets the shop has. One means B9 is not applicable. */
+  count: number;
+  /** Every locale across those markets, lower-cased, deduplicated, sorted. */
+  locales: string[];
+};
+
+export type SitemapRead = {
+  /** Product handles listed anywhere in the shop's product sitemaps. */
+  handles: Set<string>;
+  /** How many product URLs were parsed, for the row's method line. */
+  urls: number;
+};
+
+/**
+ * B8: the shape of the canonical, which is a different question from B2.
+ *
+ * B2 asks whether the canonical is this page's own address. B8 asks whether it
+ * is the plain product URL, and names which of the two Shopify-specific wrong
+ * shapes it is:
+ *
+ *  - a variant URL (`?variant=`), which splits one product across as many
+ *    addresses as it has variants;
+ *  - a collection-prefixed URL (`/collections/x/products/y`), which Shopify's
+ *    own `within` filter produces for every product in every collection. The
+ *    canonical is theme-owned and not automatic, so a theme that echoes the
+ *    request path gives every product one canonical per collection it is in.
+ *    Section 5a of the PRD listed this as a separate case; it is this check.
+ *
+ * Absent is not this check's business - B2 already has a sentence for it, and
+ * two rows saying "no canonical" is a reader deciding which to believe.
+ */
+export function checkCanonicalShape(
+  canonical: string | null,
+  handle: string | null,
+  pageUrl: string,
+): Finding | null {
+  if (canonical === null || handle === null || handle === "") return null;
+
+  let url: URL;
+  try {
+    url = new URL(canonical, pageUrl);
+  } catch {
+    // Unparseable: reported as it stands rather than guessed at.
+    return {
+      code: "B8",
+      source: "B",
+      detail: { canonical, shouldBe: `${PRODUCTS_PATH}${handle}`, reason: "unparseable" },
+    };
+  }
+
+  const expected = `${PRODUCTS_PATH}${handle}`;
+  const path = url.pathname.replace(/\/$/, "");
+  const hasVariant = url.searchParams.has("variant");
+  const collectionPrefixed = /^\/collections\/[^/]+\/products\//.test(path);
+
+  if (path === expected && !hasVariant) return null;
+
+  const reason = hasVariant
+    ? "variant"
+    : collectionPrefixed
+      ? "collection"
+      : "other";
+
+  return {
+    code: "B8",
+    source: "B",
+    detail: {
+      // As fetched, not as resolved: the row shows the merchant what is in
+      // their page, and a resolved absolute URL is not what they will find
+      // when they open the source.
+      canonical,
+      resolved: url.href,
+      shouldBe: expected,
+      reason,
+      ...(reason === "collection"
+        ? {
+            note: "Shopify's `within` filter gives every product in a collection a second URL of this shape.",
+          }
+        : {}),
+    },
+  };
+}
+
+/** `hreflang` values the page declares, lower-cased. */
+export function extractHreflangs(html: string): string[] {
+  const out = new Set<string>();
+  // Every link element on the page; the two tests below are what narrow it to
+  // an alternate with an hreflang, so the tag match itself stays loose.
+  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
+    const tag = match[0];
+    if (!/rel\s*=\s*["']?alternate/i.test(tag)) continue;
+    const lang = /hreflang\s*=\s*["']([^"']+)["']/i.exec(tag);
+    if (lang) out.add(lang[1].trim().toLowerCase());
+  }
+  return [...out].sort();
+}
+
+/**
+ * B9: hreflang on a shop with more than one market.
+ *
+ * Narrowed by the research of 4 September (PRD section 5a): Shopify Markets
+ * adds hreflang and canonical automatically through `content_for_header`
+ * unless the merchant turned it off. So an absent set of links is a platform
+ * setting, not a broken theme, and the row says exactly that - a sentence
+ * accusing the theme would send a merchant to edit Liquid for a checkbox.
+ *
+ * A single-market shop produces no finding at all. It also must not read as
+ * "clean", which would claim a check ran and passed; the pass records the
+ * market count per shop and the card reads "not applicable" from it.
+ */
+export function checkHreflang(html: string, markets: MarketsInfo | null): Finding | null {
+  if (!markets) return null;
+  if (markets.count <= 1) return null;
+
+  const present = extractHreflangs(html);
+  if (present.length === 0) {
+    return {
+      code: "B9",
+      source: "B",
+      detail: {
+        markets: markets.count,
+        locales: markets.locales,
+        present: [],
+        missing: markets.locales,
+        cause: "platform_setting",
+      },
+    };
+  }
+
+  // Present but not for every locale. Still the platform's doing, so the
+  // sentence does not change - only the list does.
+  const missing = markets.locales.filter((locale) => !present.includes(locale));
+  if (missing.length === 0) return null;
+
+  return {
+    code: "B9",
+    source: "B",
+    detail: {
+      markets: markets.count,
+      locales: markets.locales,
+      present,
+      missing,
+      cause: "platform_setting",
+    },
+  };
+}
+
+/**
+ * A7: this product is not in the shop's sitemap.
+ *
+ * Report only. Shopify owns `sitemap.xml`, regenerates it on content changes
+ * and offers no way to edit it, so the row can say "absent" and nothing else;
+ * the fix is always a product setting (published, in a sales channel), never a
+ * file. That is the whole finding, and PRD section 5a says so.
+ *
+ * `source: "A+B"` and not `"A"`, and the reason is the ownership rule: this is
+ * computed in source B's pass, from a fetch source A never makes, so source A
+ * must not own it or the next catalogue pass would erase a value it cannot
+ * recompute. Same reasoning as A2.
+ *
+ * The other half of the check - a withdrawn product still listed - cannot be a
+ * row, because a withdrawn product has no row: source A deletes rows for
+ * products a whole read did not contain. It is recorded per shop instead, by
+ * `recordStaleSitemapEntries`, and the card states it under this row.
+ */
+export function checkSitemap(handle: string | null, sitemap: SitemapRead | null): Finding | null {
+  if (!sitemap || handle === null || handle === "") return null;
+  if (sitemap.handles.has(handle)) return null;
+  return {
+    code: "A7",
+    source: "A+B",
+    detail: {
+      handle,
+      urlsInSitemap: sitemap.urls,
+      fix: "product_setting",
+    },
+  };
+}
+
 /** Everything source B writes onto one row, plus what only the report wants. */
 export type PageRow = {
   status: string;
@@ -501,7 +903,11 @@ function sameAddress(a: string, b: string): boolean {
  * The checks, given a page that has been read. Pure: no fetch, no database,
  * so every row below can be asserted on from a string of HTML.
  */
-export function readingOf(page: PageRead, offer: OfferFacts | null): PageRow {
+export function readingOf(
+  page: PageRead,
+  offer: OfferFacts | null,
+  context: PageContext = { handle: null, markets: null, sitemap: null },
+): PageRow {
   const base = {
     nodes: [] as LdNode[],
     canonical: null,
@@ -648,6 +1054,23 @@ export function readingOf(page: PageRead, offer: OfferFacts | null): PageRow {
     });
   }
 
+  // B8: the shape of the canonical, which B2 does not ask. Both can fire on
+  // one page and they say different things - B2 that it is not this page's
+  // address, B8 that it is not the plain product URL - so neither subsumes the
+  // other and the merchant sees the address in each sentence.
+  const b8 = checkCanonicalShape(canonical, context.handle, page.finalUrl);
+  if (b8) findings.push(b8);
+
+  // B9: hreflang, from the one markets query this pass made. Silent on a
+  // single-market shop, and silent when the query was not made at all.
+  const b9 = checkHreflang(page.html, context.markets);
+  if (b9) findings.push(b9);
+
+  // A7: in the shop's sitemap or not. Silent when the sitemap could not be
+  // read, which is every shop behind a storefront password.
+  const a7 = checkSitemap(context.handle, context.sitemap);
+  if (a7) findings.push(a7);
+
   // A2: the page's offer against what the variants said on the last catalogue
   // pass. Returns null when either half is missing - "not yet read" is not
   // "they agree".
@@ -701,6 +1124,22 @@ export type SourceBReport = {
   robots?: Finding;
   /** How many answered from a cache (an Age header above zero). */
   fromCache: number;
+  /**
+   * What the pass learned about the shop, once, for the three checks PRD
+   * section 2 added. Each says plainly when it could not be established, so
+   * the JobRun never leaves a reader to guess whether a check ran.
+   */
+  markets?: { count: number; locales: string[] } | null;
+  sitemap?: {
+    read: boolean;
+    /** Product URLs found across the shop's product sitemaps. */
+    urls?: number;
+    /** Sitemap fetches this pass spent, counted against the same budget. */
+    fetches: number;
+    /** Handles listed with no product row: withdrawn products still in the file. */
+    stale?: number;
+    error?: string;
+  };
 };
 
 export type ScanDeps = {
@@ -734,6 +1173,12 @@ export async function scanShopPages(input: {
   origin: string;
   password?: string | null;
   budget: number;
+  /**
+   * From the one `markets` Admin query the caller makes per pass. Null when it
+   * was not made or failed, and B9 is then silent rather than guessed at - the
+   * caller owns the Admin API, this module owns the storefront.
+   */
+  markets?: MarketsInfo | null;
   deps?: ScanDeps;
 }): Promise<SourceBReport> {
   const { shopId, origin, budget } = input;
@@ -798,12 +1243,63 @@ export async function scanShopPages(input: {
 
   const cookie = await unlockQuietly(origin, input.password, fetchImpl, log);
 
-  // What is left of today's budget, not the whole budget: the product
-  // editor's "Read this page now" button spends from the same allowance
-  // (PRD section 4), and a nightly pass that ignored that would let a shop
-  // fetch more pages in a day than its operator set.
+  // The two per-pass reads, before any page. Both are recorded per shop as
+  // well as reported, because the card needs them on a request that fetches
+  // nothing: B9's "not applicable" cannot be derived from the rows, and A7's
+  // stale half has no row to sit on.
+  const markets = input.markets ?? null;
+  await recordMarkets(shopId, markets);
+  report.markets = markets;
+
+  // What is left of today's allowance, read before anything is fetched, because
+  // the sitemap is charged to it like any other request.
   const spentAlready = (await pageBudget(shopId, startedAt)).spent;
-  const allowance = Math.max(0, budget - spentAlready);
+  const allowanceBeforeSitemap = Math.max(0, budget - spentAlready);
+
+  // Not fetched at all in two cases, and both are promises this pass makes
+  // elsewhere. With no rows there is nothing to check a sitemap against and
+  // the stale half would name every URL in the file. With no allowance left,
+  // the pass asks the storefront for nothing at all - which is the whole point
+  // of a budget a merchant's clicks share.
+  const sitemap =
+    report.rows === 0 || allowanceBeforeSitemap === 0
+      ? {
+          read: null,
+          fetches: 0,
+          error: report.rows === 0 ? "no products have been read yet" : "no allowance left today",
+        }
+      : await fetchSitemap(origin, fetchImpl);
+  // The sitemap costs storefront requests like any page, so it is charged to
+  // the same daily budget rather than being quietly free.
+  if (sitemap.fetches > 0) await spendPages(shopId, sitemap.fetches, startedAt);
+  report.sitemap = { read: sitemap.read !== null, fetches: sitemap.fetches };
+  if (sitemap.read) {
+    report.sitemap.urls = sitemap.read.urls;
+    // A7's other half: handles the file lists that this shop has no row for.
+    // Computed from the handles source A wrote, so it names exactly the
+    // products the catalogue read no longer contains.
+    const rows = await db.seoScan.findMany({
+      where: { shopId, handle: { not: null } },
+      select: { handle: true },
+    });
+    const known = new Set(rows.map((r: { handle: string | null }) => r.handle));
+    const stale = [...sitemap.read.handles].filter((handle) => !known.has(handle)).sort();
+    await recordStaleSitemapEntries(shopId, stale);
+    report.sitemap.stale = stale.length;
+  } else {
+    report.sitemap.error = sitemap.error;
+    await recordStaleSitemapEntries(shopId, null);
+    log?.(`seo_scan ${origin}: ${sitemap.error}, so nothing is reported about the sitemap`);
+  }
+
+  // What is left for pages, not the whole budget: the product editor's "Read
+  // this page now" button spends from the same allowance (PRD section 4), and
+  // a nightly pass that ignored that would let a shop fetch more pages in a
+  // day than its operator set. The sitemap fetches above come out of the same
+  // number, so a 500-page budget reads 499 pages on a shop with one product
+  // sitemap - understating what this app asks of a storefront would make the
+  // budget a figure rather than a limit.
+  const allowance = Math.max(0, allowanceBeforeSitemap - sitemap.fetches);
 
   const candidates: Candidate[] =
     allowance === 0
@@ -822,7 +1318,11 @@ export async function scanShopPages(input: {
 
     const url = `${origin}${PRODUCTS_PATH}${row.handle}`;
     const page = await readProductPage(url, cookie, fetchImpl);
-    const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null);
+    const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null, {
+      handle: row.handle,
+      markets,
+      sitemap: sitemap.read,
+    });
 
     // Spent as it is spent, not once at the end. A throw from the update
     // below, or the worker machine going away mid-pass, used to discard the
@@ -943,9 +1443,29 @@ export async function scanOneProductPage(input: {
     cookie,
     fetchImpl,
   );
-  const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null);
+  // One page, so the two per-pass reads are not made again: refetching a
+  // shop's sitemaps because a merchant pressed a button on one product would
+  // spend several requests to answer one row's question. Markets comes from
+  // what the last pass recorded, which costs a Setting read.
+  const markets = await marketsInfo(input.shopId);
+  const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null, {
+    handle: row.handle,
+    markets,
+    sitemap: null,
+  });
 
   const keptFromSourceA = findingsOf(row.findings).filter(isSourceAFinding);
+  // A7 is not asked here, so it must not be answered here either. Source B
+  // owns the code and rewrites its whole half, so without this a button press
+  // would silently clear a finding the nightly pass established - "not
+  // re-checked" reported as "no longer true". The same applies to B9 when the
+  // markets read is unavailable.
+  const carried = findingsOf(row.findings).filter(
+    (f) =>
+      (f.code === "A7" && !reading.findings.some((n) => n.code === "A7")) ||
+      (f.code === "B9" && markets === null),
+  );
+  reading.findings = [...reading.findings, ...carried];
   const scannedAt = now();
   await db.seoScan.update({
     where: { id: row.id },

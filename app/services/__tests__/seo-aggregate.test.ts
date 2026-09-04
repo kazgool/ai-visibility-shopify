@@ -22,6 +22,9 @@ import { describe, expect, it } from "vitest";
 import {
   CHECKS,
   aggregateFindings,
+  buildFindingsAggregate,
+  createFindingsCounters,
+  foldFindingsRow,
   cleanSentence,
   describeFinding,
   findingsForProduct,
@@ -134,11 +137,14 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // this is the grouping the sentence exists for.
     // B6 joined the list on 4 September 2026 and is counted over the catalogue,
     // because source A computes it from the read it already has.
+    // A7, B8 and B9 joined on 5 September (PRD-SEO-FULL-ONPAGE section 2). All
+    // three are counted over the pages read: A7 needs a fetch of the sitemap,
+    // and both B checks need the page itself.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A2", "A4", "A5", "B1", "B3", "B4", "B5", "B6", "B7",
+      "A2", "A4", "A5", "A7", "B1", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "6 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
+      "9 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
     );
   });
 
@@ -527,5 +533,62 @@ describe("counting", () => {
     expect(b6).toBeDefined();
     expect(b6!.source).toBe("A");
     expect(b6!.basis).toBe("catalogue");
+  });
+});
+
+// --- B9's applicability (PRD-SEO-FULL-ONPAGE section 2) --------------------
+//
+// The fifth shape, and the one the four above could not express: a check that
+// does not apply to this shop at all. B9 asks about hreflang, and a shop with
+// one market has none to declare. Without a state of its own that reads as
+// "clean" - a claim that a check ran and passed.
+
+describe("B9 on a shop with one market", () => {
+  function counters(rows: ScanRowLike[]) {
+    const c = createFindingsCounters();
+    for (const r of rows) foldFindingsRow(c, r);
+    return c;
+  }
+
+  it("reads not applicable, and is never counted as clean", () => {
+    const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: 1 });
+    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
+
+    expect(b9.state).toBe("notApplicable");
+    expect(aggregate.clean.map((r) => r.code)).not.toContain("B9");
+    // The clean sentence counts the checks that ran and found nothing. A check
+    // that never applied is not one of them.
+    expect(cleanSentence(aggregate)).not.toContain("B9");
+  });
+
+  it("stays a normal check on a two-market shop", () => {
+    const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: 2 });
+    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
+    expect(b9.state).toBe("clean");
+  });
+
+  it("stays a normal check when the markets read could not be made", () => {
+    // Null is "not established", which is not "does not apply". A shop whose
+    // plan or scope hides `markets` must not have B9 quietly excused.
+    const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: null });
+    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
+    expect(b9.state).toBe("clean");
+  });
+
+  it("keeps A7 counted over the pages read, never over the catalogue", () => {
+    // A7 is computed in source B's pass from a fetch, so its denominator is
+    // the pages that answered - the same rule every B check follows.
+    const aggregate = buildFindingsAggregate(counters(fixture50()), {});
+    const a7 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "A7")!;
+    expect(a7.denominator).toBe(20);
+    expect(a7.denominator).not.toBe(50);
+  });
+
+  it("has no A6 row at all, because A6 counts collections", () => {
+    // Its denominator is collections, and this aggregate counts product rows.
+    // The SEO screen renders A6 from the collections check's own report.
+    const aggregate = buildFindingsAggregate(counters(fixture50()), {});
+    expect([...aggregate.rows, ...aggregate.clean].map((r) => r.code)).not.toContain("A6");
+    expect(CHECKS.map((c) => c.code)).not.toContain("A6");
   });
 });

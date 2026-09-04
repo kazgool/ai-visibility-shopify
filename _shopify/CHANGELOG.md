@@ -16,6 +16,170 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The four checks the first SEO PRD dropped (5 September 2026)
+
+**A6, collection meta fields.** `classifyMetaField` needed no second
+implementation: a collection carries Shopify's own `seo { title description }`
+pair and this app's `state` metafield in exactly the shape a product does, so
+the type stopped being named after products (`MetaFieldOwner`, with
+`ProductSeoInput` kept as an alias) and the collections read now asks for `seo`.
+A second copy of "a non-empty value with no state entry is human" would have
+been a second thing to get wrong. The row on the findings card carries its own
+denominator - collections, never the catalogue.
+
+**The collections meta writer.** The same condensation, the same review queue,
+the same revert, the same two guards: a human-written or externally-set field is
+never touched and the mutation is never even sent, and an identical value is
+never written. `prev` is captured on the first write this app makes and never
+afterwards, so revert always means "as it was before this app touched it". Its
+own JobRun kinds (`seo_collection_queue`, `seo_collection_apply`) and its own
+tab beside Products in the Search listings card, so neither tab can present the
+other's numbers.
+
+**One thing running it on the dev store found.** A collection with no
+description of its own was being offered its own title with a full stop after it
+as a meta description - "Sofas." for a collection called Sofas, a duplicate of
+the meta title rather than a description. The writer condenses the merchant's
+words; where there are none it now proposes nothing, and A6 still reports the
+absent field so the merchant knows.
+
+**B8, the canonical's shape.** Distinct from B2, which asks whether the
+canonical is this page's own address. B8 asks whether it is the plain product
+URL and names which wrong shape it is: a variant URL, or a collection-prefixed
+one. Shopify's `within` filter gives every product in every collection a second
+URL of that shape and the canonical is theme-owned, so section 5a's separate
+"collection duplicate" case is this check and not another.
+
+**B9, hreflang.** One `markets` query per pass, never per product. A shop with
+one market produces no finding and the row reads "not applicable" - a new
+aggregate state, because a check that never applied must not read as "clean",
+which claims a check ran and passed. When links are absent on a multi-market
+shop the row says the platform setting is off: Shopify Markets adds hreflang
+through `content_for_header` unless the merchant disabled it, and a sentence
+accusing the theme would send someone to edit Liquid for a checkbox.
+
+**B9 needs a scope this app does not have.** The dev-store run answered
+`ACCESS_DENIED: read_markets`. The read fails softly - it is logged, B9 is left
+unchecked, and the night's page scan continues - but B9 cannot fire on any shop
+until `read_markets` is added to `access_scopes`, which re-prompts every
+installed merchant. Marius's call, not made here.
+
+**A7, the sitemap.** One fetch of `sitemap.xml`, then the product sitemaps the
+index names, once per pass and charged to the same daily budget as pages - so a
+500-page budget reads 499 pages on a shop with one product sitemap, rather than
+quietly asking for 501 requests. Report only: Shopify owns the file, so the row
+says the fix is a product setting. A sitemap that cannot be read produces no
+finding at all rather than one on every product - which is the state of every
+store behind a storefront password. The other half, a withdrawn product still
+listed, cannot be a row because a withdrawn product has no row; it is recorded
+per shop and stated under A7 on the card.
+
+
+### The unlock became a job, and the SEO screen shows what changed (5 September 2026)
+
+**The unlock is queued, not run in the request.** Build step 1 put the
+before-snapshot inside `grantSeoUnlock`, which runs a bulk operation over the
+whole catalogue - minutes on a 20,000-product store, and the embedded iframe
+gives up long before the row exists. The plans action now validates the code,
+creates a `seo_snapshot` JobRun and enqueues the work with a per-shop jobKey, so
+a double submit collapses into one job instead of starting a second bulk
+operation. The screen says "Taking the before snapshot; the SEO screens open
+when it is saved", polls the JobRun the way the dashboard polls a pass, and
+shows the failure sentence from the report if it fails.
+
+**The ordering guarantee did not move.** `grantSeoUnlock` still takes the
+snapshot and only then writes the key; the task simply calls it where there is
+no timeout. A failed snapshot leaves no key, a failed JobRun with the reason,
+and a shop that is still locked. The manual script keeps calling the same
+function directly, because a terminal has no timeout either.
+
+**One trap the compiler now catches.** `syncSeoUnlockMetafield` took the raw
+Remix `admin.graphql` shape (a Response, variables under `options.variables`).
+The worker's client type-checked against it, because `GraphqlFn` is generic and
+`T` unified with `Response`, and it would have failed at runtime on
+`idRes.json is not a function`. It takes `GraphqlFn` now, and the one remaining
+route call site passes the same client.
+
+**"Since this engagement began", at the top of the SEO screen.** One row per
+figure: the value at the snapshot, the value today, the difference; ordered by
+the size of the difference, so what moved is at the top; both denominators shown
+when they differ, because 30 of 50 against 45 of 60 is not 15; unchanged rows
+collapsed into one counted line. A figure with no page read at snapshot time
+says so and shows no difference - never a 0. A snapshot taken by hand says
+"Since 5 September 2026" and never "since this engagement began". Two CSVs,
+through the Report screen's export pattern, each with both dates on the first
+line.
+
+**Where "today" comes from.** `SeoSnapshot` now holds a second row per shop,
+`takenBy: "current"`, rewritten by every complete catalogue pass from the read
+that pass already has. One function computes both halves over the same fields,
+so a difference between them cannot be an artefact of two readings of one
+catalogue - and no screen load pays for a bulk operation. Nothing is written on
+a short read, and a failure to refresh it can no longer turn a successful source
+A pass into a reported failure.
+
+**Amendment, needing approval: alt texts and structured data nodes are not
+counted in "Written by this app since then".** PRD section 1.2 lists both.
+Neither is countable as specified, and the reason is in the writers:
+`writeAltText` writes alt text straight onto Shopify media and records no state
+entry anywhere, and structured data nodes are never written - the Liquid block
+renders them at request time from the facts and summary metafields, so nothing
+is stamped when a node starts appearing. There is no timestamp for either to
+compare against the snapshot. Counting alt text from the `bulk_alt_text` JobRun
+reports would miss every write made from the product editor: a number that looks
+real and is wrong. The card states the omission in a sentence instead, and the
+six keys that do carry a dated state entry (meta title, meta description, buyer
+questions, attribute sets, summaries, who it suits) are counted with their
+earliest and latest timestamp.
+
+
+### The before-snapshot of a paid SEO engagement (4 September 2026)
+
+`grantSeoUnlock` wrote one Setting row and nothing else, so nothing recorded
+what a store looked like on the day its SEO engagement began. Every figure the
+SEO screen shows was therefore a state - "50 of 50 have a meta title" - and
+indistinguishable from "it was always so". The audit of 2 September raised it
+and it stayed open for two days.
+
+**A new `SeoSnapshot` table, one row per shop, written once and never
+updated.** It is taken inside `grantSeoUnlock` **before** the key is stored, so
+no write of ours can precede it: with the key stored first, a catalogue pass
+firing between the two writes would put this app's own output into the
+"before". A second unlock - the key retyped, a form submitted twice - finds the
+row already there, writes no second one, and still refreshes the key. `shopId`
+is unique in Postgres, so the guarantee is the database's and not only the
+writing code's.
+
+**A snapshot that cannot be taken means no key.** The catalogue read is
+refused if it comes back short, and the throw reaches the plans screen, which
+says the code was valid but the snapshot could not be taken and the key was not
+stored. There is no such thing as a partial before: a row built from a short
+read understates every difference computed against it afterwards, in the
+direction that flatters us.
+
+**Page-derived fields are null, never 0, when no page had been read.** Zero
+theme nodes over zero pages read is not a fact about the theme. `pagesRead` is
+the one page-related column that is a real 0, because it counts rows.
+`findingsByCode` is null when the shop had no SeoScan rows at all, so `{}` keeps
+its own meaning: rows existed and none carried a finding.
+
+**A manual path for a shop unlocked before the table existed**, stamped
+`takenBy: "manual"` so no screen may ever call it "since the start":
+`npx tsx scripts/seo-snapshot-take.ts <domain>`. It refuses when the domain
+does not identify exactly one installed shop, and refuses when the shop already
+has a snapshot. `scripts/seo-snapshot-show.ts` prints an existing one and
+writes nothing. Nothing in either path fetches a storefront page or spends the
+shop's page budget.
+
+**`sleep` moved out of `admin.server.ts` into `app/services/sleep.ts`.** It has
+nothing to do with the Admin API, and living there meant that every module
+wanting to wait two seconds - `catalogue.server.ts`, between two polls of a
+bulk operation - pulled in `shopify.server` and its `PrismaSessionStorage`.
+`billing.server.test.ts` failed at collection time with "PrismaClient does not
+have a session table" the moment `billing.server` reached a catalogue read.
+`admin.server.ts` re-exports it, so no caller changed.
+
+
 ### A node that rendered invalid JSON, and a check that makes the class impossible (4 September 2026)
 
 The extend-mode Product node gave every optional field a **trailing** comma and

@@ -57,6 +57,7 @@ model Shop {
   themeScans    ThemeScan[]
   crawlerChecks CrawlerCheck[]
   seoScans      SeoScan[]
+  seoSnapshots  SeoSnapshot[]
 }
 
 model Setting {
@@ -213,4 +214,72 @@ model SeoScan {
   // `nulls: "first"` explicitly (seo-page.server.ts); this index serves it.
   // The comment written here in build step 2 said the opposite and was wrong.
   @@index([shopId, scannedAt])
+}
+
+// The before-snapshot of a paid SEO engagement (PRD-SEO-FULL-ONPAGE §1.1).
+//
+// One row per shop, written once inside grantSeoUnlock before the key is
+// stored, and never updated afterwards. Without it no screen can say what the
+// engagement did: "50 of 50 have a meta title" is indistinguishable from "it
+// was always so".
+//
+// `shopId` is unique so the guarantee is Postgres's and not only the writing
+// code's, and every column is a count rather than a copy of the catalogue -
+// the row holds no merchant text at all.
+model SeoSnapshot {
+  id      String   @id @default(uuid())
+  shopId  String
+  takenAt DateTime @default(now())
+  // "unlock" - taken at the moment the key was entered, so it is a true
+  // before. "manual" - taken by hand for a shop whose key predates this
+  // table, so the card must say "since <date>" and never "since the start".
+  // "current" - not a snapshot at all: the same figures as they stand now,
+  // rewritten by every catalogue pass, so the card can show a difference
+  // without a screen load paying for a bulk operation. Kept in this table and
+  // in this shape deliberately - one function computes both halves over the
+  // same fields, so a difference between them cannot be an artefact of two
+  // different readings of one catalogue.
+  takenBy String
+
+  // Source A: the same bulk read the catalogue pass runs, at that moment.
+  products            Int
+  metaTitleSet        Int
+  metaTitleOurs       Int
+  metaDescriptionSet  Int
+  metaDescriptionOurs Int
+  withBarcode         Int
+  withVendor          Int
+  withSku             Int
+  withImage           Int
+
+  // Page-derived, from the SeoScan rows as they stood. Null - never 0 - when
+  // no page had been read at that moment: a zero here would be read as "the
+  // theme emitted nothing", which is a claim about the theme that nobody made.
+  productNodeTheme Int?
+  productNodeNone  Int?
+  /** The distinct JSON-LD types the theme emitted, as a sorted string list. */
+  themeNodeTypes   Json?
+
+  /** Count per check code from SeoScan at that moment. Null when the shop had
+   * no SeoScan rows at all, so an empty object can keep meaning "rows existed
+   * and none carried a finding". */
+  findingsByCode Json?
+  /** How many rows had a page read at snapshot time. 0 is honest here: it is
+   * a count of rows, not a measurement of a page. */
+  pagesRead      Int
+
+  /** "Written by this app since then", on the `current` row only: per state
+   * key, the count of `source: "auto"` entries stamped after the snapshot,
+   * with the earliest and latest timestamp. Null on a before row, and null on
+   * a current row for a shop with no snapshot to count since. */
+  writtenSince   Json?
+  /** Which snapshot `writtenSince` was counted against. The card refuses to
+   * show the block unless this equals the before row's takenAt: a snapshot
+   * taken after the last catalogue pass leaves a figure counted from a
+   * different date, and a number under the wrong date is worse than none. */
+  writtenSinceAt DateTime?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, takenBy])
 }

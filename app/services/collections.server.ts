@@ -21,6 +21,12 @@ export type CollectionNode = {
   descriptionHtml?: string | null;
   productsCount?: { count: number } | null;
   metafields?: { key: string; value: string }[];
+  /**
+   * Shopify's own SEO pair, the same shape `Product.seo` has. Read for check
+   * A6 and written by the collections meta writer (seo-collections.server.ts);
+   * `writeCollections` in this file never touches it.
+   */
+  seo?: { title: string | null; description: string | null } | null;
   products?: {
     nodes: {
       id: string;
@@ -52,6 +58,7 @@ const COLLECTIONS = `#graphql
         handle
         descriptionHtml
         productsCount { count }
+        seo { title description }
         metafields(namespace: "$app", first: 10) { nodes { key value } }
         products(first: $members) {
           nodes {

@@ -25,13 +25,17 @@ export type FindingCode =
   | "A3"
   | "A4"
   | "A5"
+  | "A6"
+  | "A7"
   | "B1"
   | "B2"
   | "B3"
   | "B4"
   | "B5"
   | "B6"
-  | "B7";
+  | "B7"
+  | "B8"
+  | "B9";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -56,6 +60,13 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   A3: "Meta title or description shared with another product",
   A4: "Handle renamed with no redirect from the old one",
   A5: "Meta title or description absent",
+  // Per collection, not per product. Its denominator is the collections read
+  // by the last collections check, never the catalogue - the card keeps the
+  // two apart the same way it keeps A denominators apart from B ones.
+  A6: "Collection meta title or description absent",
+  // Shopify owns sitemap.xml and offers no way to edit it, so this row can
+  // only ever report. The fix is always a product setting.
+  A7: "Not listed in the shop's sitemap",
   B1: "No Product node on the page, or two of them",
   B2: "Canonical points somewhere other than this page",
   B3: "The page tells search engines not to index it",
@@ -68,6 +79,13 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   // about the theme: B1 is the theme question, and B1's @id merge is what made
   // this invisible (4 September 2026).
   B7: "This app's structured data appears more than once on the page",
+  // Distinct from B2, which asks whether the canonical is this page's own
+  // address. B8 asks what shape it has: a variant URL, a collection-prefixed
+  // URL, or anything that is not /products/<handle>. Shopify's `within` filter
+  // produces the collection-prefixed form for every product in every
+  // collection, so that case is this check and not a second one.
+  B8: "Canonical does not point at the plain product URL",
+  B9: "hreflang links absent on a shop with more than one market",
 };
 
 /**

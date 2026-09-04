@@ -17,6 +17,12 @@ import { dictionaryFor, extraStopwordsFor } from "./extract.server";
 import { extractProduct, stopwordSet, type Fact } from "../engine";
 import { isSeoUnlocked, mayProcessAutomatically } from "./billing.server";
 import { computeSourceA } from "./seo-scan.server";
+import { fetchCollections } from "./collections.server";
+import {
+  buildCollectionSeoQueue,
+  writeCollectionSeo,
+  type CollectionSeoQueue,
+} from "./seo-collections.server";
 import {
   buildSeoQueue,
   writeSeo,
@@ -188,6 +194,128 @@ export async function runSeoApply(
     if (options.onProgress && done % 10 === 0) {
       await options.onProgress(done, total);
     }
+  }
+
+  if (options.onProgress) await options.onProgress(total, total);
+  return report;
+}
+
+// --- collections (PRD-SEO-FULL-ONPAGE section 2) ---------------------------
+//
+// The same two halves as the product pass above, against collections. A
+// separate JobRun kind rather than a second half of `seo_queue`, so pressing
+// Preview on the products tab does not pay for a collections read and vice
+// versa, and so each tab's report says what it is about.
+
+/**
+ * Read every collection and compute what could be written, writing nothing.
+ * The report also carries check A6, because it is the same read: a collection
+ * whose meta title or description is absent is exactly a collection this queue
+ * has a suggestion for, and computing the two separately would mean two reads
+ * that could disagree.
+ */
+export async function runCollectionSeoQueueBuild(
+  shopId: string,
+  options: { onProgress?: (done: number, total: number) => Promise<void> } = {},
+): Promise<CollectionSeoQueue> {
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+
+  const graphql = await adminGraphql(shop.domain);
+  // Members are not needed to read a collection's own meta fields, and asking
+  // for 60 of them per collection would be a much larger read for nothing.
+  const collections = await fetchCollections(graphql, 1);
+  if (options.onProgress) await options.onProgress(collections.length, collections.length);
+
+  return buildCollectionSeoQueue(collections);
+}
+
+export type CollectionSeoApplyItem = { collectionId: string; field: SeoKey; value: string };
+
+export type CollectionSeoApplyReport = {
+  requested: number;
+  written: number;
+  skipped: number;
+  unchanged: number;
+  refused: boolean;
+  reason?: string;
+};
+
+/**
+ * Apply the operator-approved collection rows.
+ *
+ * Re-reads the collections immediately before writing, for the reason the
+ * product apply re-reads each product: the queue may be hours old, and both
+ * guards - human protection and the identical-value check - have to run
+ * against what the collection looks like now, not what it looked like when the
+ * operator pressed Preview.
+ */
+export async function runCollectionSeoApply(
+  shopId: string,
+  items: CollectionSeoApplyItem[],
+  options: { onProgress?: (done: number, total: number) => Promise<void> } = {},
+): Promise<CollectionSeoApplyReport> {
+  const report: CollectionSeoApplyReport = {
+    requested: items.length,
+    written: 0,
+    skipped: 0,
+    unchanged: 0,
+    refused: false,
+  };
+
+  // ENTITLEMENT, both halves, re-checked at execution time and not only where
+  // the job was enqueued - the same rule runSeoApply follows.
+  if (!(await isSeoUnlocked(shopId))) {
+    report.refused = true;
+    report.reason =
+      "The SEO module was switched off for this shop before this write ran. Nothing was written.";
+    return report;
+  }
+
+  const shop = await db.shop.findUnique({ where: { id: shopId } });
+  if (!shop) throw new Error(`Unknown shop ${shopId}`);
+  const graphql = await adminGraphql(shop.domain);
+
+  if (!(await mayProcessAutomatically(shop, graphql))) {
+    report.refused = true;
+    report.reason =
+      "This shop has no active subscription, so writes are not available. Nothing was written.";
+    return report;
+  }
+
+  const byId = new Map<string, CollectionSeoApplyItem[]>();
+  for (const item of items) {
+    const list = byId.get(item.collectionId) ?? [];
+    list.push(item);
+    byId.set(item.collectionId, list);
+  }
+
+  const fresh = await fetchCollections(graphql, 1);
+  const freshById = new Map(fresh.map((c) => [c.id, c]));
+
+  let done = 0;
+  const total = byId.size;
+  if (options.onProgress) await options.onProgress(0, total);
+
+  for (const [collectionId, collectionItems] of byId) {
+    const collection = freshById.get(collectionId);
+    if (!collection) {
+      // Deleted between build and apply. Nothing to write, and nothing to say
+      // about a collection that no longer exists.
+      report.skipped += collectionItems.length;
+    } else {
+      const fields: Partial<Record<SeoKey, { value: string; source: "auto" }>> = {};
+      for (const item of collectionItems) {
+        fields[item.field] = { value: item.value, source: "auto" };
+      }
+      const outcome = await writeCollectionSeo(graphql, collection, fields);
+      report.written += outcome.written.length;
+      report.skipped += outcome.skipped.length;
+      report.unchanged += outcome.unchanged.length;
+    }
+
+    done += 1;
+    if (options.onProgress && done % 10 === 0) await options.onProgress(done, total);
   }
 
   if (options.onProgress) await options.onProgress(total, total);
