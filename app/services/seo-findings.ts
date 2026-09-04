@@ -329,3 +329,493 @@ export function findingsOf(value: unknown): Finding[] {
     (f): f is Finding => !!f && typeof f === "object" && typeof (f as any).code === "string",
   );
 }
+
+// --- the shop owner's half of the vocabulary --------------------------------
+//
+// Everything below exists for one screen: the merchant-facing SEO dashboard at
+// /app/seo/dashboard (PRD-SEO-FULL-ONPAGE section 4.1, and the approved mockup
+// _shopify/mockup-seo-dashboard.html, which is its specification).
+//
+// CHECK_LABEL above is untouched and stays the operator's vocabulary: the
+// workspace at /app/seo, the CSV export and the weekly diff all keep reading
+// it, and it keeps naming the thing by the name the standard gives it. The
+// dashboard reads OWNER_LABEL instead, which is a plain rewrite of the same
+// row for someone who runs a shop and has never read a search-engine
+// specification.
+//
+// Both are keyed by FindingCode and both are total, so a new check that
+// forgets a plain label fails typecheck rather than shipping jargon to a
+// merchant. That is the whole reason they are two constants and not one
+// optional field.
+//
+// The vocabulary that never appears in any string below, because a shop owner
+// does not have to learn it to fix their own shop: the words for the address a
+// page declares as its own, for the machine-readable block a page carries, for
+// the language-and-country links, for the manufacturer's barcode standard, for
+// the text behind a photo, for the deferred loading attribute, for the sharing
+// tags, for the largest heading, and for the tags in a page's head. Check codes
+// never appear on that screen either - they stay in the CSV and in the operator
+// view, where somebody is being paid to know them. A test asserts both.
+
+/**
+ * Who has to move first on a finding.
+ *
+ * `merchant` - a field, a setting or a switch the shop owner reaches without
+ *   help. `app` - this app writes it, after the merchant has read what it
+ *   proposes. `theme` - somebody edits the theme, once, and it applies to
+ *   every page.
+ *
+ * The order in that sentence is the priority order the dashboard groups by,
+ * and it is the order of immediacy rather than of severity: a product with a
+ * gap the owner can close today and a gap that needs a developer is counted in
+ * the group of the thing that can happen today. Nothing here is weighted and
+ * nothing is a grade.
+ */
+export type FindingOwner = "merchant" | "app" | "theme";
+
+export const FINDING_OWNER: Record<FindingCode, FindingOwner> = {
+  A1: "merchant",
+  // The page contradicts the product's own price or stock. The page is the
+  // theme's rendering of it, so the theme is what has to change.
+  A2: "theme",
+  A3: "merchant",
+  A4: "merchant",
+  A5: "merchant",
+  A6: "merchant",
+  A7: "merchant",
+  A10: "merchant",
+  A11: "merchant",
+  A12: "merchant",
+  A13: "merchant",
+  A15: "merchant",
+  A16: "merchant",
+  B1: "theme",
+  B2: "theme",
+  B3: "theme",
+  // Turning an app embed on is a switch in the theme editor, not a code
+  // change and not a developer's job, so it belongs with the things the owner
+  // does themselves. The step below names the screen and the switch.
+  B4: "merchant",
+  B5: "merchant",
+  B6: "app",
+  B7: "app",
+  B8: "theme",
+  // Shopify Markets adds these links automatically unless the setting is off,
+  // so this is a setting the owner reaches and not a fault in the theme - the
+  // same finding CHECK_METHOD already records for B9.
+  B9: "merchant",
+  B10: "merchant",
+  B11: "merchant",
+  B12: "theme",
+  B13: "theme",
+  B14: "theme",
+  B15: "app",
+  B16: "merchant",
+  B17: "merchant",
+  B18: "merchant",
+  B19: "merchant",
+  B20: "theme",
+  B21: "merchant",
+  B22: "theme",
+  // robots.txt is a theme file on Shopify (robots.txt.liquid), and Shopify
+  // calls editing it an unsupported customisation.
+  B23: "theme",
+  B24: "theme",
+  B25: "theme",
+  B26: "theme",
+  // Menus and collection membership are the owner's, and no page is fetched
+  // to answer this one.
+  B28: "merchant",
+  // B29 and B32 state no verdict, so they never put a product in a group at
+  // all. They carry an owner because this record is total; the dashboard
+  // filters them out before it groups anything.
+  B29: "theme",
+  B30: "merchant",
+  B31: "theme",
+  B32: "theme",
+};
+
+/**
+ * The row as a shop owner reads it. A plain rewrite of CHECK_LABEL: same key,
+ * same meaning, none of the vocabulary.
+ *
+ * Where the approved mockup covers a code, the wording here is the mockup's,
+ * word for word. The rest are written to the same shape: what is true of the
+ * products, stated as a count of products and never as advice.
+ */
+export const OWNER_LABEL: Record<FindingCode, string> = {
+  A1: "Products missing a barcode, a brand, a product code or a photo",
+  A2: "Products whose page shows a different price or stock than the product has",
+  A3: "Products sharing their search title or description with another product",
+  A4: "Products whose address changed with no forwarding from the old one",
+  A5: "Products with no title or description for Google",
+  A6: "Collections with no title or description for Google",
+  A7: "Products missing from your sitemap, the list of pages you hand search engines",
+  A10: "Collections with little or no description",
+  A11: "Collections holding one product, or none",
+  A12: "Products sharing the same description word for word",
+  A13: "Old product links that drop visitors on your home page",
+  A15: "Photos still named the way the camera saved them",
+  A16: "Products in no collection and in no menu",
+  B1: "Pages that describe no product to search engines, or describe two",
+  B2: "Products telling Google the wrong main address",
+  B3: "Pages that tell search engines not to list them",
+  B4: "Pages where this app's block was not found",
+  B5: "Pages that could not be read the way a search engine reads them",
+  B6: "Product details this app should be adding to the page and is not",
+  B7: "Pages carrying this app's own details twice",
+  B8: "Products whose stated main address is not the plain product address",
+  B9: "Country and language links for shops selling abroad",
+  B10: "Titles that are missing, or get cut off in a search result on a phone",
+  B11: "Descriptions that are missing, or get cut off in a search result on a phone",
+  B12: "Pages whose largest heading is not the product",
+  B13: "Products that show no preview when someone shares them",
+  B14: "Products that show no preview card on X",
+  B15: "Photos with no description of what is in them",
+  B16: "Links on the page that lead nowhere",
+  B17: "Products with very little text on the page",
+  B18: "Product addresses carrying characters that do not belong in a web address",
+  B19: "Products whose address bounces through more than one stop",
+  B20: "Pages loading something over an unsecured connection",
+  B21: "Pages whose search title is the same as another page's",
+  B22: "Extra details on the page that Google no longer shows",
+  B23: "The file that tells search engines where they may go has been edited",
+  B24: "Pages carrying a list of keywords that Google ignores",
+  B25: "Products whose main address nothing links to",
+  B26: "Products hidden from search only because they are out of stock",
+  B28: "Products more than three clicks from your home page",
+  B29: "Links on a product page, by kind",
+  B30: "Blog posts that link to no product and no collection",
+  B31: "The main product photo waits before it loads",
+  B32: "Code your product page loads, by source",
+};
+
+/**
+ * The numbered how-to behind a row: one sentence saying why it matters, and
+ * where in Shopify or in the theme it is done.
+ *
+ * This is what stops the screen from naming a problem and leaving the merchant
+ * with nowhere to go, which is why it is total and typed: a code with no steps
+ * fails typecheck. `where` is a place, not a paragraph - a screen path in
+ * Shopify, a button in this app, or the sentence that says a theme file is
+ * edited once and applies everywhere.
+ */
+export type OwnerStep = { what: string; where: string };
+
+export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
+  A1: {
+    what:
+      "Google will not list a product without a photo, and it matches your product to the " +
+      "same product sold elsewhere by its barcode, brand and product code.",
+    where:
+      "Shopify, Products, open one: Media for a photo, the variant row for the barcode and " +
+      "product code, and the Product organization box for the brand.",
+  },
+  A2: {
+    what:
+      "The page states a price or a stock status that the product itself does not, so a " +
+      "search result can show a figure you are not selling at.",
+    where:
+      "Your theme decides what the page publishes about price and stock. A developer changes " +
+      "it in one place and it applies to every product.",
+  },
+  A3: {
+    what:
+      "Two products asking to be listed under the same words compete with each other, and " +
+      "search engines pick one.",
+    where:
+      "Shopify, Products, open one, scroll to Search engine listing, press Edit. Or let us " +
+      "draft them and approve them.",
+  },
+  A4: {
+    what:
+      "The product moved to a new address and the old one now answers nothing, so every link " +
+      "and every bookmark pointing at it is lost.",
+    where:
+      "Shopify, Online Store, Navigation, URL Redirects. Add one from the old address to the " +
+      "new one.",
+  },
+  A5: {
+    what: "Without them Google writes its own, from whatever it finds.",
+    where:
+      "Shopify, Products, open one, scroll to Search engine listing, press Edit. Or let us " +
+      "draft them and approve them.",
+  },
+  A6: {
+    what:
+      "A category page with nothing written for search engines is listed under whatever text " +
+      "happens to be on it.",
+    where: "Shopify, Products, Collections, open one, Search engine listing, press Edit.",
+  },
+  A7: {
+    what:
+      "Your sitemap is the list of pages you hand search engines. A product that is not on it " +
+      "has to be stumbled upon.",
+    where:
+      "Shopify builds the sitemap itself and it cannot be edited. A product is on it when it " +
+      "is active and available on the Online Store sales channel: Shopify, Products, open one.",
+  },
+  A10: {
+    what:
+      "A category page with a line of text on it says little about what the category is for, " +
+      "to a visitor or to a search engine.",
+    where: "Shopify, Products, Collections, open one, the Description box.",
+  },
+  A11: {
+    what:
+      "A category holding one product or none is a page with nothing on it, and it is still " +
+      "offered to visitors and to search engines.",
+    where: "Shopify, Products, Collections. Add products to it, or remove it.",
+  },
+  A12: {
+    what: "Search engines pick one and quietly ignore the rest.",
+    where: "Shopify, Products. The report names each pair.",
+  },
+  A13: {
+    what: "Someone wanted a specific product and got the front page instead.",
+    where: "Shopify, Online Store, Navigation, URL Redirects.",
+  },
+  A15: {
+    what: "A filename like IMG_4821 tells nobody anything.",
+    where: "Shopify, Products, open one, Media, rename before you upload again.",
+  },
+  A16: {
+    what:
+      "Nothing on your shop leads to this product, so the only way to it is to already know " +
+      "its address.",
+    where:
+      "Shopify, Products, open one, the Collections box. Or Online Store, Navigation, to put " +
+      "its category in a menu.",
+  },
+  B1: {
+    what:
+      "The page either tells search engines nothing about the product it is selling, or tells " +
+      "them about two products at once and leaves them to choose.",
+    where:
+      "Your theme decides what the page publishes about the product. A developer changes it in " +
+      "one place and it applies to every page.",
+  },
+  B2: {
+    what:
+      "The page names a longer address as its own, so Google splits attention between two " +
+      "versions of the same product.",
+    where: "Same file, same visit. The report names the exact line.",
+  },
+  B3: {
+    what:
+      "The page asks search engines not to list it, so nobody finds it by searching however " +
+      "good it is.",
+    where:
+      "Your theme decides which pages carry that instruction. A developer finds it in one " +
+      "place. If you hid the product on purpose, nothing here needs doing.",
+  },
+  B4: {
+    what:
+      "Our block was not found on the page, so nothing this app writes is reaching search " +
+      "engines or assistants on it.",
+    where:
+      "Shopify, Online Store, Themes, Customize, App embeds. Switch AI Visibility on, then " +
+      "press Save. It is a switch, not code.",
+  },
+  B5: {
+    what:
+      "We asked for the page the way a search engine would and did not get it, so nothing on " +
+      "this list has been checked for that product.",
+    where:
+      "Shopify, Products, open one and check it is active and available on the Online Store. " +
+      "A storefront password also stops this, and so does a forwarding rule on the address.",
+  },
+  B6: {
+    what:
+      "There are product details this app is meant to be adding to the page for search engines " +
+      "and assistants, and they are not arriving.",
+    where: "Open the Diagnostics screen in this app. It says which ones and why.",
+  },
+  B7: {
+    what:
+      "This app's own details appear twice on the page. Assistants read one of the two, so the " +
+      "second is wasted at best and contradicts the first at worst.",
+    where: "Open the Diagnostics screen in this app and switch the block to Extend mode.",
+  },
+  B8: {
+    what:
+      "The address the page puts forward as its own carries extra parts - a category, or a " +
+      "chosen size - so the same product is offered under several addresses.",
+    where:
+      "Your theme builds that address. A developer changes it in one place and it applies to " +
+      "every product.",
+  },
+  B9: {
+    what:
+      "You sell into more than one country and the pages do not tell search engines which page " +
+      "is for which country and language.",
+    where:
+      "Shopify, Settings, Markets. Shopify adds these links itself unless the setting has been " +
+      "switched off.",
+  },
+  B10: {
+    what:
+      "The title is what a person reads in a search result before deciding whether to open " +
+      "your shop. A missing one is written for you, and a very long one is cut off.",
+    where:
+      "Shopify, Products, open one, Search engine listing, press Edit. Or let us draft them " +
+      "and approve them.",
+  },
+  B11: {
+    what:
+      "The line under the title in a search result is your sentence to sell with. A missing " +
+      "one is written for you, and a very long one is cut off.",
+    where:
+      "Shopify, Products, open one, Search engine listing, press Edit. Or let us draft them " +
+      "and approve them.",
+  },
+  B12: {
+    what:
+      "The largest heading on a product page should name the product. On your theme it names " +
+      "the shop, so every page looks like the same page.",
+    where:
+      "Your theme decides that heading. A developer changes it in one place and it applies to " +
+      "every page.",
+  },
+  B13: {
+    what:
+      "Paste a product link into WhatsApp, Facebook or a message and it appears as a bare " +
+      "address with no picture and no title.",
+    where:
+      "Your theme builds what a shared link shows. A developer changes it in one place and it " +
+      "applies to every page.",
+  },
+  B14: {
+    what: "A link to this product shared on X appears as plain text with no picture.",
+    where:
+      "Your theme builds what a shared link shows. A developer changes it in one place and it " +
+      "applies to every page.",
+  },
+  B15: {
+    what: "That description is what a blind visitor hears and what an image search reads.",
+    where:
+      "Press Write photo descriptions on the dashboard. You get a list of what we propose, " +
+      "per photo, before anything is saved.",
+  },
+  B16: {
+    what:
+      "A link on the page leads to an address that answers nothing, so a visitor who follows " +
+      "it hits a dead end.",
+    where:
+      "Shopify, Products, open one, the Description box, and fix or remove the link. The " +
+      "report names each address.",
+  },
+  B17: {
+    what:
+      "Anything you add gives us more to work with, and the product describes itself better.",
+    where: "Shopify, Products, open one, the Description box.",
+  },
+  B18: {
+    what:
+      "The product's address carries characters that travel badly - spaces, accents or capital " +
+      "letters - so it is copied and shared wrongly.",
+    where:
+      "Shopify, Products, open one, Search engine listing, press Edit, and change the address. " +
+      "Keep the forwarding Shopify offers you from the old one.",
+  },
+  B19: {
+    what:
+      "The address passes through more than one stop before it answers, which wastes every " +
+      "visit a person makes and every visit a search engine makes.",
+    where:
+      "Shopify, Online Store, Navigation, URL Redirects. Point the first rule straight at the " +
+      "end of the chain.",
+  },
+  B20: {
+    what:
+      "The page is served securely and then loads something that is not, which browsers warn " +
+      "about or block outright.",
+    where:
+      "Your theme or an installed app loads it. A developer finds the address in one place; " +
+      "the report names it.",
+  },
+  B21: {
+    what:
+      "Two of your pages ask to be listed under the same title, so a search result cannot tell " +
+      "them apart and neither can a person.",
+    where:
+      "Shopify, Products, open one, Search engine listing, press Edit. The report names the " +
+      "other page.",
+  },
+  B22: {
+    what:
+      "The page publishes extra detail of a kind Google stopped showing, so it costs a little " +
+      "and earns nothing in Google. Assistants still read it.",
+    where:
+      "Your theme or an installed app publishes it. Nothing breaks if it stays; this row is " +
+      "here so nobody expects a Google feature from it.",
+  },
+  B23: {
+    what:
+      "The file that tells search engines where they may go has been changed from what Shopify " +
+      "ships, and one wrong line in it can hide the whole shop.",
+    where:
+      "It lives in your theme as robots.txt.liquid. Shopify calls editing it an unsupported " +
+      "change. A developer reads it; the report names the lines.",
+  },
+  B24: {
+    what:
+      "The page carries a list of keywords. Google does not use it and it has no effect, so " +
+      "there is nothing here to keep up to date.",
+    where:
+      "Your theme or an installed app adds it. Removing it changes nothing; leaving it costs " +
+      "nothing but the time spent maintaining the list.",
+  },
+  B25: {
+    what:
+      "Every link to them goes through a category first, so the address you tell Google is the " +
+      "correct one is an address nothing actually points at.",
+    where:
+      "Your theme decides how product links are built. A developer changes it in one place and " +
+      "it applies to every product.",
+  },
+  B26: {
+    what:
+      "The page asks search engines not to list the product, and the only thing wrong with it " +
+      "is that it is out of stock. The address loses the standing it had and does not get it " +
+      "back when the product returns.",
+    where:
+      "Your theme decides which pages carry that instruction. If the product is gone for good, " +
+      "this is a reasonable thing to have done, and only you know which it is.",
+  },
+  B28: {
+    what:
+      "It takes more than three clicks from your home page to reach the product through your " +
+      "menus and categories, which is further than most visitors go.",
+    where:
+      "Shopify, Online Store, Navigation, to shorten the route. Or add the product to a " +
+      "category a menu already links to.",
+  },
+  B29: {
+    what:
+      "A count of the links on a product page, by kind. There is no right number, so this is " +
+      "here to be watched and not to be fixed.",
+    where: "Nothing to do. It is on the screen so you can see when it changes.",
+  },
+  B30: {
+    what:
+      "The post links to nothing you sell, so a reader who liked it has nowhere to go. A " +
+      "shipping-policy post that sells nothing is doing its job.",
+    where:
+      "Shopify, Content, Blog posts, open one, and link a product or a category from the text.",
+  },
+  B31: {
+    what:
+      "The first picture a visitor sees is set to load late, so the page looks empty for a " +
+      "moment on a slow phone connection.",
+    where:
+      "Your theme decides that. A developer changes it in one place and it applies to every " +
+      "page.",
+  },
+  B32: {
+    what:
+      "A count of the code your product page loads, by where it comes from. There is no right " +
+      "number, so this is here to be watched and not to be fixed.",
+    where: "Nothing to do. It is on the screen so you can see when it changes.",
+  },
+};

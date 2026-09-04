@@ -358,6 +358,35 @@ Every number has its denominator beside it. Nothing is a score.
 11. **Full scan detail.** Collapsed. Every node, every header, robots.txt,
     canonical, the weekly watch history.
 
+#### Amendments to 4.1, approved by Marius 4 September 2026
+
+The approved mockup, `_shopify/mockup-seo-dashboard.html`, is the
+specification for build step 5 and wins over the prose above wherever the two
+disagree. Two amendments to this section were approved with it, and are
+written here rather than applied silently.
+
+**Amendment 1, 4 September 2026: a finding that flags the whole read set is
+not counted against individual products.** A finding whose count is exactly
+100 percent of the read set is removed from the per-product grouping entirely
+and appears once, in the "fixes that cover the whole shop" card. The threshold
+is exactly 100 percent, so it is a fact and not a judgement, and the method
+line on the screen says so. The reason: without it the readiness figure is
+zero on almost every real shop, because one theme-level problem flags every
+product at once, and a dial pinned at zero tells the merchant nothing.
+
+**Amendment 2, 4 September 2026: item 8, "What to do, worst first", is no
+longer a separate card.** Its content lives in the two places the merchant is
+already looking - the shop-wide card, ordered, and the expandable steps inside
+each readiness group. A third copy of the same advice was the only
+alternative.
+
+**Consequence for item 3, stated here so it is not inferred.** The four groups
+(nothing to fix, yours to fix, your theme, ours to fix) must partition the
+read set exactly, so group assignment is a total function: every finding code
+declares one owner - `merchant`, `app` or `theme` - and a product goes in the
+group of its most immediate owner, in that order. The four numbers sum to the
+denominator, and a test asserts that on all five fixture stores.
+
 ### 4.2 Design rules, taken from the Report screen and held here
 
 Tabular figures everywhere. Bars in one neutral colour with a second only

@@ -24,6 +24,12 @@ import {
   type ScanRowLike,
   type ThemeNodeAggregate,
 } from "./seo-aggregate";
+import {
+  buildReadiness,
+  createReadinessCounters,
+  foldReadinessRow,
+  type Readiness,
+} from "./seo-readiness";
 import { findingsOf } from "./seo-findings";
 import { unavailableChecks } from "./seo-scan.server";
 import { marketsInfo } from "./seo-page.server";
@@ -120,6 +126,48 @@ export async function readSeoAggregates(shopId: string): Promise<SeoScanAggregat
       couldNotRun: await unavailableChecks(shopId),
     }),
     themeNodes: buildThemeNodeAggregate(themeNodes),
+  };
+}
+
+/**
+ * Everything the merchant dashboard at /app/seo/dashboard reads off the scan
+ * table, in one pass.
+ *
+ * One pass and not three. The dashboard needs the findings aggregate (the two
+ * columns of checks), the theme-node aggregate (what the page publishes about
+ * the product) and the readiness grouping (the four groups and the dial), and
+ * on a 20,000-product store each of those is twenty round trips. They fold
+ * into three independent sets of counters over the same rows, so they are
+ * folded together; `readSeoAggregates` is left exactly as it was, because the
+ * operator workspace does not need the third one.
+ */
+export type SeoDashboardAggregates = SeoScanAggregates & { readiness: Readiness };
+
+export async function readSeoDashboard(shopId: string): Promise<SeoDashboardAggregates> {
+  const findings = createFindingsCounters();
+  const themeNodes = createThemeNodeCounters();
+  const readiness = createReadinessCounters();
+  await forEachRow(shopId, true, (row) => {
+    const view: ScanRowLike = {
+      productId: row.productId,
+      handle: row.handle,
+      bulkAt: row.bulkAt,
+      scannedAt: row.scannedAt,
+      status: row.status,
+      findings: row.findings,
+      nodes: row.nodes,
+    };
+    foldFindingsRow(findings, view);
+    foldThemeNodeRow(themeNodes, view);
+    foldReadinessRow(readiness, view);
+  });
+  return {
+    findings: buildFindingsAggregate(findings, {
+      markets: (await marketsInfo(shopId))?.count ?? null,
+      couldNotRun: await unavailableChecks(shopId),
+    }),
+    themeNodes: buildThemeNodeAggregate(themeNodes),
+    readiness: buildReadiness(readiness),
   };
 }
 

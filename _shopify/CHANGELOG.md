@@ -16,6 +16,90 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The merchant SEO dashboard (4 September 2026)
+
+`PRD-SEO-FULL-ONPAGE.md` section 4.1, build step 5. Server only; nothing in an
+extension changed. The approved mockup `_shopify/mockup-seo-dashboard.html` was
+the specification, and where it and the PRD prose disagreed the mockup won.
+
+**A new screen at `/app/seo/dashboard`**, in the file
+`app/routes/app.seo_.dashboard.tsx`. The trailing underscore is deliberate:
+under flatRoutes, `app.seo.dashboard.tsx` would render *inside* the operator
+workspace at `/app/seo`, which has no `<Outlet />`, so the screen would show
+nothing. With the underscore the URL is unchanged and the layout parent is
+`app.tsx`, which carries App Bridge. `/app/seo` itself is untouched. Both
+screens sit behind `isSeoUnlocked` and both re-check it in their own loader;
+the new screen adds no action and no resource route, so its loader is the only
+path to its data. A "SEO dashboard" entry joins the navigation, on the same
+`seoUnlocked` condition as the existing "SEO" one.
+
+**Two amendments to PRD section 4.1, approved by Marius and written into the
+PRD as dated amendments before the build started.** Amendment 1: a finding that
+flags exactly 100 percent of the read set is not counted against individual
+products at all; it leaves the grouping and appears once as a fix that covers
+the whole shop. The threshold is exactly 100 percent, so it is a fact and not a
+judgement, and the method line on the screen says so. Without it the readiness
+figure is zero on almost every real shop, because one theme-level problem flags
+every product at once. Amendment 2: "what to do, worst first" is no longer a
+card of its own; its content lives in the shop-wide card and in the expandable
+steps inside each readiness group.
+
+**Two label sets, not one.** `CHECK_LABEL` is untouched and stays the
+operator's vocabulary, still read by `/app/seo`, the CSV export and the weekly
+diff. Beside it, `seo-findings.ts` gains `OWNER_LABEL` (the row as a shop owner
+reads it), `OWNER_STEPS` (why it matters, and where in Shopify or the theme it
+is done) and `FINDING_OWNER` (merchant, app or theme). All three are typed
+`Record<FindingCode, ...>`, so a check added tomorrow that forgets a plain label
+fails typecheck rather than shipping jargon to a merchant. A test asserts that
+no string a merchant reads on this screen uses the vocabulary of a search
+specification, and that no check code ever appears on it.
+
+**The four groups are a partition, asserted as one.** `seo-readiness.ts` is a
+new pure module: a product goes in the group of its most immediate owner -
+merchant, then app, then theme - and a product with nothing left is "nothing to
+fix". The four numbers sum to the denominator printed under the dial, and
+`groupsPartitionReadSet` is asserted on all five fixture stores.
+
+**The read set is both reads, never either.** A product counts once source A has
+computed its row *and* source B has read its page as a crawler would see it.
+Counting a product clean when fifteen of the checks were never asked of it is
+the "0 of 50" failure in CLAUDE.md wearing a different hat. Products with a
+catalogue row and no page read are counted separately and named in a sentence;
+on a 20,000-product store the screen reads "500 of 20,000 products fully
+checked" and says the other 19,500 are in none of the four groups.
+
+**The weekly line chart in the mockup is not built, and this is a finding rather
+than an omission.** `SeoSnapshot` is unique on `(shopId, takenBy)`, so the
+database holds one before row and one rolling current row per shop and no
+history at all. The then-and-now table is built; the chart would need a new
+table with one row per shop per week, written by the nightly pass, and a
+migration - neither of which belongs in this step. Nothing was invented to fill
+the space.
+
+**One gauge in the mockup is a claim this app does not make.** The mockup shows
+"New or used" at 100 percent. The storefront block deliberately stopped emitting
+a condition, because Shopify has no field saying whether a product is new,
+refurbished or second hand and publishing "new" on every product was a factual
+claim the merchant never made. The card therefore renders it as a sentence and
+never as a gauge. The four properties that *are* complete by construction -
+product name, price, currency, stock status - say so in the method line and
+carry the catalogue size as their figure, rather than a hardcoded 100 percent.
+
+**Two bugs the render test caught that every unit test had passed.** The
+readiness method line printed "0 of 0 products are still waiting for a first
+page read" on an empty store, which is the zero-instead-of-a-sentence rule
+broken on the screen that was written to keep it. And the two findings columns
+shared one "checks found nothing" sentence: on a shop that has read every page
+both denominators are the same number, so one line was quoting the page
+denominator under the catalogue heading. Both are fixed and both are asserted on
+the rendered markup. The screen is a component in
+`app/components/SeoDashboardScreen.tsx` for exactly this reason - a route module
+imports `authenticate` and cannot be loaded in a test at all - and the loader is
+all that is left in the route.
+
+**Not in this step, and not rendered as disabled buttons either:** the printable
+report and the spreadsheet export. They are build step 6.
+
 ### One more scope, and the page half of the practitioner layer (4 September 2026)
 
 `PRD-SEO-FULL-ONPAGE.md` section 5b, build step 4b: B25 to B32. No extension

@@ -96,6 +96,12 @@ export default function App() {
         <Link to="/app/dictionary">Dictionary</Link>
         <Link to="/app/diagnostics">Diagnostics</Link>
         {seoUnlocked ? <Link to="/app/seo">SEO</Link> : null}
+        {/* The merchant-facing dashboard of PRD-SEO-FULL-ONPAGE section 4.1.
+            Its own entry rather than a link from /app/seo: it is the screen the
+            SEO module is bought for, and the workspace above it is the
+            operator's. Both are behind the same seo_unlocked gate, and both
+            re-check it in their own loader. */}
+        {seoUnlocked ? <Link to="/app/seo/dashboard">SEO dashboard</Link> : null}
         <Link to="/app/plans">Plan</Link>
       </NavMenu>
       <Outlet />

@@ -304,6 +304,59 @@ export const WRITTEN_LABEL: Record<string, string> = {
   fit_for: "Who it suits",
 };
 
+/**
+ * The same figures, in the words a shop owner reads (build step 5).
+ *
+ * FIGURES above keeps the operator's names, because the operator workspace,
+ * the CSV and the weekly diff all read them and they name each thing by the
+ * name the standard gives it. The merchant dashboard at /app/seo/dashboard may
+ * not use that vocabulary at all, so it reads these instead. Keyed by the same
+ * FIGURES keys and total over them, so a new figure that forgets a plain label
+ * fails typecheck rather than shipping jargon.
+ */
+export const OWNER_FIGURE_LABEL: Record<string, string> = {
+  products: "Products in your catalogue",
+  metaTitleSet: "Products with a title for Google",
+  metaTitleOurs: "Titles for Google written by this app",
+  metaDescriptionSet: "Products with a description for Google",
+  metaDescriptionOurs: "Descriptions for Google written by this app",
+  withBarcode: "Products with a barcode",
+  withVendor: "Products with a brand",
+  withSku: "Products with a product code",
+  withImage: "Products with a photo",
+  pagesRead: "Product pages read the way a search engine reads them",
+  productNodeTheme: "Pages where your theme already describes the product to search engines",
+  productNodeNone: "Pages that describe no product to search engines",
+};
+
+/** The same for the "written by this app since then" block. */
+export const OWNER_WRITTEN_LABEL: Record<string, string> = {
+  seo_title: "Titles for Google",
+  seo_description: "Descriptions for Google",
+  questions: "Buyer questions",
+  facts: "Sets of product details",
+  summary: "Summaries",
+  fit_for: "Who it suits",
+};
+
+/**
+ * The rows the merchant dashboard shows: the fixed figures only.
+ *
+ * The per-code rows `sinceTable` also produces are deliberately dropped here.
+ * Their labels start with the check code, and a check code never appears on
+ * that screen - it stays in the CSV and in the operator view. The dashboard
+ * shows what moved in the shop's own fields; what each check found is the
+ * findings card's business, with its own denominators.
+ */
+export function ownerSinceRows(table: SinceTable): SinceRow[] {
+  return table.rows.filter((row) => !row.key.startsWith("finding:"));
+}
+
+/** A plain label for a row of `ownerSinceRows`, or its own if none is defined. */
+export function ownerFigureLabel(row: SinceRow): string {
+  return OWNER_FIGURE_LABEL[row.key] ?? row.label;
+}
+
 export type WrittenRow = {
   key: string;
   label: string;
@@ -355,6 +408,15 @@ export function writtenRows(before: FactsRow, today: FactsRow | null): WrittenRo
 export const WRITTEN_OMISSION_SENTENCE =
   "Alt texts and structured data nodes are not counted here. This app stamps no dated record when it writes " +
   "either, so there is no honest count of what it wrote since this date - only of what it wrote in total.";
+
+/**
+ * The same sentence for the merchant dashboard, which may not use the words
+ * the operator's one uses. Same fact, same omission, none of the vocabulary.
+ */
+export const OWNER_WRITTEN_OMISSION_SENTENCE =
+  "Photo descriptions and the details this app publishes for search engines are not counted here. " +
+  "The app stamps no dated record when it writes either, so there is no honest count of what it " +
+  "wrote since this date - only of what it wrote in total. We would rather say that than guess.";
 
 /** "No field this app writes has been written since then." */
 export const WRITTEN_EMPTY_SENTENCE =

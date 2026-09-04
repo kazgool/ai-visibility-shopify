@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>SEO dashboard - mockup</title>
+<style>
+  :root{
+    --bg:#f1f1f1; --card:#fff; --line:#e3e3e3; --ink:#1f1f1f; --sub:#5c5c5c; --faint:#8f8f8f;
+    --good:#2f9e68; --good-l:#d7f2e4;
+    --att:#d9822b;  --att-l:#fdeedd;
+    --theme:#6b7f96; --theme-l:#e6ebf1;
+    --app:#9a6fb0;  --app-l:#efe6f4;
+    --grid:#ececec;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .page{max-width:1160px;margin:0 auto;padding:22px 18px 70px}
+  .num{font-variant-numeric:tabular-nums}
+  .sep{color:#c4c4c4;padding:0 6px}
+
+  .topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+          flex-wrap:wrap;margin-bottom:14px}
+  h1{font-size:21px;font-weight:650;margin:0;letter-spacing:-.2px}
+  .meta{color:var(--sub);margin:4px 0 0;font-size:12.5px}
+  .pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;
+        color:var(--sub);font-size:12px;white-space:nowrap}
+
+  .card{background:var(--card);border-radius:14px;margin-bottom:14px;
+        box-shadow:0 1px 2px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.06);overflow:hidden}
+  .hd{padding:14px 18px;border-bottom:1px solid var(--line);
+      display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .hd strong{font-size:14.5px;font-weight:650}
+  .hd .sub{color:var(--sub);font-size:12px}
+  .bd{padding:18px}
+  .method{color:var(--faint);font-size:11.5px;line-height:1.6;margin:0;padding:13px 18px 16px;
+          border-top:1px solid #f4f4f4}
+  .method b{color:var(--sub);font-weight:500}
+
+  /* KPI strip */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+  @media(max-width:940px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:520px){.kpis{grid-template-columns:1fr}}
+  .kpi{background:#fff;border-radius:14px;padding:15px 16px;
+       box-shadow:0 1px 2px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.06);
+       display:flex;align-items:center;gap:13px}
+  .kpi svg{flex:0 0 auto}
+  .kpi .txt{min-width:0}
+  .kpi .val{font-size:25px;font-weight:650;letter-spacing:-.6px;line-height:1.05}
+  .kpi .lab{color:var(--sub);font-size:12px;line-height:1.35;margin-top:3px}
+  .kpi .den{color:var(--faint);font-size:11px;margin-top:1px}
+
+  /* hero */
+  .hero{display:grid;grid-template-columns:250px 1fr;gap:26px;align-items:center}
+  @media(max-width:860px){.hero{grid-template-columns:1fr;gap:18px}}
+  .seg{display:flex;height:28px;border-radius:8px;overflow:hidden;
+       box-shadow:inset 0 0 0 1px rgba(0,0,0,.05)}
+  .seg span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11.5px;
+            font-weight:600;min-width:0;overflow:hidden}
+  .segcap{color:var(--faint);font-size:11.5px;margin:8px 0 0}
+
+  /* buckets: the how */
+  .buckets{display:grid;gap:9px;margin-top:18px}
+  .bucket{border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}
+  .bucket.clean{background:#f9fcfa;border-color:#dfeee7}
+  .bucket > summary{list-style:none;cursor:pointer;padding:12px 14px;
+        display:grid;grid-template-columns:11px 44px 1fr auto;gap:12px;align-items:center}
+  .bucket > summary::-webkit-details-marker{display:none}
+  .bucket .dot{width:11px;height:11px;border-radius:3px}
+  .bucket .n{font-weight:650;font-variant-numeric:tabular-nums;font-size:17px;text-align:right}
+  .bucket .what{font-size:13px;line-height:1.35;min-width:0}
+  .bucket .what em{font-style:normal;color:var(--sub);display:block;font-size:11.8px;margin-top:3px}
+  .bucket .chev{color:var(--blue,#005bd3);font-size:11.5px;white-space:nowrap;font-weight:500}
+  .bucket .chev::after{content:"Show me how"}
+  .bucket[open] .chev::after{content:"Hide"}
+  .bucket.clean .chev{display:none}
+  .bucket.clean > summary{cursor:default}
+  .steps{padding:2px 16px 15px 68px;font-size:12.4px;color:#484848}
+  @media(max-width:620px){.steps{padding-left:20px}}
+  .steps ol{margin:0;padding-left:17px}
+  .steps li{margin-bottom:8px;line-height:1.55}
+  .steps li:last-child{margin-bottom:0}
+  .steps .where{color:var(--sub);display:block;font-size:11.6px;margin-top:2px}
+  .steps .where b{color:var(--ink);font-weight:600}
+  .steps .foot{margin:11px 0 0;color:var(--faint);font-size:11.5px;line-height:1.55}
+
+  /* shop wide */
+  .wide{display:grid;gap:10px}
+  .w{display:grid;grid-template-columns:26px 1fr 150px;gap:14px;align-items:start;
+     padding:13px 15px;border:1px solid var(--line);border-radius:11px;background:#fafafa}
+  @media(max-width:700px){.w{grid-template-columns:26px 1fr;}
+    .w .owner{grid-column:2;margin-top:6px;text-align:left}}
+  .w.att{background:#fffaf4;border-color:#f2e0c8}
+  .w .idx{width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--line);
+          display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:650;
+          color:var(--sub)}
+  .w strong{font-size:13.2px;display:block;margin-bottom:3px}
+  .w p{margin:0;color:#484848;font-size:12.4px;line-height:1.55}
+  .w .owner{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px;
+            text-align:right;padding-top:2px;line-height:1.5}
+
+  /* split panes */
+  .split{display:grid;grid-template-columns:1.35fr 1fr;gap:0}
+  @media(max-width:940px){.split{grid-template-columns:1fr}}
+  .split > div{padding:18px;min-width:0}
+  .split > div:first-child{border-right:1px solid var(--line)}
+  @media(max-width:940px){.split>div:first-child{border-right:0;border-bottom:1px solid var(--line)}}
+  .colhead{font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--sub);margin:0 0 13px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-weight:400;color:var(--sub);text-align:left;padding:6px 0;font-size:11.5px}
+  td{padding:7px 0;border-top:1px solid #f2f2f2;vertical-align:middle}
+  td.n,th.n{text-align:right;width:58px}
+  .up{color:var(--good);font-weight:650}
+  .flat{color:var(--faint)}
+  .legend{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:8px 22px}
+  .legend div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub)}
+  .legend i{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+
+  /* findings */
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  @media(max-width:940px){.checks{grid-template-columns:1fr}}
+  .checks > div{padding:16px 18px;min-width:0}
+  .checks > div:first-child{border-right:1px solid var(--line)}
+  @media(max-width:940px){.checks>div:first-child{border-right:0;border-bottom:1px solid var(--line)}}
+  .frow{margin-bottom:13px}
+  .frow .lab{font-size:12.6px;line-height:1.4;margin-bottom:5px;display:flex;
+             justify-content:space-between;gap:14px;align-items:baseline}
+  .frow .lab a{color:var(--ink);text-decoration:none;border-bottom:1px solid #dedede}
+  .frow .lab .c{color:var(--sub);font-size:11.5px;white-space:nowrap;flex:0 0 auto;
+                font-variant-numeric:tabular-nums}
+  .frow .lab .c b{color:var(--ink);font-weight:650;font-size:13px}
+  .track{height:9px;background:#f0f0f0;border-radius:5px;overflow:hidden}
+  .track i{display:block;height:9px;border-radius:5px}
+  .track i.you{background:var(--att)}
+  .track i.thm{background:var(--theme)}
+  .track i.us{background:var(--app)}
+  .track.off{background:repeating-linear-gradient(45deg,#f4f4f4,#f4f4f4 4px,#ececec 4px,#ececec 8px)}
+  .frow.na .lab a{color:var(--faint);border:0}
+  .note{color:var(--faint);font-size:11.5px;padding:11px 0 0;border-top:1px solid #f2f2f2;
+        margin-top:2px;line-height:1.65}
+
+  /* gauges */
+  .gauges{display:grid;grid-template-columns:repeat(5,1fr);gap:10px 6px}
+  @media(max-width:860px){.gauges{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:520px){.gauges{grid-template-columns:repeat(2,1fr)}}
+  .g{text-align:center;padding:6px 2px}
+  .g .gl{font-size:12px;color:var(--ink);margin-top:6px;line-height:1.3}
+  .g .tag{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+  .g .gn{font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums;margin-top:2px}
+
+  /* nodes */
+  .node{display:grid;grid-template-columns:minmax(120px,1.1fr) minmax(80px,2fr) 118px;
+        gap:14px;align-items:center;padding:9px 0;border-top:1px solid #f2f2f2;font-size:12.5px}
+  .node:first-of-type{border-top:0}
+  .minibar{height:8px;border-radius:4px;background:#f0f0f0;overflow:hidden}
+  .minibar i{display:block;height:8px;border-radius:4px;background:var(--good)}
+  .badge{font-size:10.5px;padding:4px 10px;border-radius:999px;white-space:nowrap;font-weight:600;
+         display:inline-block}
+  .badge.ok{background:var(--good-l);color:#14532d}
+  .badge.att{background:var(--att-l);color:#7a4a08}
+  .badge.info{background:#eef0f2;color:#4a5561}
+  .node .badge{justify-self:end}
+
+  .actions{display:flex;gap:9px;flex-wrap:wrap;padding:0 18px 18px}
+  .btn{background:var(--ink);color:#fff;padding:9px 16px;border-radius:9px;font-size:12.5px;
+       text-decoration:none;display:inline-block;font-weight:500}
+  .btn.sec{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+
+  .brief{margin-top:38px;border-top:2px dashed #c9c9c9;padding-top:20px}
+  .brief h2{font-size:15px;margin:0 0 6px}
+  .brief p,.brief li{color:var(--sub);font-size:12.5px;line-height:1.65}
+  .brief ul{margin:6px 0 0 18px;padding:0}
+  .brief code{background:#e9e9e9;padding:1px 5px;border-radius:4px;font-size:11.5px}
+</style></head>
+<body><div class="page">
+
+<div class="topbar">
+  <div>
+    <h1>SEO</h1>
+    <p class="meta">republicabio.ro <span class="sep">|</span> all 189 products checked
+      <span class="sep">|</span> last check tonight at 03:45 <span class="sep">|</span> day 21</p>
+  </div>
+  <span class="pill">Checks your shop again tonight</span>
+</div>
+
+<!-- KPI STRIP -->
+<div class="kpis">
+
+  <div class="kpi">
+    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
+      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
+      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--good)" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="66.7 106.8" transform="rotate(-90 21 21)"/>
+      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">62%</text>
+    </svg>
+    <div class="txt"><div class="val num">118</div>
+      <div class="lab">products with nothing of their own to fix</div><div class="den">of 189</div></div>
+  </div>
+
+  <div class="kpi">
+    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
+      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
+      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--att)" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="40.1 106.8" transform="rotate(-90 21 21)"/>
+      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">38%</text>
+    </svg>
+    <div class="txt"><div class="val num">71</div>
+      <div class="lab">products needing something specific</div><div class="den">of 189</div></div>
+  </div>
+
+  <div class="kpi">
+    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
+      <circle cx="21" cy="21" r="15" fill="none" stroke="var(--att-l)" stroke-width="7"/>
+      <text x="21" y="25" text-anchor="middle" font-size="15" font-weight="700" fill="#7a4a08">5</text>
+    </svg>
+    <div class="txt"><div class="val num">5</div>
+      <div class="lab">fixes that cover the whole shop</div><div class="den">done once each</div></div>
+  </div>
+
+  <div class="kpi">
+    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
+      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
+      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--good)" stroke-width="6"
+        stroke-linecap="round" stroke-dasharray="74.8 106.8" transform="rotate(-90 21 21)"/>
+      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">70%</text>
+    </svg>
+    <div class="txt"><div class="val num">7</div>
+      <div class="lab">details Google asks for, in place</div><div class="den">of 10</div></div>
+  </div>
+
+</div>
+
+<!-- HERO -->
+<div class="card">
+  <div class="hd"><strong>How ready your shop is</strong>
+    <span class="sub">Every one of your 189 products falls into exactly one of these four</span></div>
+  <div class="bd">
+    <div class="hero">
+      <svg viewBox="0 0 220 152" width="100%" style="max-width:250px" role="img"
+           aria-label="118 of 189 products have nothing of their own to fix">
+        <path d="M25 130 A85 85 0 0 1 195 130" fill="none" stroke="#ededed" stroke-width="20"
+              stroke-linecap="round"/>
+        <path d="M25 130 A85 85 0 0 1 142.3 51.4" fill="none" stroke="var(--good)" stroke-width="20"
+              stroke-linecap="round"/>
+        <text x="110" y="114" text-anchor="middle" font-size="42" font-weight="700"
+              fill="#1f1f1f" letter-spacing="-1.5">118</text>
+        <text x="110" y="136" text-anchor="middle" font-size="12.5" fill="#5c5c5c">of 189 products</text>
+      </svg>
+      <div>
+        <div class="seg">
+          <span style="width:62.4%;background:var(--good)">118</span>
+          <span style="width:22.2%;background:var(--att)">42</span>
+          <span style="width:9.5%;background:var(--theme)">18</span>
+          <span style="width:5.9%;background:var(--app)">11</span>
+        </div>
+        <p class="segcap">Each product is counted once, under whoever has to move first.</p>
+      </div>
+    </div>
+
+    <div class="buckets">
+
+      <details class="bucket clean">
+        <summary>
+          <span class="dot" style="background:var(--good)"></span>
+          <span class="n num">118</span>
+          <span class="what">Nothing to fix
+            <em>These products are done. New ones are checked automatically the night they appear.</em></span>
+          <span class="chev"></span>
+        </summary>
+      </details>
+
+      <details class="bucket">
+        <summary>
+          <span class="dot" style="background:var(--att)"></span>
+          <span class="n num">42</span>
+          <span class="what">You can fix these yourself, no developer
+            <em>Six kinds of gap, all of them a field you can type into.</em></span>
+          <span class="chev"></span>
+        </summary>
+        <div class="steps">
+          <ol>
+            <li><b>38 products have very little text.</b> Anything you add gives us more to work
+              with, and the product describes itself better.
+              <span class="where">Shopify, <b>Products</b>, open one, the Description box.</span></li>
+            <li><b>23 products have no title or description for Google.</b> Without them Google
+              writes its own, from whatever it finds.
+              <span class="where">Shopify, <b>Products</b>, open one, scroll to
+                <b>Search engine listing</b>, press Edit. Or let us draft all 23 and approve
+                them.</span></li>
+            <li><b>18 products have no photo at all.</b> Google will not list a product without
+              one.
+              <span class="where">Shopify, <b>Products</b>, open one, <b>Media</b>.</span></li>
+            <li><b>9 products share the same description word for word.</b> Search engines pick one
+              and quietly ignore the rest.
+              <span class="where">Shopify, <b>Products</b>. The report names each pair.</span></li>
+            <li><b>6 photos are still named the way the camera saved them.</b> A filename like
+              IMG_4821 tells nobody anything.
+              <span class="where">Shopify, <b>Products</b>, open one, <b>Media</b>, rename before
+                you upload again.</span></li>
+            <li><b>3 old links drop visitors on your home page.</b> Someone wanted a specific
+              product and got the front page instead.
+              <span class="where">Shopify, <b>Online Store</b>, <b>Navigation</b>,
+                <b>URL Redirects</b>.</span></li>
+          </ol>
+          <p class="foot">The printable report lists every affected product by name, so you can work
+            through it without coming back to this screen.</p>
+        </div>
+      </details>
+
+      <details class="bucket">
+        <summary>
+          <span class="dot" style="background:var(--theme)"></span>
+          <span class="n num">18</span>
+          <span class="what">These need a change to your theme
+            <em>Not something you can type into a field. Someone edits the theme once.</em></span>
+          <span class="chev"></span>
+        </summary>
+        <div class="steps">
+          <ol>
+            <li><b>14 products: nothing on your site links to their real address.</b> Every link to
+              them goes through a category first, so the address you tell Google is the correct one
+              is an address nothing actually points at.
+              <span class="where">Your theme decides how product links are built. A developer
+                changes it in one place and it applies to every product.</span></li>
+            <li><b>12 products tell Google the wrong main address.</b> The page names a longer
+              address as its own, so Google splits attention between two versions of the same
+              product.
+              <span class="where">Same file, same visit. The report names the exact line.</span></li>
+          </ol>
+          <p class="foot">If you work with a developer, send them the printable report: it names the
+            change for each one, so no further briefing is needed. If you do not, ask whoever built
+            or installed your theme - it is under an hour of work for someone who knows the theme.
+            We do not edit your theme ourselves and we never add code to your storefront.</p>
+        </div>
+      </details>
+
+      <details class="bucket">
+        <summary>
+          <span class="dot" style="background:var(--app)"></span>
+          <span class="n num">11</span>
+          <span class="what">We can fix these, once you have read them
+            <em>We write nothing until you have seen it, and never over your own words.</em></span>
+          <span class="chev"></span>
+        </summary>
+        <div class="steps">
+          <ol>
+            <li><b>11 photos have no description of what is in them.</b> That description is what a
+              blind visitor hears and what an image search reads.
+              <span class="where">Press <b>Write photo descriptions</b> on the dashboard. You get a
+                list of what we propose, per photo, before anything is saved.</span></li>
+          </ol>
+          <p class="foot">Two rules that never change: nothing is invented, and anything you wrote
+            by hand is never overwritten. A field you have edited yourself is marked as yours and
+            our passes skip it from then on.</p>
+        </div>
+      </details>
+
+    </div>
+  </div>
+  <p class="method">A product with several gaps is counted once, in the group of whoever has to move
+    first: you, then us, then your theme. <b>This is not a grade and nothing is weighted.</b>
+    Problems that affect every product equally are not counted here at all - they are the five
+    shop-wide fixes below, because those are one decision each, not 189.</p>
+</div>
+
+<!-- SHOP WIDE -->
+<div class="card">
+  <div class="hd"><strong>Five fixes that cover the whole shop</strong>
+    <span class="sub">Each one is done once and applies to all 189 products</span></div>
+  <div class="bd">
+    <div class="wide">
+
+      <div class="w att"><span class="idx">1</span>
+        <div><strong>Your delivery time and return window are blank</strong>
+          <p>Fill both in once and every product gains delivery and returns information, which
+            Google asks for on product listings. Two fields, one screen.</p></div>
+        <div class="owner">You<br>Business screen</div></div>
+
+      <div class="w att"><span class="idx">2</span>
+        <div><strong>No product has a barcode</strong>
+          <p>Google strongly asks for the manufacturer's barcode where one exists, because it is how
+            it matches your product to the same product elsewhere. It is a field in Shopify, under
+            each product's variant. We will not make one up: a wrong barcode points Google at
+            somebody else's product.</p></div>
+        <div class="owner">You<br>Shopify, per product</div></div>
+
+      <div class="w"><span class="idx">3</span>
+        <div><strong>Every page's main heading is your logo, not the product</strong>
+          <p>The largest heading on a product page should name the product. On your theme it names
+            the shop, on all 189 pages, so every page looks like the same page.</p></div>
+        <div class="owner">Your theme<br>one change, all pages</div></div>
+
+      <div class="w"><span class="idx">4</span>
+        <div><strong>Products show no preview when someone shares them</strong>
+          <p>Paste a product link into WhatsApp, Facebook or a message and it appears as a bare
+            address with no picture and no title.</p></div>
+        <div class="owner">Your theme<br>one change, all pages</div></div>
+
+      <div class="w"><span class="idx">5</span>
+        <div><strong>The main product photo waits before it loads</strong>
+          <p>The first picture a visitor sees is set to load late, so the page looks empty for a
+            moment on a slow phone connection.</p></div>
+        <div class="owner">Your theme<br>one change, all pages</div></div>
+
+    </div>
+  </div>
+  <p class="method">Something is listed here rather than against individual products when it affects
+    every product the same way. <b>Fixing all five would move 189 products at once</b>, which is why
+    they sit above the per-product list.</p>
+</div>
+
+<!-- SINCE -->
+<div class="card">
+  <div class="hd"><strong>What has changed since we started</strong>
+    <span class="sub">We wrote down the starting point on 5 September. Today is 26 September.</span></div>
+  <div class="split">
+    <div>
+      <p class="colhead">Products with each field filled in, week by week</p>
+      <svg viewBox="0 0 560 244" width="100%" role="img" aria-label="Three rising lines over four weeks">
+        <g stroke="var(--grid)" stroke-width="1">
+          <line x1="42" y1="20"  x2="548" y2="20"/>
+          <line x1="42" y1="65"  x2="548" y2="65"/>
+          <line x1="42" y1="110" x2="548" y2="110"/>
+          <line x1="42" y1="155" x2="548" y2="155"/>
+          <line x1="42" y1="200" x2="548" y2="200"/>
+        </g>
+        <g font-size="10.5" fill="#9a9a9a" text-anchor="end">
+          <text x="35" y="24">189</text><text x="35" y="69">140</text>
+          <text x="35" y="114">95</text><text x="35" y="159">48</text><text x="35" y="204">0</text>
+        </g>
+        <g font-size="10.5" fill="#9a9a9a" text-anchor="middle">
+          <text x="60" y="222">5 Sep</text><text x="217" y="222">12 Sep</text>
+          <text x="374" y="222">19 Sep</text><text x="524" y="222">26 Sep</text>
+        </g>
+        <polyline fill="none" stroke="var(--good)" stroke-width="2.5" stroke-linejoin="round"
+          points="60,161 217,109 374,56 524,20"/>
+        <g fill="var(--good)"><circle cx="60" cy="161" r="3.5"/><circle cx="217" cy="109" r="3.5"/>
+          <circle cx="374" cy="56" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
+        <polyline fill="none" stroke="var(--theme)" stroke-width="2.5" stroke-linejoin="round"
+          points="60,141 217,88 374,42 524,20"/>
+        <g fill="var(--theme)"><circle cx="60" cy="141" r="3.5"/><circle cx="217" cy="88" r="3.5"/>
+          <circle cx="374" cy="42" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
+        <polyline fill="none" stroke="var(--app)" stroke-width="2.5" stroke-linejoin="round"
+          points="60,200 217,20 374,20 524,20"/>
+        <g fill="var(--app)"><circle cx="60" cy="200" r="3.5"/><circle cx="217" cy="20" r="3.5"/>
+          <circle cx="374" cy="20" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
+      </svg>
+      <div class="legend" style="margin-top:8px">
+        <div><i style="background:var(--good)"></i><span>Google description</span></div>
+        <div><i style="background:var(--theme)"></i><span>Google title</span></div>
+        <div><i style="background:var(--app)"></i><span>Details AI can read</span></div>
+      </div>
+    </div>
+    <div>
+      <p class="colhead">Then and now</p>
+      <table>
+        <tr><th>Products that have</th><th class="n">Then</th><th class="n">Now</th><th class="n">Change</th></tr>
+        <tr><td>A Google description</td><td class="n num">41</td><td class="n num">189</td><td class="n up">+148</td></tr>
+        <tr><td>A Google title</td><td class="n num">62</td><td class="n num">189</td><td class="n up">+127</td></tr>
+        <tr><td>Details AI can read</td><td class="n num">0</td><td class="n num">189</td><td class="n up">+189</td></tr>
+        <tr><td>At least one photo</td><td class="n num">140</td><td class="n num">171</td><td class="n up">+31</td></tr>
+        <tr><td>A barcode</td><td class="n num">0</td><td class="n num">0</td><td class="n flat">none</td></tr>
+      </table>
+      <p style="color:var(--faint);font-size:11.5px;margin:11px 0 0;line-height:1.6">
+        Collections with a description went from 2 to 11. Four other figures did not move.
+        You had 189 products then and 189 now.</p>
+    </div>
+  </div>
+  <p class="method">Written by this app since 5 September: 127 Google titles, 148 Google
+    descriptions, 189 sets of product details, 189 summaries, 189 question blocks, 163 "who it
+    suits". Each of those carries a record of who wrote it and when, so we can count them.
+    <b>Photo descriptions are not in that list:</b> the app does not date them when it writes them,
+    so we can tell you the total but not how many came after this date. We would rather say that
+    than guess.</p>
+  <div class="actions">
+    <a class="btn" href="#">Open the printable report</a>
+    <a class="btn sec" href="#">Download as a spreadsheet</a>
+  </div>
+</div>
+
+<!-- FINDINGS -->
+<div class="card">
+  <div class="hd"><strong>The detail behind those 71 products</strong>
+    <span class="sub">Bar colour matches the group above: you, your theme, or us</span></div>
+  <div class="checks">
+
+    <div>
+      <p class="colhead">Found in your Shopify admin &mdash; 189 products, 11 collections</p>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products with very little text on the page</a>
+          <span class="c"><b>38</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:20.1%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products with no title or description for Google</a>
+          <span class="c"><b>23</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:12.2%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products with no photo at all</a>
+          <span class="c"><b>18</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:9.5%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products sharing the same description word for word</a>
+          <span class="c"><b>9</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:4.8%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Collections with little or no description</a>
+          <span class="c"><b>8</b> of 11</span></div>
+        <div class="track"><i class="you" style="width:72.7%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Photos still named the way the camera saved them</a>
+          <span class="c"><b>6</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:3.2%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Old product links that drop visitors on your home page</a>
+          <span class="c"><b>3</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:1.6%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Collections holding one product, or none</a>
+          <span class="c"><b>1</b> of 11</span></div>
+        <div class="track"><i class="you" style="width:9.1%"></i></div></div>
+
+      <p class="note">Three more checks found nothing at all here, so there is nothing to show.<br>
+        One check could not run: we could not read your sitemap.</p>
+    </div>
+
+    <div>
+      <p class="colhead">Found on the live page &mdash; 189 pages opened</p>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products whose main address nothing links to</a>
+          <span class="c"><b>14</b> of 189</span></div>
+        <div class="track"><i class="thm" style="width:7.4%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Products telling Google the wrong main address</a>
+          <span class="c"><b>12</b> of 189</span></div>
+        <div class="track"><i class="thm" style="width:6.3%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Photos with no description of what is in them</a>
+          <span class="c"><b>11</b> of 189</span></div>
+        <div class="track"><i class="us" style="width:5.8%"></i></div></div>
+
+      <div class="frow">
+        <div class="lab"><a href="#">Titles that get cut off in a search result on a phone</a>
+          <span class="c"><b>7</b> of 189</span></div>
+        <div class="track"><i class="you" style="width:3.7%"></i></div></div>
+
+      <div class="frow na">
+        <div class="lab"><a href="#">Products more than three clicks from your home page</a>
+          <span class="c">not checked yet</span></div>
+        <div class="track off"></div></div>
+
+      <div class="frow na">
+        <div class="lab"><a href="#">Country and language links for shops selling abroad</a>
+          <span class="c">does not apply</span></div>
+        <div class="track off"></div></div>
+
+      <p class="note">Nine more checks found nothing at all here, so there is nothing to show.<br>
+        Two could not run: no blog post to read, and we have not followed your old links yet.<br>
+        One needs a permission your shop has not approved yet.</p>
+    </div>
+  </div>
+  <p class="method">Each bar is measured against the group named at the top of its column, never the
+    other one, so a row counting collections says so in its own figure. The four problems that
+    affect all 189 products are not repeated here; they are the five shop-wide fixes above.
+    <b>A check that could not run says so and never shows as a clean zero.</b></p>
+</div>
+
+<!-- GOOGLE -->
+<div class="card">
+  <div class="hd"><strong>Ready for Google's free product listings</strong>
+    <span class="sub">The details Google asks a shop to publish about each product</span></div>
+  <div class="bd">
+    <div class="gauges">
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">Product name</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">Price</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">Currency</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">Brand</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--att)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="90.4 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">90%</text></svg>
+        <div class="gl">Photo</div><div class="tag">required</div><div class="gn">171 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">In stock or not</div><div class="tag">recommended</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
+          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
+        <div class="gl">New or used</div><div class="tag">recommended</div><div class="gn">189 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
+        <div class="gl">Delivery cost and time</div><div class="tag">recommended</div><div class="gn">0 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
+        <div class="gl">Return window</div><div class="tag">recommended</div><div class="gn">0 of 189</div></div>
+
+      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
+        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
+        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
+        <div class="gl">Barcode</div><div class="tag">strongly asked</div><div class="gn">0 of 189</div></div>
+
+    </div>
+  </div>
+  <p class="method">Required and recommended exactly as Google states them. The three empty ones are
+    fixes 1 and 2 above. <b>A barcode is your data and this app will never invent one</b> - a
+    made-up barcode would point Google at somebody else's product.</p>
+</div>
+
+<!-- WHAT AI READS -->
+<div class="card">
+  <div class="hd"><strong>What search engines and AI read about each product</strong>
+    <span class="sub">On all 189 product pages</span></div>
+  <div class="bd">
+    <p style="margin:0 0 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="badge ok">Correct setting</span>
+      <span style="color:var(--sub)">Your theme already describes your products, so we add only what
+        it leaves out. Leave this as it is.</span></p>
+
+    <div class="node"><span>The product itself</span>
+      <span class="minibar"><i style="width:100%"></i></span>
+      <span class="badge ok">all 189</span></div>
+    <div class="node"><span>Your business</span>
+      <span class="minibar"><i style="width:100%"></i></span>
+      <span class="badge ok">all 189</span></div>
+    <div class="node"><span>Where the page sits</span>
+      <span class="minibar"><i style="width:100%"></i></span>
+      <span class="badge ok">all 189</span></div>
+    <div class="node"><span>The questions block</span>
+      <span class="minibar"><i style="width:100%"></i></span>
+      <span class="badge ok">all 189</span></div>
+    <div class="node"><span>Star rating</span>
+      <span class="minibar"><i style="width:0%"></i></span>
+      <span class="badge info">not published</span></div>
+
+    <p style="color:var(--faint);font-size:11.5px;margin:14px 0 0;line-height:1.6">
+      No star rating is published, because you have no reviews for us to pass on.
+      We will never publish a rating you did not receive.</p>
+  </div>
+</div>
+
+<!-- COUNTED -->
+<div class="card">
+  <div class="hd"><strong>Counted, with no verdict</strong>
+    <span class="sub">Numbers worth watching, with no right answer attached</span></div>
+  <div class="split">
+    <div>
+      <p class="colhead">Links on a product page, by kind</p>
+      <svg viewBox="0 0 420 136" width="100%" role="img" aria-label="Link kinds per page">
+        <g font-size="11.5" fill="#5c5c5c">
+          <text x="0" y="19">Category links</text>
+          <text x="0" y="51">Breadcrumb</text>
+          <text x="0" y="83">Related products</text>
+          <text x="0" y="115">Inside the text</text>
+        </g>
+        <g>
+          <rect x="128" y="7"   width="200" height="16" rx="4" fill="var(--theme)"/>
+          <rect x="128" y="39"  width="100" height="16" rx="4" fill="var(--theme)"/>
+          <rect x="128" y="71"  width="3"   height="16" rx="1.5" fill="#dcdcdc"/>
+          <rect x="128" y="103" width="3"   height="16" rx="1.5" fill="#dcdcdc"/>
+        </g>
+        <g font-size="11.5" font-weight="600" fill="#1f1f1f">
+          <text x="337" y="20">4</text><text x="237" y="52">2</text>
+          <text x="140" y="84" fill="#9a9a9a" font-weight="400">0</text>
+          <text x="140" y="116" fill="#9a9a9a" font-weight="400">0</text>
+        </g>
+      </svg>
+    </div>
+    <div>
+      <p class="colhead">Code your product page loads, by source</p>
+      <svg viewBox="0 0 300 136" width="100%" role="img" aria-label="Scripts by source">
+        <g font-size="11.5" fill="#5c5c5c">
+          <text x="0" y="19">Shopify itself</text>
+          <text x="0" y="59">Your own shop</text>
+          <text x="0" y="99">Other apps</text>
+        </g>
+        <g>
+          <rect x="112" y="7"  width="140" height="16" rx="4" fill="var(--theme)"/>
+          <rect x="112" y="47" width="110" height="16" rx="4" fill="var(--theme)"/>
+          <rect x="112" y="87" width="60"  height="16" rx="4" fill="var(--att)"/>
+        </g>
+        <g font-size="11.5" font-weight="600" fill="#1f1f1f">
+          <text x="260" y="20">14</text><text x="230" y="60">11</text><text x="180" y="100">6</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <p class="method">We do not tell you what these numbers should be, because nobody credible states
+    a target. They are here so you can see when they change.</p>
+</div>
+
+<!-- BRIEF -->
+<div class="brief">
+  <h2>Notes for the build, not part of the screen</h2>
+  <p>Specification for build step 5. It replaces the prose in
+    <code>PRD-SEO-FULL-ONPAGE.md</code> section 4.1; where the two disagree, this file wins.
+    <b>Two amendments to the PRD are proposed below and need approval before the build starts.</b></p>
+  <ul>
+    <li><b>Amendment 1: shop-wide findings are separated from per-product ones.</b> A finding that
+      flags every product in the read set is not counted against individual products; it appears
+      once in the "fixes that cover the whole shop" card. Without this the readiness figure is zero
+      on almost every real shop, because one theme-level problem flags all products at once, and a
+      dial pinned at zero tells the merchant nothing and sells nothing. The threshold is exactly
+      100 percent of the read set, so it is a fact and not a judgement, and the method line says so.</li>
+    <li><b>Amendment 2: "what to do, worst first" is no longer a separate card.</b> Its content now
+      lives in the two places the merchant is already looking: the shop-wide card, ordered, and the
+      expandable steps inside each readiness group. Keeping a third copy of the same advice was the
+      only alternative.</li>
+    <li><b>Two label sets, not one.</b> Every string a merchant reads here is a plain rewrite of the
+      technical one. Add <code>OWNER_LABEL</code> beside <code>CHECK_LABEL</code> in
+      <code>seo-findings.ts</code>, keyed by the same codes and covering every code.
+      <code>CHECK_LABEL</code> is not touched: the operator workspace at <code>/app/seo</code>, the
+      CSV export and the weekly diff all keep reading it. Both are typed by <code>FindingCode</code>,
+      so a new check that forgets a plain label fails typecheck rather than shipping jargon.</li>
+    <li><b>A third constant, <code>OWNER_STEPS</code>,</b> holds the numbered how-to for each code:
+      the sentence, and where in Shopify or the theme it is done. Every code that can appear in a
+      readiness group must have one; a code with no steps fails typecheck. This is what stops the
+      screen from naming a problem and leaving the merchant with nowhere to go.</li>
+    <li>Plain labels and steps never say: canonical, structured data, schema, node, hreflang, GTIN,
+      alt text, lazy load, Open Graph, H1, meta. Check codes never appear on this screen; they stay
+      in the CSV and the operator view.</li>
+    <li><b>Group assignment must be a total function.</b> Each finding code declares one owner: the
+      merchant, this app, or the theme. A product goes in the group of its most immediate owner, in
+      that order, so the four groups partition the read set exactly and the four numbers add to the
+      denominator. Assert that sum in a test on all five fixture stores.</li>
+    <li>The expandable steps use a native disclosure element, not JavaScript state, so the screen
+      still works if hydration fails. In Polaris this is Collapsible with a button; the closed state
+      must already carry the count and a one-line summary, because a merchant who never opens it
+      still has to know what the group is.</li>
+    <li>Route <code>/app/seo/dashboard</code>. The operator workspace at <code>/app/seo</code> is
+      untouched.</li>
+    <li>Charts are hand-drawn SVG or Polaris Viz. No chart library from a CDN: this app ships no
+      third-party script and this screen is not where that changes.</li>
+    <li>Bar order is by count descending within each column, computed at render. Bar colour is the
+      owning group, so it matches the readiness bar above without a second legend.</li>
+    <li>Checks that found nothing collapse into one sentence per column, with no codes and no count.
+      Not-run and does-not-apply each get their own hatched row and their own sentence; neither ever
+      renders as a zero-width bar with a count of 0.</li>
+    <li>Every dial, gauge and bar carries its raw count beside it. A percentage never appears alone.
+      A measured zero may show as an empty gauge with "0 of 189" under it; a value that was never
+      measured is a sentence, never a gauge.</li>
+    <li>Layout must survive 1440, 1280, 1024, 768 and 375 wide, with no clipped text in any SVG and
+      no gauge label wrapping to three lines. Every SVG scales by viewBox, with no fixed pixel width
+      except the hero dial's max-width.</li>
+    <li>Must read correctly on all five stores: a 50-product fixture, this 189-product shop, a
+      20,000-product store, an empty store, and a store where the live page read never ran.</li>
+    <li>The figures above are illustrative, drawn to resemble a real client catalogue. Nothing here
+      is a measurement.</li>
+  </ul>
+</div>
+
+</div></body></html>
