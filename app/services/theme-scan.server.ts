@@ -875,6 +875,32 @@ export async function recordThemeScan(
   });
 
   if (graphql) {
-    await mirrorThemeScanMetafield(shopId, graphql, result);
+    try {
+      await mirrorThemeScanMetafield(shopId, graphql, result);
+    } catch (error) {
+      // The ThemeScan row above is already committed. A caller that turns this
+      // throw into a sentence for a merchant has to know that, or it will say
+      // the scan was lost when the scan was saved and only the storefront
+      // mirror is stale (4 September 2026). Marked rather than swallowed: the
+      // mirror failing is still a failure.
+      if (error && typeof error === "object") {
+        (error as Record<string, unknown>).themeScanRowWritten = true;
+      }
+      throw error;
+    }
   }
+}
+
+/**
+ * Did `recordThemeScan` get its database row written before it threw?
+ *
+ * True means the scan result is persisted and only the shop metafield that
+ * mirrors `hasOrganizationLd` / `organizationId` to the storefront block is
+ * stale. The next successful scan overwrites it; nothing is lost either way,
+ * but the two are different sentences on a screen.
+ */
+export function themeScanRowWasWritten(error: unknown): boolean {
+  return Boolean(
+    error && typeof error === "object" && (error as Record<string, unknown>).themeScanRowWritten,
+  );
 }

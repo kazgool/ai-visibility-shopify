@@ -34,6 +34,7 @@ import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import {
   scanStorefront,
   recordThemeScan,
+  themeScanRowWasWritten,
   themeRowKey,
   deriveMissingReasons,
   type ThemeScanResult,
@@ -50,6 +51,12 @@ import {
   type ThemeNodeAggregate,
 } from "../services/seo-aggregate";
 import { readSeoAggregates } from "../services/seo-aggregate.server";
+import {
+  describeGraphqlError,
+  isInternalServerError,
+  named,
+  shopifyRequestId,
+} from "../services/graphql-errors";
 import { DEFAULT_DAILY_BUDGET, dailyBudget, robotsBlock } from "../services/seo-page.server";
 import { organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
@@ -113,7 +120,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let themeScan = null;
   if (shop) {
     try {
-      const themeRes = await admin.graphql(MAIN_THEME_ID);
+      const themeRes = await named("MainThemeIdSeo", () => admin.graphql(MAIN_THEME_ID));
       const themeJson = await themeRes.json();
       const mainThemeId = themeJson.data?.themes?.nodes?.[0]?.id;
       if (mainThemeId) {
@@ -230,7 +237,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // for a while between being built and being applied). Read paths (the
   // loader, the scan intent, the password settings) are unaffected.
   if (intent === "seo_build_queue" || intent === "seo_apply") {
-    const paid = await hasPaidAccess(session.shop, shop.id, admin.graphql);
+    const paid = await named("hasPaidAccess", () =>
+      hasPaidAccess(session.shop, shop.id, admin.graphql),
+    );
     if (!paid) {
       return {
         error:
@@ -297,12 +306,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { applied: true };
   }
 
-  const productRes = await admin.graphql(FIRST_PRODUCT);
+  // The scan, in a try for one reason only: an INTERNAL_SERVER_ERROR from
+  // Shopify's own API is not this app failing and must not reach the merchant
+  // as an Application Error banner. Everything else still throws, so a real
+  // bug here is still loud (4 September 2026 - it reproduced twice, at
+  // 04:30:20 and 04:58:26).
+  //
+  // Every Admin call on this path is named, so the next failure says which one
+  // (that is the whole reason named() exists, and it was not closed on this
+  // path until the same day).
+  try {
+  const productRes = await named("FirstOnlineProductSeo", () => admin.graphql(FIRST_PRODUCT));
   const productJson = await productRes.json();
   const productNode = productJson.data?.products?.nodes?.[0];
   const productUrl = productNode?.onlineStoreUrl ?? `https://${session.shop}`;
 
-  const domainRes = await admin.graphql(PRIMARY_DOMAIN);
+  const domainRes = await named("PrimaryDomainSeo", () => admin.graphql(PRIMARY_DOMAIN));
   const domainJson = await domainRes.json();
   const homeUrl = domainJson.data?.shop?.url ?? `https://${session.shop}`;
 
@@ -315,7 +334,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Weekly-watch bookkeeping: diff against whatever was scanned last, so a
   // manual "scan now" also feeds the same dated history the scheduled job
   // writes to.
-  const themeRes = await admin.graphql(MAIN_THEME_ID);
+  const themeRes = await named("MainThemeIdSeo", () => admin.graphql(MAIN_THEME_ID));
   const themeJson = await themeRes.json();
   const themeId = themeJson.data?.themes?.nodes?.[0]?.id;
 
@@ -384,6 +403,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // is what every card on this screen reads, so after a scan the whole
   // dashboard sees the fresh result without a stale actionData overlay.
   return redirect(`/app/seo`);
+  } catch (error) {
+    // Only Shopify's own failure is turned into a sentence. Anything else is
+    // ours and keeps throwing.
+    if (!isInternalServerError(error)) throw error;
+
+    // Logged with the operation name the named() wrappers attached, so the
+    // next occurrence names the call even though this catch cannot.
+    console.error(describeGraphqlError(error, "POST /app/seo scan"));
+
+    const requestId = shopifyRequestId(error);
+    const reference = requestId
+      ? ` Give Shopify support this request ID: ${requestId}.`
+      : "";
+
+    // The scan row is written before the storefront mirror, so a failure in
+    // the mirror leaves the scan saved and only the mirror stale. Saying "the
+    // scan was lost" then would be false, which is why recordThemeScan marks
+    // the error rather than letting this guess.
+    if (themeScanRowWasWritten(error)) {
+      return {
+        error:
+          "Shopify's API returned an internal error on their side, so the storefront mirror " +
+          "was not updated. The scan itself was saved and every card below reflects it. " +
+          "Nothing was lost and nothing was reverted; the next scan updates the mirror." +
+          reference,
+      };
+    }
+    return {
+      error:
+        "Shopify's API returned an internal error on their side, so this scan could not " +
+        "finish. Nothing was written and nothing was lost: your products, your metafields " +
+        "and the last scan's results are all untouched. Try again in a few minutes." +
+        reference,
+    };
+  }
 };
 
 // ---------------------------------------------------------------------------

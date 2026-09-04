@@ -184,12 +184,17 @@ function throttleOf(entries: GraphqlErrorEntry[], error: unknown): string | null
  * error, and it was the first question asked when this went wrong.
  */
 export function describeGraphqlError(error: unknown, operation?: string): string {
-  // An operation name attached by `named()` at the call site, when the caller
-  // that logs is too far from the call that failed to know which it was.
+  // Both, never one or the other. `operation` is the caller's context - the
+  // request, the job - and the tag is the Admin operation that actually
+  // failed, attached by `named()` at the call site. The first version of this
+  // function preferred `operation ?? tagged`, and since `handleError` always
+  // passes "POST /app/seo" the tag was silently discarded: a real occurrence
+  // on 4 September 2026 printed no operation name at all and the tag could not
+  // even be ruled out as the reason. They answer different questions and both
+  // are printed (fixed the same day).
   const tagged =
     isRecord(error) && typeof error.operationName === "string" ? error.operationName : undefined;
-  const name0 = operation ?? tagged;
-  const where = name0 ? `${name0}: ` : "";
+  const where = operation ? `${operation}: ` : "";
   const entries = graphqlEntriesOf(error);
   const userErrors = userErrorsOf(error);
   const status = statusOf(error);
@@ -205,6 +210,7 @@ export function describeGraphqlError(error: unknown, operation?: string): string
         : String(error);
 
   const parts: string[] = [`${where}${name}: ${message}`];
+  if (tagged) parts.push(`op=${tagged}`);
   if (status !== null) parts.push(`http=${status}`);
 
   if (entries.length > 0) {
@@ -265,6 +271,46 @@ export function describeGraphqlBody(body: unknown, operation?: string): string |
   ];
   if (throttle) parts.push(throttle);
   return parts.join(" | ");
+}
+
+/** The `extensions.code` of every GraphQL error on this error, in order. */
+export function graphqlErrorCodes(error: unknown): string[] {
+  return graphqlEntriesOf(error)
+    .map((e) => (isRecord(e.extensions) ? e.extensions.code : undefined))
+    .filter((c): c is string => typeof c === "string");
+}
+
+/**
+ * Did Shopify fail on their side?
+ *
+ * `INTERNAL_SERVER_ERROR` arrives as HTTP 200 with a top-level error, so it is
+ * indistinguishable from our own mistakes to every layer that only looks at the
+ * status. It is not our bug, it is not a bug the merchant can act on, and it
+ * must not reach a screen as an Application Error - the merchant's own data is
+ * untouched and telling them the app broke is a lie (4 September 2026).
+ */
+export function isInternalServerError(error: unknown): boolean {
+  return graphqlErrorCodes(error).includes("INTERNAL_SERVER_ERROR");
+}
+
+/**
+ * The Shopify request id, which is the only thing their support can act on.
+ *
+ * It arrives two ways and both are read: the `x-request-id` response header,
+ * and - for an internal error - inlined in the message itself, as
+ * "Request ID: 5887dbbc-4249-45e6-8fb8-a2c7cd4b324f-1788497903". The message
+ * form is the one that actually showed up.
+ */
+export function shopifyRequestId(error: unknown): string | null {
+  const fromHeader = requestIdOf(error);
+  if (fromHeader) return fromHeader;
+  for (const entry of graphqlEntriesOf(error)) {
+    const match = /Request ID:\s*([A-Za-z0-9-]+)/.exec(String(entry?.message ?? ""));
+    if (match) return match[1];
+  }
+  const message = isRecord(error) && typeof error.message === "string" ? error.message : "";
+  const match = /Request ID:\s*([A-Za-z0-9-]+)/.exec(message);
+  return match ? match[1] : null;
 }
 
 /**

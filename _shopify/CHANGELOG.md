@@ -16,6 +16,50 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### A Shopify internal error is no longer an Application Error (4 September 2026)
+
+The SEO screen's Scan returned 500 twice, at 04:30:20 and 04:58:26. With the
+new formatter the cause was legible at last: HTTP 200 carrying one top-level
+GraphQL error, `[INTERNAL_SERVER_ERROR] Internal error. Looks like something
+went wrong on our end. Request ID: 5887dbbc-...`. Shopify's own fault, shown to
+the merchant as this app crashing.
+
+**The formatter had a second defect, and it hid the answer.** `handleError`
+passes the request as the operation, and `describeGraphqlError` read
+`operation ?? tagged` - so any name attached by `named()` was silently
+discarded, and the absent operation name could not even be used to rule the
+wrapped calls out. It now prints both: the request as context and `op=<name>`
+for the Admin operation that actually failed.
+
+**Every Admin call the SEO action makes is now wrapped.** `FirstOnlineProductSeo`,
+`PrimaryDomainSeo`, `MainThemeIdSeo`, `hasPaidAccess`, and `MainThemeSettings` -
+that last one named inside `checkAppEmbed` rather than at the call site, so
+every caller gets the name without knowing what the function sends. `ShopId` and
+`SetShopThemeScan` were already wrapped.
+
+**The action catches `INTERNAL_SERVER_ERROR` and only that.** It logs the line
+with the operation name, writes nothing further, and returns a sentence the
+screen already renders: that the failure was on Shopify's side, what survived,
+and the Request ID to hand to Shopify support. Anything that is not
+`INTERNAL_SERVER_ERROR` still throws, so a real bug here stays loud.
+
+**A partial write is possible and is now said out loud rather than papered
+over.** `recordThemeScan` commits its `ThemeScan` row before mirroring
+`hasOrganizationLd` / `organizationId` to the shop metafield, so a failure in
+the mirror leaves the scan saved and only the storefront mirror stale. It marks
+the error it rethrows (`themeScanRowWasWritten`) and the screen gets the true
+sentence of the two: "The scan itself was saved ... the next scan updates the
+mirror", not "nothing was written".
+
+**Tested.** 7 tests in `app/routes/__tests__/app.seo.internal-error.test.ts`:
+the action returns a string rather than throwing, names the Request ID, writes
+nothing further (no Setting, no ThemeScan, no JobRun, no enqueue, and no retry),
+says the right one of the two sentences, catches the error from the first Admin
+call on the path as well as the last, and still throws both a plain bug and a
+`THROTTLED` GraphQL error. `npx tsc --noEmit` clean, 48 files and 678 tests
+green, the build and the Liquid check green, and green again with `.env`
+renamed away.
+
 ### A development runner for the nightly page scan (4 September 2026)
 
 `scripts/run-seo-scan.ts` runs source B for one shop now instead of at 03:45

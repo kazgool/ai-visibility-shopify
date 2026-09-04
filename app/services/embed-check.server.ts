@@ -8,6 +8,8 @@
 // look for our embed block actually enabled. Server side, works behind
 // storefront passwords, GraphQL only.
 
+import { named } from "./graphql-errors";
+
 export type EmbedCheckResult = {
   /** Our embed block is present in the published theme and not disabled. */
   active: boolean;
@@ -63,7 +65,11 @@ const MAIN_THEME_SETTINGS = `#graphql
 export async function checkAppEmbed(
   graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
 ): Promise<EmbedCheckResult> {
-  const res = await graphql(MAIN_THEME_SETTINGS);
+  // Named at the innermost site, so every caller - the SEO action, the SEO
+  // loader, Diagnostics - gets "MainThemeSettings" in the log without having
+  // to know that is what checkAppEmbed sends. `named` never overwrites a name
+  // an inner call already attached, so this one wins over any outer wrapper.
+  const res = await named("MainThemeSettings", () => graphql(MAIN_THEME_SETTINGS));
   const json = await res.json();
 
   const theme = json.data?.themes?.nodes?.[0];
