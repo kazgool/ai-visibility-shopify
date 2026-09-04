@@ -16,6 +16,69 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### One ordered path after install (4 September 2026)
+
+Audit of 2 September 2026, findings 1.4, 1.6 and 1.7. Not deployed; no
+extension changed.
+
+**A failed pass is no longer a measurement of zero (1.4).** The dashboard
+picked the last `dry_run` or `bulk_extract` with no status filter and read its
+report as figures. A failed run's report is `{ error }`, which is truthy, so
+Coverage rendered `0%` with the hint "NaN produce attributes" and the summary
+line read "undefined products read" - a merchant reads that as "the app found
+nothing in my catalogue". Every figure now comes through `readPass`, the same
+door the Report screen uses, and the four tiles are assembled in a new pure
+module (`app/services/dashboard-metrics.ts`) rather than in JSX. A failed or
+refused pass renders its own dated sentence with its stored reason and no
+number at all. The alt text pass had the same defect in the "Alt text" tile
+(`String(altReport.written)` was "undefined") and is fixed the same way; those
+two were the only instances of the class on this route - `lastWrite` and the
+collections job already filtered on `status: "done"`, and the crawler job's
+report was never read.
+
+**The Setup checklist is now a five-step ladder (1.6, 1.7).** Eleven live
+controls on a fresh install, two of them `variant="primary"` in different
+cards, no locked state, and the app embed - without which nothing whatsoever is
+published - fifth in the right-hand column below the fold. The steps, in fixed
+order: can they reach you (the crawler check, done at any verdict), can you
+publish at all (the app embed), is it right (the free coverage score and three
+products), do it everywhere (subscribe, then the catalogue pass), make it yours
+(dictionary, business, collections). Each has one action, one done state and
+one sentence saying what it is for. Exactly one primary button exists on the
+screen and it belongs to the first unfinished step; every step below it is
+visible and quiet, its action disabled with the reason written out
+("Step 2, can you publish at all, comes first.") rather than greyed in silence.
+A finished step collapses to one line carrying its result.
+
+**The embed's third state is rendered as a third state (1.7).**
+`embed-check.server.ts` has set `unreadable: true` since it was written, and no
+screen read it, so a theme whose settings file could not be parsed was
+displayed as "the embed is off" - an unknown asserted as the one fact that
+sends a merchant to change something that may already be correct. Step two now
+says it does not know, and still offers the theme editor.
+
+**A failed pass belongs to the step that queued it.** The dashboard read one
+"last run of either kind"; the loader now reads the dry run and the catalogue
+pass separately, so a failed preview is named on step three and a failed
+catalogue pass on step four. Neither is ever reported against step one.
+
+**Nothing was removed.** Every control that existed is reachable: in its own
+step, on a collapsed step's result line, or under an "Everything else"
+disclosure at the bottom holding bulk alt text, the detail of the last pass and
+every screen link. No new `JobRun` kind exists; every done state is a row that
+was already there. The one-at-a-time guard is unchanged and still
+kind-agnostic, and the ladder disables every job action while one is queued,
+naming it ("A setting change is running. One job at a time, so this waits for
+it.").
+
+**Where the decisions live.** `app/services/dashboard-steps.ts` resolves the
+ladder and decides everything; `app/components/DashboardLadder.tsx` lays it out
+and decides nothing, importing Polaris and the resolver and no Remix, so it can
+be rendered in a test. 43 new tests: the resolver on five store shapes, and the
+rendered markup asserted with `renderToStaticMarkup` because the counts are
+assembled in JSX. `scripts/read-ladder.ts` (read-only) prints the ladder a
+given shop resolves to today.
+
 ### The four checks the first SEO PRD dropped (5 September 2026)
 
 **A6, collection meta fields.** `classifyMetaField` needed no second
