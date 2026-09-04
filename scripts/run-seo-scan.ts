@@ -209,6 +209,14 @@ async function main() {
   console.log(`  answered from a cache         ${String(report.fromCache).padStart(6)}`);
   console.log(`  still waiting                 ${String(report.remaining).padStart(6)}`);
   console.log(`  nights to finish              ${String(report.nightsToFinish).padStart(6)}`);
+  // B16's spend, stated apart from the pages. Link fetches come out of the same
+  // daily allowance, so a night that read fewer pages than its budget is not
+  // necessarily a night that finished - see the `stopped` line above.
+  if (report.links) {
+    console.log(`  link addresses fetched (B16)  ${String(report.links.fetched).padStart(6)}`);
+    console.log(`  pages whose links were read   ${String(report.links.pages).padStart(6)}`);
+    console.log(`  pages with more than 20 links ${String(report.links.capped).padStart(6)}`);
+  }
   console.log("");
   console.log("Findings raised on the pages read, by check:");
   for (const row of table(report.byCode)) console.log(row);

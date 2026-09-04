@@ -414,8 +414,9 @@ export default function Plans() {
                   No access to your orders or customers.
                 </Text>{" "}
                 This app's permissions are read_products, write_products,
-                read_themes - the whole list, verifiable on Shopify's own app
-                permissions screen. No orders, no customers, no analytics.
+                read_themes, read_markets - the whole list, verifiable on
+                Shopify's own app permissions screen. No orders, no customers,
+                no analytics.
               </List.Item>
             </List>
           </BlockStack>

@@ -140,11 +140,15 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // A7, B8 and B9 joined on 5 September (PRD-SEO-FULL-ONPAGE section 2). All
     // three are counted over the pages read: A7 needs a fetch of the sitemap,
     // and both B checks need the page itself.
+    // B10 to B24 joined on 4 September (sections 3 and 5a), all fifteen read
+    // off the page and so all fifteen over the 20 pages read.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A2", "A4", "A5", "A7", "B1", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
+      "A2", "A4", "A5", "A7", "B1", "B10", "B11", "B12", "B13", "B14", "B15",
+      "B16", "B17", "B18", "B19", "B20", "B21", "B22", "B23", "B24", "B3",
+      "B4", "B5", "B6", "B7", "B8", "B9",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "9 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
+      "24 checks found nothing on 20 products; 3 checks found nothing on 50 products.",
     );
   });
 

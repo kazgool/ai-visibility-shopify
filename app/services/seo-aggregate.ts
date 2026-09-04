@@ -105,6 +105,31 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   { code: "B7", source: "B", basis: "pagesRead" },
   { code: "B8", source: "B", basis: "pagesRead" },
   { code: "B9", source: "B", basis: "pagesRead" },
+  // B10 to B24 (PRD-SEO-FULL-ONPAGE sections 3 and 5a), built 4 September
+  // 2026. Every one is read off the page, so every one is counted over the
+  // pages that answered - never over the catalogue. A store whose storefront
+  // is behind a password therefore reads "not yet read" on all fifteen, which
+  // is the true sentence and not fifteen zeros.
+  { code: "B10", source: "B", basis: "pagesRead" },
+  { code: "B11", source: "B", basis: "pagesRead" },
+  { code: "B12", source: "B", basis: "pagesRead" },
+  { code: "B13", source: "B", basis: "pagesRead" },
+  { code: "B14", source: "B", basis: "pagesRead" },
+  { code: "B15", source: "B", basis: "pagesRead" },
+  { code: "B16", source: "B", basis: "pagesRead" },
+  { code: "B17", source: "B", basis: "pagesRead" },
+  { code: "B18", source: "B", basis: "pagesRead" },
+  { code: "B19", source: "B", basis: "pagesRead" },
+  { code: "B20", source: "B", basis: "pagesRead" },
+  { code: "B21", source: "B", basis: "pagesRead" },
+  { code: "B22", source: "B", basis: "pagesRead" },
+  // B23 is a fact about the shop, not about this product, and it is written
+  // onto every page row of the pass that read robots.txt. Its denominator is
+  // the pages read for exactly that reason: the file applies to all of them,
+  // so "500 of 500" is the honest reading of one edited line and not an
+  // inflation of it.
+  { code: "B23", source: "B", basis: "pagesRead" },
+  { code: "B24", source: "B", basis: "pagesRead" },
 ];
 
 /**
@@ -676,6 +701,164 @@ export function describeFinding(finding: Finding): string {
       if (names.length === 0) return label;
       return `Not being added to this page: ${names.join(", ")}.${aside}`;
     }
+    case "B8": {
+      const where = d.canonical ? `"${d.canonical}"` : "the canonical";
+      const why =
+        d.reason === "variant"
+          ? "It carries a ?variant= parameter, so each variant is a separate address to a crawler."
+          : d.reason === "collection"
+            ? "It is the collection-prefixed form. Shopify's `within` filter gives every product in a collection a second URL of this shape."
+            : d.reason === "unparseable"
+              ? "It could not be parsed as a URL."
+              : "";
+      return `The canonical is ${where} rather than ${d.shouldBe}. ${why}`.trim();
+    }
+    case "B9": {
+      const missing = Array.isArray(d.missing) ? d.missing : [];
+      const count = Number(d.markets ?? 0);
+      const which =
+        missing.length > 0 ? ` No alternate link for: ${missing.join(", ")}.` : "";
+      return (
+        `This shop has ${count} markets and the page declares ${Array.isArray(d.present) ? d.present.length : 0} hreflang links.${which} ` +
+        "Shopify Markets adds these automatically unless the setting is switched off, so this is a setting in Markets and not a fault in the theme."
+      );
+    }
+    // B10 and B11 report the length and quote Google. Never "over the limit":
+    // Google states there is no limit, only truncation by device width, and
+    // repeating a limit nobody set is how a screen becomes advice.
+    case "B10": {
+      if (d.present === false) return "This page has no title tag at all.";
+      const length = Number(d.length ?? 0);
+      return d.side === "short"
+        ? `The title tag is ${length} characters: "${d.title}". Shorter than the ${d.shorterThan} characters a result listing usually shows in full, so some of the space is unused.`
+        : `The title tag is ${length} characters: "${d.title}". Google states there is no length limit and that the title link is truncated to fit the device width; past about ${d.longerThan} characters a phone result usually shows less than the whole of it.`;
+    }
+    case "B11": {
+      if (d.present === false) return "This page has no meta description.";
+      const length = Number(d.length ?? 0);
+      return d.side === "short"
+        ? `The meta description is ${length} characters. Shorter than the ${d.shorterThan} characters a result snippet usually shows in full.`
+        : `The meta description is ${length} characters. Google truncates the snippet to fit the device width; past about ${d.longerThan} characters a phone result usually shows less than the whole of it.`;
+    }
+    case "B12": {
+      const count = Number(d.count ?? 0);
+      const texts = Array.isArray(d.texts) ? d.texts.filter(Boolean) : [];
+      const quoted = texts.length > 0 ? ` The heading${count === 1 ? " reads" : "s read"}: ${texts.map((t: string) => `"${t}"`).join("; ")}.` : "";
+      if (count === 0) return "This page has no H1 heading.";
+      if (d.logoInH1) {
+        const signals = (d.logoSignals ?? {}) as Record<string, boolean>;
+        const seen = [
+          signals.image ? "an image" : null,
+          signals.logoClass ? "an element classed as a logo" : null,
+          signals.linksHome ? "a link to the home page" : null,
+        ].filter(Boolean);
+        return (
+          `The H1 on this page contains ${seen.join(" and ")}, which is the shop logo rather than this page's own heading.` +
+          `${quoted} A theme built this way gives every page the same H1.`
+        );
+      }
+      return `This page has ${count} H1 headings, where a page has one.${quoted}`;
+    }
+    case "B13": {
+      const missing = Array.isArray(d.missing) ? d.missing : [];
+      return `Absent on this page: ${missing.join(", ")}. These are what a link to this product shows when it is shared.`;
+    }
+    case "B14": {
+      const missing = Array.isArray(d.missing) ? d.missing : [];
+      return `Absent on this page: ${missing.join(", ")}.`;
+    }
+    case "B15": {
+      const parts = [
+        Number(d.noAlt ?? 0) > 0 ? `${d.noAlt} with no alt attribute` : null,
+        Number(d.emptyAlt ?? 0) > 0 ? `${d.emptyAlt} with an empty alt` : null,
+        Number(d.machineAlt ?? 0) > 0 ? `${d.machineAlt} whose alt reads as a filename` : null,
+      ].filter(Boolean);
+      const examples =
+        Array.isArray(d.examples) && d.examples.length > 0
+          ? ` For example: ${d.examples.map((e: string) => `"${e}"`).join(", ")}.`
+          : "";
+      return `${d.count} of ${d.images} images on this page: ${parts.join(", ")}.${examples}`;
+    }
+    case "B16": {
+      const broken = Array.isArray(d.broken) ? d.broken : [];
+      const list = broken
+        .slice(0, 5)
+        .map((b: any) => `${b.url} (${b.status === 0 ? "no answer" : b.status})`)
+        .join("; ");
+      // `checked < total`, not `capped`: the per-page cap is one reason fewer
+      // links were checked and the daily budget running out mid-page is the
+      // other, and both have to read as "some of them" rather than as "all".
+      const scope =
+        Number(d.checked) < Number(d.total)
+          ? ` ${d.checked} of ${d.total} links on the page were checked.`
+          : ` All ${d.total} internal links on the page were checked.`;
+      return `${d.count} internal link${Number(d.count) === 1 ? "" : "s"} did not answer: ${list}.${scope}`;
+    }
+    case "B17": {
+      const parts: string[] = [];
+      if (d.thinDescription) {
+        parts.push(
+          `The description on this page is ${d.descriptionWords} words, read from the ${d.descriptionSource}`,
+        );
+      }
+      if (d.thinPage) parts.push(`the page's visible text is ${d.pageWords} words`);
+      if (parts.length === 0) return label;
+      return `${parts.join(", and ")}.`;
+    }
+    case "B18": {
+      const issues = Array.isArray(d.issues) ? d.issues : [];
+      const chars =
+        Array.isArray(d.nonAscii) && d.nonAscii.length > 0
+          ? ` The characters outside ASCII are: ${d.nonAscii.join(" ")}.`
+          : "";
+      return `The handle "${d.handle}" contains ${issues.join(", ")}.${chars} Changing a handle changes the address, so Shopify's redirect from the old one has to be kept.`;
+    }
+    case "B19": {
+      const chain = Array.isArray(d.chain) ? d.chain : [];
+      const drawn = chain.map((h: any) => `${h.url} (${h.status})`).join(" then ");
+      return d.loop
+        ? `The product URL redirects in a circle and never answers: ${drawn}.`
+        : `The product URL answers after ${d.hops} redirects: ${drawn}.`;
+    }
+    case "B20": {
+      const list = Array.isArray(d.resources) ? d.resources : [];
+      const shown = list
+        .slice(0, 5)
+        .map((r: any) => `${r.url} (in a ${r.tag} tag)`)
+        .join("; ");
+      return `${d.count} resource${Number(d.count) === 1 ? "" : "s"} on this https page are loaded over http: ${shown}.`;
+    }
+    case "B21": {
+      const others = Array.isArray(d.others) ? d.others : [];
+      return `The title tag "${d.title}" is also the title of ${d.sharedWith} other page${Number(d.sharedWith) === 1 ? "" : "s"}: ${others.join(", ")}.`;
+    }
+    case "B22": {
+      const types = Array.isArray(d.types) ? d.types : [];
+      const named = types.map((t: any) => `${t.type}${t.count > 1 ? ` (${t.count})` : ""}`).join(", ");
+      const whose = d.ours
+        ? " One of them is this app's own, emitted on purpose: assistants still read it."
+        : "";
+      return `This page carries ${named}. Google no longer shows results built from these, so the node costs nothing and earns nothing in Google.${whose}`;
+    }
+    case "B23": {
+      const custom = Array.isArray(d.custom) ? d.custom : [];
+      const blocking = Array.isArray(d.blocking) ? d.blocking : [];
+      const parts: string[] = [];
+      if (blocking.length > 0) {
+        parts.push(
+          `robots.txt blocks ${blocking.map((b: any) => `${b.path} (the rule is ${b.rule})`).join(" and ")}`,
+        );
+      }
+      if (custom.length > 0) {
+        parts.push(
+          `${custom.length} line${custom.length === 1 ? "" : "s"} in robots.txt are not part of the file Shopify ships: ${custom.slice(0, 5).join("; ")}`,
+        );
+      }
+      if (parts.length === 0) return label;
+      return `${parts.join(". ")}. robots.txt lives in the theme as robots.txt.liquid.`;
+    }
+    case "B24":
+      return `This page carries a meta keywords tag with ${d.terms} term${Number(d.terms) === 1 ? "" : "s"} in it. Google does not use that tag and it has no effect on indexing, so there is nothing here to keep up to date.`;
     case "B5":
       switch (d.reason) {
         case "robots":

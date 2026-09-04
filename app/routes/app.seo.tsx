@@ -64,7 +64,7 @@ import {
   type CollectionJobLike,
 } from "../components/SeoCollectionsPanel";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
-import { CHECK_LABEL } from "../services/seo-findings";
+import { CHECK_LABEL, CHECK_METHOD } from "../services/seo-findings";
 import {
   describeGraphqlError,
   isInternalServerError,
@@ -1535,6 +1535,15 @@ function FindingsPerProductCard({
                       ? "From the catalogue read."
                       : "From reading the product page."}
                   </Text>
+                  {/* The method line: where a threshold comes from, in the
+                      source's own words. PRD-SEO-FULL-ONPAGE section 3 asks
+                      for it by name on B10 and B11, so that a change to what
+                      Google says changes this line and nothing else. */}
+                  {CHECK_METHOD[row.code] ? (
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      {CHECK_METHOD[row.code]}
+                    </Text>
+                  ) : null}
                 </BlockStack>
                 <InlineStack gap="200" blockAlign="center" wrap={false}>
                   <Text as="span" fontWeight="semibold">

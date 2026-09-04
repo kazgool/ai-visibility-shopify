@@ -73,10 +73,13 @@ import {
   productsDisallow,
   readProductPage,
   readingOf,
+  reviewRobots,
+  checkRobotsReview,
   robotsRulesFor,
   scanShopPages,
   type PageRead,
 } from "../seo-page.server";
+import { describeFinding } from "../seo-aggregate";
 
 // --- fixtures --------------------------------------------------------------
 
@@ -108,8 +111,45 @@ function ourProductLd(id: string, offers = ""): string {
 const CANONICAL = `<link rel="canonical" href="${URL_A}">`;
 const MIRROR_LINK = `<link rel="alternate" href="${ORIGIN}/apps/ai-visibility/a-chair">`;
 
+/**
+ * The head and body of a page that gives B10 to B24 nothing to report: a title
+ * inside the range a phone result shows, a description inside its own, one H1
+ * that is not the logo, the three Open Graph properties and the four Twitter
+ * ones, an image with an alt a person wrote, no http resource, no meta
+ * keywords, no deprecated node, and enough visible text that B17 is silent.
+ *
+ * It exists because "a page with nothing wrong with it" has to keep meaning
+ * that as checks are added. Before B10 to B24, CLEAN was four tags - which
+ * every one of the fifteen new checks would correctly have found something
+ * wrong with, and the test asserting on an empty findings list would then have
+ * been asserting that the new checks do not run.
+ */
+const CLEAN_HEAD =
+  "<title>A chair in solid oak, natural finish</title>" +
+  '<meta name="description" content="A dining chair in solid oak with a natural oil finish, ' +
+  'made for everyday use at a kitchen table or a desk.">' +
+  '<meta property="og:title" content="A chair">' +
+  '<meta property="og:image" content="https://shop.example/chair.jpg">' +
+  '<meta property="og:description" content="A dining chair in solid oak.">' +
+  '<meta name="twitter:card" content="summary_large_image">' +
+  '<meta name="twitter:title" content="A chair">' +
+  '<meta name="twitter:description" content="A dining chair in solid oak.">' +
+  '<meta name="twitter:image" content="https://shop.example/chair.jpg">';
+
+const CLEAN_BODY =
+  "<body><h1>A chair in solid oak</h1>" +
+  '<img src="https://shop.example/chair.jpg" alt="A dining chair in solid oak, seen from the front">' +
+  "<p>" +
+  ("A dining chair in solid oak with a natural oil finish. " +
+    "It is made for everyday use at a kitchen table or a desk, and it takes an adult of any height. " +
+    "The seat is shaped, the back is slatted, and the frame is joined rather than screwed. ").repeat(
+    2,
+  ) +
+  "</p></body>";
+
 /** A page with nothing wrong with it: one theme node, self canonical, our block. */
-const CLEAN = CANONICAL + productLd(`${URL_A}#product-theme`) + MIRROR_LINK;
+const CLEAN =
+  CLEAN_HEAD + CANONICAL + productLd(`${URL_A}#product-theme`) + MIRROR_LINK + CLEAN_BODY;
 
 const PASSWORD_FORM =
   '<form method="post" action="/password"><input type="password" name="password"></form>';
@@ -124,6 +164,11 @@ function page(html: string, overrides: Partial<PageRead> = {}): PageRead {
     age: null,
     xRobotsTag: null,
     passwordProtected: overrides.passwordProtected ?? isPasswordPage(html),
+    // One hop, the page answering for itself: the shape readProductPage
+    // returns for every page that is not redirected. B19 reads this and stays
+    // silent on it, which is what every test written before B19 existed
+    // assumes.
+    chain: [{ url: URL_A, status: 200 }],
     ...overrides,
   };
 }
@@ -419,6 +464,16 @@ function rows(n: number): Row[] {
  */
 function answerFindMany(all: Row[]) {
   return async (args: any) => {
+    // The pass makes two findMany calls of different shapes, and only one of
+    // them is the ordered cursor this stub exists to model. The other is
+    // B21's title map (no orderBy, `pageTitle: { not: null }`), and it is
+    // answered from the same rows so a store whose pages carry titles reports
+    // the duplicates it has.
+    if (!args.orderBy) {
+      return all
+        .filter((row) => (row as any).pageTitle != null)
+        .map((row) => ({ handle: row.handle, pageTitle: (row as any).pageTitle }));
+    }
     const spec = args.orderBy[0].scannedAt;
     const nullsFirst = typeof spec === "object" && spec?.nulls === "first";
     const sorted = [...all].sort((a, b) => {
@@ -584,8 +639,12 @@ describe("the nightly pass", () => {
       `${ORIGIN}/products/older`,
       `${ORIGIN}/products/old`,
     ]);
-    // And the ordering the query asks for is the one that produces it.
-    expect(mockFindMany.mock.calls[0][0].orderBy[0]).toEqual({
+    // And the ordering the query asks for is the one that produces it. Found
+    // by shape rather than by position: the pass also reads the stored title
+    // tags for B21, and which of the two queries goes first is not the thing
+    // this test is about.
+    const ordered = mockFindMany.mock.calls.find((call: any[]) => call[0]?.orderBy);
+    expect(ordered?.[0].orderBy[0]).toEqual({
       scannedAt: { sort: "asc", nulls: "first" },
     });
   });
@@ -904,7 +963,7 @@ describe("the daily allowance", () => {
 
     // 500 budget less the 496 already spent today leaves four requests, and
     // the sitemap takes the first of them: three pages, not twelve.
-    expect(mockFindMany.mock.calls[0][0].take).toBe(3);
+    expect(mockFindMany.mock.calls.find((c: any[]) => c[0]?.orderBy)?.[0].take).toBe(3);
     expect(productUrls).toHaveLength(3);
     expect(report.scanned).toBe(3);
     expect(report.stopped).toBe("budget");
@@ -1112,5 +1171,309 @@ describe("B7, the same node twice on one page", () => {
       (f) => f.code === "B7",
     );
     expect((b7!.detail as any).duplicates[0].count).toBe(3);
+  });
+});
+
+// --- B19: the redirect chain, as the fetcher produces it ---------------------
+
+describe("B19, the chain readProductPage records", () => {
+  it("records one hop for a page that answered directly", async () => {
+    const impl = vi.fn(async () => reply(CLEAN, { url: URL_A }));
+    const page = await readProductPage(URL_A, null, impl as any);
+    expect(page.chain).toEqual([{ url: URL_A, status: 200 }]);
+    expect(readingOf(page, null).findings.some((f) => f.code === "B19")).toBe(false);
+  });
+
+  it("follows two redirects by hand and reports the chain, not just where it ended", async () => {
+    const impl = vi.fn(async (url: string) => {
+      if (url.endsWith("/products/old")) {
+        return reply("", { status: 301, url, headers: { location: "/products/older" } });
+      }
+      if (url.endsWith("/products/older")) {
+        return reply("", { status: 301, url, headers: { location: "/products/a-chair" } });
+      }
+      return reply(CLEAN, { url: URL_A });
+    });
+    const page = await readProductPage(`${ORIGIN}/products/old`, null, impl as any);
+    expect(page.status).toBe(200);
+    expect(page.chain.map((h) => h.status)).toEqual([301, 301, 200]);
+    const b19 = readingOf(page, null).findings.find((f) => f.code === "B19");
+    expect((b19!.detail as any).hops).toBe(2);
+    expect((b19!.detail as any).loop).toBe(false);
+  });
+
+  it("names a loop rather than following it round for ever", async () => {
+    const impl = vi.fn(async (url: string) =>
+      url.endsWith("/a")
+        ? reply("", { status: 302, url, headers: { location: `${ORIGIN}/b` } })
+        : reply("", { status: 302, url, headers: { location: `${ORIGIN}/a` } }),
+    );
+    const page = await readProductPage(`${ORIGIN}/a`, null, impl as any);
+    const b19 = readingOf(page, null).findings.find((f) => f.code === "B19");
+    expect((b19!.detail as any).loop).toBe(true);
+    // Three requests at most, not an endless walk round the circle.
+    expect(impl.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+});
+
+// --- B23: the robots.txt review ---------------------------------------------
+
+describe("B23, the robots.txt review", () => {
+  it("says nothing about a file that is only Shopify's own disallows", () => {
+    const stock =
+      "User-agent: *\nDisallow: /admin\nDisallow: /cart\nDisallow: /checkout\n" +
+      "Disallow: /search\nDisallow: /policies/\n";
+    expect(checkRobotsReview(reviewRobots({ fetched: true, content: stock }))).toBeNull();
+  });
+
+  it("says nothing at all when robots.txt could not be fetched", () => {
+    // Silent, never "clean": an unreachable file is not an unedited one.
+    expect(checkRobotsReview(reviewRobots({ fetched: false, content: "" }))).toBeNull();
+    expect(checkRobotsReview(null)).toBeNull();
+  });
+
+  it("separates the lines Shopify ships from the ones it does not recognise", () => {
+    const edited = "User-agent: *\nDisallow: /admin\nDisallow: /secret-sale\n";
+    const review = reviewRobots({ fetched: true, content: edited });
+    expect(review.defaults).toEqual(["/admin"]);
+    expect(review.custom).toEqual(["/secret-sale"]);
+    const finding = checkRobotsReview(review)!;
+    expect((finding.detail as any).defaults).toBe(1);
+    const sentence = describeFinding(finding);
+    expect(sentence).toContain("not part of the file Shopify ships");
+    expect(sentence).toContain("/secret-sale");
+    expect(sentence).toContain("robots.txt.liquid");
+  });
+
+  it("names a rule that blocks products or collections, with the rule itself", () => {
+    const review = reviewRobots({
+      fetched: true,
+      content: "User-agent: *\nDisallow: /collections/\nDisallow: /admin\n",
+    });
+    expect(review.blocking).toEqual([{ path: "/collections/", rule: "/collections/" }]);
+    expect(describeFinding(checkRobotsReview(review)!)).toContain("robots.txt blocks /collections/");
+  });
+
+  it("obeys the same precedence productsDisallow does: a longer Allow wins", () => {
+    const review = reviewRobots({
+      fetched: true,
+      content: "User-agent: *\nDisallow: /\nAllow: /products/\nAllow: /collections/\n",
+    });
+    expect(review.blocking).toEqual([]);
+  });
+});
+
+// --- B16 and B21 inside the pass: the budget and the cross-page comparison ---
+
+describe("B16 and the daily budget", () => {
+  /** A page carrying `n` distinct internal links and nothing else wrong. */
+  function pageWithLinks(n: number): string {
+    const hrefs = Array.from({ length: n }, (_, i) => `<a href="/collections/c${i}">x</a>`).join("");
+    return CLEAN.replace("</body>", `${hrefs}</body>`);
+  }
+
+  function linkRoutedFetch(page: string, linkStatus: (url: string) => number) {
+    const productUrls: string[] = [];
+    const linkUrls: string[] = [];
+    const impl = vi.fn(async (url: string, init?: any) => {
+      if (url.endsWith("/robots.txt")) return reply(ROBOTS_OPEN);
+      if (url.includes("/sitemap")) return reply("not found", { status: 404 });
+      if (url.includes("/collections/")) {
+        linkUrls.push(`${init?.method ?? "GET"} ${url}`);
+        return reply("", { status: linkStatus(url), url });
+      }
+      productUrls.push(url);
+      return reply(page, { url: URL_A });
+    });
+    return { impl, productUrls, linkUrls };
+  }
+
+  it("checks at most 20 links on a page with 200, and says so on the row", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(1)));
+    counts({ rows: 1, waiting: 0 });
+    const { impl, linkUrls } = linkRoutedFetch(pageWithLinks(200), (url) =>
+      url.endsWith("/c3") ? 404 : 200,
+    );
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    // Exactly the cap, and HEAD rather than GET: the question is whether the
+    // address answers, and HEAD is the cheaper request for the merchant's own
+    // storefront.
+    expect(linkUrls).toHaveLength(20);
+    expect(linkUrls.every((call) => call.startsWith("HEAD "))).toBe(true);
+    expect(report.links).toEqual({ fetched: 20, pages: 1, capped: 1 });
+
+    const written = mockUpdate.mock.calls[0][0].data.findings as any[];
+    const b16 = written.find((f) => f.code === "B16");
+    expect(b16.detail.checked).toBe(20);
+    expect(b16.detail.total).toBe(200);
+    expect(b16.detail.capped).toBe(true);
+    expect(describeFinding(b16)).toContain("20 of 200 links on the page were checked");
+  });
+
+  it("charges each distinct link once to the budget, however many pages carry it", async () => {
+    // The arithmetic, stated: 3 pages, each carrying the same 2 links.
+    // 1 sitemap fetch (404) + 3 page fetches + 2 link fetches = 6 requests,
+    // and the second and third page cost no link fetch at all.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(3)));
+    counts({ rows: 3, waiting: 0 });
+    const page = CLEAN.replace(
+      "</body>",
+      '<a href="/collections/a">a</a><a href="/collections/b">b</a></body>',
+    );
+    const { impl, productUrls, linkUrls } = linkRoutedFetch(page, () => 200);
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(productUrls).toHaveLength(3);
+    expect(linkUrls).toHaveLength(2);
+    expect(report.links).toEqual({ fetched: 2, pages: 3, capped: 0 });
+
+    // And every one of those six requests is on the counter. A budget that
+    // counted only pages would be a figure about pages rather than a limit on
+    // what this app asks of a storefront.
+    const spends = mockSettingUpsert.mock.calls.filter(
+      (c: any) => c[0].create.key === SPEND_SETTING_KEY,
+    );
+    expect(spends).toHaveLength(6);
+    expect(spends[spends.length - 1][0].update.value).toContain('"pages":6');
+  });
+
+  it("reads fewer pages when links spend the allowance, and stops on budget", async () => {
+    // 5 of budget: 1 sitemap + 1 page + 3 links = 5, and the second page is
+    // never fetched. `scanned` is 1, not 2, and the pass says the budget
+    // stopped it - counting pages alone would have called this night finished.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(4)));
+    counts({ rows: 4, waiting: 3 });
+    const page = CLEAN.replace(
+      "</body>",
+      '<a href="/collections/a">a</a><a href="/collections/b">b</a><a href="/collections/c">c</a></body>',
+    );
+    const { impl, productUrls, linkUrls } = linkRoutedFetch(page, () => 200);
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 5,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(productUrls).toHaveLength(1);
+    expect(linkUrls).toHaveLength(3);
+    expect(report.scanned).toBe(1);
+    expect(report.stopped).toBe("budget");
+  });
+
+  it("stops checking links mid-page when the allowance runs out, and says how many it checked", async () => {
+    // 3 of budget: 1 sitemap + 1 page + 1 link. Two of the page's three links
+    // are never fetched, and the row says one was checked - never that the
+    // other two answered.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(1)));
+    counts({ rows: 1, waiting: 0 });
+    const page = CLEAN.replace(
+      "</body>",
+      '<a href="/collections/a">a</a><a href="/collections/b">b</a><a href="/collections/c">c</a></body>',
+    );
+    const { impl, linkUrls } = linkRoutedFetch(page, () => 404);
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 3,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(linkUrls).toHaveLength(1);
+    const written = mockUpdate.mock.calls[0][0].data.findings as any[];
+    const b16 = written.find((f) => f.code === "B16");
+    expect(b16.detail.checked).toBe(1);
+    expect(b16.detail.total).toBe(3);
+    expect(describeFinding(b16)).toContain("1 of 3 links on the page were checked");
+  });
+
+  it("spends nothing on the links of a page that answered with the password form", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(1)));
+    counts({ rows: 1, waiting: 0 });
+    const { impl, linkUrls } = linkRoutedFetch(
+      PASSWORD_FORM + '<a href="/collections/a">a</a>',
+      () => 200,
+    );
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(linkUrls).toEqual([]);
+    expect(report.links).toEqual({ fetched: 0, pages: 0, capped: 0 });
+  });
+});
+
+describe("B21 across the pass", () => {
+  it("names the other handle sharing the title, from a title stored on an earlier night", async () => {
+    settings(0);
+    const all = [
+      { ...rows(1)[0], id: "r1", productId: "p1", handle: "chair-a", scannedAt: null },
+      {
+        ...rows(1)[0],
+        id: "r2",
+        productId: "p2",
+        handle: "chair-b",
+        scannedAt: new Date("2026-01-01"),
+        // Read on an earlier night; only its stored title takes part tonight.
+        pageTitle: "A chair in solid oak, natural finish",
+      },
+    ] as any;
+    mockFindMany.mockImplementation(answerFindMany(all));
+    counts({ rows: 2, waiting: 0 });
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 3,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    const first = mockUpdate.mock.calls[0][0].data;
+    expect(first.pageTitle).toBe("A chair in solid oak, natural finish");
+    const b21 = (first.findings as any[]).find((f) => f.code === "B21");
+    expect(b21.detail.others).toEqual(["chair-b"]);
+    expect(b21.detail.sharedWith).toBe(1);
+  });
+
+  it("stays silent when no other page has been read yet", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(1)));
+    counts({ rows: 1, waiting: 0 });
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 3,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    const findings = mockUpdate.mock.calls[0][0].data.findings as any[];
+    expect(findings.some((f) => f.code === "B21")).toBe(false);
   });
 });

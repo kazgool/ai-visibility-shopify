@@ -31,6 +31,7 @@ import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
 import { describeFinding, findingsForProduct } from "../services/seo-aggregate";
+import { CHECK_METHOD } from "../services/seo-findings";
 import { scanRowFor } from "../services/seo-aggregate.server";
 import { pageBudget, scanOneProductPage } from "../services/seo-page.server";
 import {
@@ -283,6 +284,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
         code: String(f.code),
         source: f.source,
         text: describeFinding(f),
+        // Where a threshold comes from, in the source's own words, on the
+        // rows that quote one. Absent on every other check rather than a
+        // sentence written to fill the space.
+        method: CHECK_METHOD[f.code as keyof typeof CHECK_METHOD] ?? null,
       })),
       budget: { budget: budget.budget, spent: budget.spent, remaining: budget.remaining },
     };
@@ -663,7 +668,7 @@ type CrawlerPage = {
   noindex: boolean | null;
   appBlock: string | null;
   cacheControl: string | null;
-  findings: { code: string; source: string; text: string }[];
+  findings: { code: string; source: string; text: string; method: string | null }[];
   budget: { budget: number; spent: number; remaining: number };
 };
 
@@ -696,7 +701,7 @@ function CrawlerPageCard({
     noindex: boolean | null;
     appBlock: string | null;
     cacheControl: string | null;
-    findings: { code: string; source: string; text: string }[];
+    findings: { code: string; source: string; text: string; method: string | null }[];
     budget: { budget: number; spent: number; remaining: number };
     refusal: string | null;
   };
@@ -780,9 +785,16 @@ function CrawlerPageCard({
                 <Box paddingBlockStart="050">
                   <Badge tone={f.source === "A" ? "info" : "attention"}>{f.code}</Badge>
                 </Box>
-                <Text as="p" variant="bodySm">
-                  {f.text}
-                </Text>
+                <BlockStack gap="050">
+                  <Text as="p" variant="bodySm">
+                    {f.text}
+                  </Text>
+                  {f.method ? (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {f.method}
+                    </Text>
+                  ) : null}
+                </BlockStack>
               </InlineStack>
             ))}
           </BlockStack>

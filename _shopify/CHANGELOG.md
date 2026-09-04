@@ -16,6 +16,113 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Fifteen on-page checks, B10 to B24 (4 September 2026)
+
+`PRD-SEO-FULL-ONPAGE.md` sections 3 and 5a, build step 4. Extension changed
+(one line on each of two nodes), so this one needs a deploy.
+
+**`read_markets` is now an access scope** (Marius, 4 September 2026). Check B9
+asks whether a multi-market shop declares hreflang, and without the scope the
+`markets` query is refused, so B9 could only ever say "could not be read". The
+re-authorisation costs nothing today - the dev store is the only install. Both
+of B9's other states stay reachable and stay tested: a single-market shop reads
+"not applicable", and a refusal still reads "could not be read". The permissions
+sentence on the plans screen, which claims to be the whole list, now says four.
+
+**Fifteen checks, all read off the product page, all counted over the pages
+read.** Each is a row on the SEO card with its own denominator, a line in the
+product editor's "What a crawler sees" section, and a stable code the weekly
+diff names. None of them produces a score, and none of them is advice.
+
+| Code | What the row says |
+|---|---|
+| B10 | the title tag's length and the tag itself, quoting Google's own wording: there is no length limit, the title link is truncated to fit the device width |
+| B11 | the same reading of the meta description |
+| B12 | how many H1s the page has and what they say, and separately the named case where the one H1 is the shop logo |
+| B13 | which of `og:title`, `og:image`, `og:description` are absent |
+| B14 | which of the four Twitter card tags are absent |
+| B15 | images with no alt, with an empty alt, and with an alt that reads as machine output, count of the images on the page |
+| B16 | internal links that answered 4xx or 5xx, at most 20 per page, and how many of the page's links were checked |
+| B17 | the description's word count and the page's, and nothing about what either should be |
+| B18 | uppercase, spaces, non-ASCII or a trailing punctuation mark in the handle |
+| B19 | the redirect chain, hop by hop, and a loop as a loop |
+| B20 | `http://` resources on an `https://` page, by the tag that pulled each in |
+| B21 | the other handle whose page carries the same title tag |
+| B22 | `FAQPage` or `HowTo` on the page: it costs nothing and earns nothing in Google, and the row never says to remove it |
+| B23 | robots.txt: the lines Shopify ships, the lines this app does not recognise, and anything blocking `/products/` or `/collections/` |
+| B24 | a meta keywords tag, with Google's position that it is not used and has no effect on indexing |
+
+**A method line under the rows that quote a source.** `CHECK_METHOD` in
+`seo-findings.ts`, rendered on the SEO card and in the product editor. It exists
+so that a change in what Google says changes one line and nothing else, which is
+what the PRD asks for by name on B10 and B11.
+
+**B16 spends the same daily budget as the pages, and the arithmetic is now
+explicit.** Each distinct link address is fetched once per pass, at most 20 per
+page, HEAD first and GET only if the server refuses HEAD. The pass tracks what
+is left of the allowance across pages and links together and stops when it
+reaches zero, so a night that checks links reads fewer pages - and `stopped` is
+computed from what is left rather than from pages read, or such a night would
+have reported itself finished with pages still waiting. The JobRun report and
+`scripts/run-seo-scan.ts` state the link spend apart from the pages. The
+"Read this page now" button does not check links: it is guarded by one page of
+budget, and a click must not be able to spend twenty-one.
+
+**B19 changed how a page is fetched.** `readProductPage` follows redirects by
+hand instead of with `redirect: "follow"`. It is the same sequence of HTTP
+requests either way; what changes is that the chain is visible, and `follow`
+could not tell a two-hop chain from a one-hop one. Five hops maximum, and a loop
+is recorded rather than walked round. B19 is asked before the status branches,
+because a loop never reaches a 200 and a check that ran only on pages that
+answered would be silent on the case it exists for.
+
+**B21 needed a column.** `SeoScan.pageTitle`, migration
+`20260906090000_seo_scan_page_title` with its down path written first. The pages
+that share a title are read on different nights - 500 a night spreads one
+comparison over many of them - so the comparison has to be against what was
+stored. A title never read is absent from the map, so the check under-reports on
+a half-scanned catalogue and never invents a duplicate.
+
+**Reading a real storefront corrected two things that were written from
+memory.** `scripts/read-onpage-checks.ts` (new, read-only, no database, no Admin
+call, does not touch the daily budget) fetches a shop's product sitemap and runs
+every check against real pages.
+
+- The list of Disallow lines Shopify's own robots.txt ships had been written
+  from memory and matched 25 of the dev store's 40 lines, so B23 reported 15
+  lines as unrecognised on an untouched store. Read off the live file, it
+  matches all 40. The file has changed shape since most references quote it: it
+  now carries an Allow block and agent instructions. A line that is still not
+  recognised is reported as "not part of the file Shopify ships as this app
+  knows it", never as "you edited this", because the list is a snapshot of a
+  generated file.
+- `seo-onpage.ts` had its own six-entry entity table, and a dev store title came
+  back as "... Nordwood &ndash; MRDigital-dev": `ndash` was unknown to it, so the
+  row would have shown a merchant an entity and counted it as seven characters
+  instead of one. Entity decoding and output hygiene now come from the engine
+  (`decodeEntities` for attribute values, which must stay byte-exact addresses;
+  `cleanOutput` for anything a screen prints or a check counts characters in).
+
+**The FAQPage nodes now carry the emitter marker.** B22 fires on `FAQPage`, and
+this app emits one on purpose; without the marker the row would have named our
+own node without saying it was ours. The two FAQPage nodes in the block gained
+the property the four other nodes already had. Extension change: it ships with
+the deploy.
+
+**B17 asks about the product description and not the meta description**, and the
+reason is that the two checks would otherwise contradict each other: B11 reports
+a meta description longer than about 160 characters, and 160 characters cannot
+hold the 40 words B17 asks for. Where the page's structured data states no
+description, the count is null and the row reports the page's word count alone -
+a check that could not be asked is never a measurement of zero.
+
+**64 new unit tests** in `seo-onpage.test.ts` (every check, its silent case, its
+rendered sentence, and the words none of them say) and 15 more in
+`seo-page.test.ts` (B19's chain from the fetcher, B23's review against a stock
+and an edited file, and B16's budget arithmetic stated as arithmetic: three
+pages carrying the same two links cost six requests, not nine, and every one of
+the six is on the counter). 976 tests green.
+
 ### One ordered path after install (4 September 2026)
 
 Audit of 2 September 2026, findings 1.4, 1.6 and 1.7. Not deployed; no

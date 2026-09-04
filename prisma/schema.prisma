@@ -205,6 +205,13 @@ model SeoScan {
   noindex      Boolean?
   appBlock     String?
   cacheControl String?
+  // The page's <title> tag, as read. Stored for exactly one reason: check B21
+  // asks whether another page in this shop carries the same title, and the
+  // pages it compares against were read on other nights - 500 a night means a
+  // 20,000-product store spreads one comparison over 40 of them. Nothing else
+  // reads it, and a null means the page has never been read or carried no
+  // title tag, which B21 treats as "nothing to compare" and never as a match.
+  pageTitle    String?
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
 

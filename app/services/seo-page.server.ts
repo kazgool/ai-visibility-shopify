@@ -48,6 +48,30 @@ import {
   storefrontCookie,
   type LdNode,
 } from "./theme-scan.server";
+import {
+  LINK_CHECK_CAP,
+  checkDeprecatedNodes,
+  checkDuplicateTitle,
+  checkH1,
+  checkHandle,
+  checkInternalLinks,
+  checkMetaDescription,
+  checkMetaKeywords,
+  checkMixedContent,
+  checkPageAltText,
+  checkRedirectChain,
+  checkThinContent,
+  checkTitleTag,
+  checkOpenGraph,
+  checkTwitterCard,
+  extractTitleTag,
+  internalLinks,
+  pageDescription,
+  titleKey,
+  type Hop,
+  type LinkPlan,
+  type LinkResult,
+} from "./seo-onpage";
 
 /** Section 3: 500 page fetches per shop per day unless an operator says otherwise. */
 export const DEFAULT_DAILY_BUDGET = 500;
@@ -524,6 +548,163 @@ export function productsDisallow(content: string, userAgent = SCAN_USER_AGENT): 
   return disallow;
 }
 
+/**
+ * The Disallow lines Shopify's own robots.txt ships with, as of 4 September
+ * 2026, normalised to lower case.
+ *
+ * This list exists to answer one question and nothing else: is a line in this
+ * shop's file one that Shopify put there, or one a person added. It is a
+ * snapshot of a generated file that Shopify changes without telling anyone, so
+ * a line NOT in this list is reported as "not part of the file Shopify ships
+ * as this app knows it" and never as "you edited this". That wording is the
+ * whole point: getting it wrong in the other direction sends a merchant
+ * looking for an edit they never made.
+ */
+const SHOPIFY_DEFAULT_DISALLOWS = new Set(
+  [
+    // Read off a live Shopify storefront on 4 September 2026
+    // (mrdigital-dev.myshopify.com), not from memory. The file had changed
+    // shape since the forms most references quote: it now carries an Allow
+    // block, agent instructions in comments, and rules about UCP endpoints.
+    // Reading it was the difference between this check reporting 0 custom
+    // lines on a stock store and reporting 15.
+    "/admin",
+    "/cart",
+    "/cart/",
+    "/*/cart/",
+    "/cart.js",
+    "/*/cart.js",
+    "/carts",
+    "/checkout",
+    "/*/checkout",
+    "/checkouts/",
+    "/*/checkouts/",
+    "/orders",
+    "/*/orders",
+    "/account",
+    "/*/account",
+    "/services",
+    "/sf_*",
+    "/recommendations/products",
+    "/*/recommendations/products",
+    "/collections/*sort_by*",
+    "/*/collections/*sort_by*",
+    "/collections/*+*",
+    "/collections/*%2b*",
+    "/collections/*%2B*",
+    "/*/collections/*+*",
+    "/*/collections/*%2b*",
+    "/*/collections/*%2B*",
+    "/collections/*filter*&*filter*",
+    "/*/collections/*filter*&*filter*",
+    "/blogs/*+*",
+    "/blogs/*%2b*",
+    "/blogs/*%2B*",
+    "/*/blogs/*+*",
+    "/*/blogs/*%2b*",
+    "/*/blogs/*%2B*",
+    "/*?*ls=*&ls=*",
+    "/*?*ls%3*ls%3*",
+    "/*?*oseid=*",
+    "/*?*preview_theme_id=*",
+    "/*?*preview_script_id=*",
+    "/*preview_theme_id*",
+    "/*preview_script_id*",
+    "/cdn/wpm/*.js",
+    // Older forms of the same file, kept so a store on an earlier generation
+    // of robots.txt.liquid does not read as edited.
+    "/search",
+    "/apple-app-site-association",
+    "/.well-known/shopify/monitoring",
+    "/.well-known/shopify/data-sales-opt-out",
+    "/policies/",
+    "/*/policies/",
+    "/*/*.atom?*",
+  ].map((line) => line.toLowerCase()),
+);
+
+/**
+ * Shopify also disallows the store's own numeric id as a path. It is
+ * generated, not typed, and matching it by value is impossible - so it is
+ * matched by shape. A path that is nothing but digits is Shopify's.
+ */
+const SHOPIFY_NUMERIC_PATH = /^\/\d+$/;
+
+function isShopifyDefault(line: string): boolean {
+  return SHOPIFY_DEFAULT_DISALLOWS.has(line.toLowerCase()) || SHOPIFY_NUMERIC_PATH.test(line);
+}
+
+/** The two path spaces B23 is asked about by name (PRD section 5a). */
+const REVIEWED_PATHS = ["/products/", "/collections/"];
+
+export type RobotsReview = {
+  fetched: boolean;
+  /** Lines this app recognises as Shopify's own. */
+  defaults: string[];
+  /** Lines it does not recognise, which is not the same as "the merchant's". */
+  custom: string[];
+  /** Path spaces a Disallow covers, with the rule that covers them. */
+  blocking: { path: string; rule: string }[];
+};
+
+/**
+ * B23: what this shop's robots.txt says.
+ *
+ * Reported, never acted on. Shopify calls editing `robots.txt.liquid` an
+ * unsupported customisation that "can result in loss of all traffic", so a
+ * merchant who touched it should be able to see what they did without opening
+ * the theme editor. The default lines are listed apart from the rest because a
+ * file full of Shopify's own disallows is not a file anybody edited, and
+ * reporting forty lines as findings would teach a reader to skip the row.
+ *
+ * The finding fires on two things only: a line this app does not recognise, or
+ * a Disallow covering `/products/` or `/collections/`. A stock file produces
+ * nothing at all, which is the correct reading of an untouched theme.
+ */
+export function reviewRobots(read: RobotsRead, userAgent = SCAN_USER_AGENT): RobotsReview {
+  if (!read.fetched) return { fetched: false, defaults: [], custom: [], blocking: [] };
+  const rules = robotsRulesFor(read.content, userAgent);
+  const defaults: string[] = [];
+  const custom: string[] = [];
+  for (const line of rules.disallow) {
+    if (line === "") continue; // "Disallow:" with no value allows everything.
+    if (isShopifyDefault(line)) defaults.push(line);
+    else custom.push(line);
+  }
+
+  const blocking: { path: string; rule: string }[] = [];
+  for (const path of REVIEWED_PATHS) {
+    const longest = (list: string[]) =>
+      list.filter((pattern) => ruleMatches(pattern, path)).sort((a, b) => b.length - a.length)[0] ??
+      null;
+    const disallow = longest(rules.disallow);
+    if (!disallow) continue;
+    const allow = longest(rules.allow);
+    // The same precedence productsDisallow applies: longest match wins, and
+    // Allow wins a tie. A file that disallows everything and then allows
+    // /products/ is not blocking /products/.
+    if (allow !== null && allow.length >= disallow.length) continue;
+    blocking.push({ path, rule: disallow });
+  }
+
+  return { fetched: true, defaults, custom, blocking };
+}
+
+/** B23 as a finding, or null when the file is stock and blocks nothing. */
+export function checkRobotsReview(review: RobotsReview | null): Finding | null {
+  if (!review || !review.fetched) return null;
+  if (review.custom.length === 0 && review.blocking.length === 0) return null;
+  return {
+    code: "B23",
+    source: "B",
+    detail: {
+      custom: review.custom,
+      defaults: review.defaults.length,
+      blocking: review.blocking,
+    },
+  };
+}
+
 export type RobotsRead = { fetched: boolean; content: string };
 
 /** Never throws: an unreachable robots.txt is not a permission to be blocked by. */
@@ -553,9 +734,25 @@ export type PageRead = {
   age: string | null;
   xRobotsTag: string | null;
   passwordProtected: boolean;
+  /**
+   * Every address the request passed through, first to last, with the status
+   * each answered. One entry means the page answered directly. Check B19 reads
+   * this; nothing else does.
+   */
+  chain: Hop[];
   /** Set when the request itself failed; then nothing else here is meaningful. */
   error?: string;
 };
+
+/**
+ * How many redirects are followed before the chain is called a chain and
+ * abandoned. Five is well past anything a working store produces, and stopping
+ * matters more than finishing: a loop is a finding, not a reason to spend the
+ * night on one product.
+ */
+export const MAX_REDIRECT_HOPS = 5;
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 /** The same test scanPage makes: a password form and no structured data. */
 export function isPasswordPage(html: string): boolean {
@@ -584,31 +781,109 @@ export async function readProductPage(
   };
   if (cookie) headers.Cookie = cookie;
 
+  // Followed by hand rather than with `redirect: "follow"`, and this costs no
+  // extra request: following a chain is the same sequence of HTTP calls either
+  // way. What changes is that the chain is visible, which is the whole of check
+  // B19 - "follow" hands back only where it ended up, so a two-hop chain and a
+  // one-hop one were indistinguishable.
+  const chain: Hop[] = [];
+  let current = url;
+  const visited = new Set<string>();
+
   try {
-    const res = await fetchImpl(url, { headers, redirect: "follow" });
-    const html = await res.text();
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
+      const res = await fetchImpl(current, { headers, redirect: "manual" });
+      chain.push({ url: current, status: res.status });
+
+      const location = res.headers.get("location");
+      const isRedirect = REDIRECT_STATUSES.has(res.status) && location;
+      // A loop is recorded and then stopped: the address is already in the
+      // chain, so B19 can name the circle, and following it again would be
+      // spending requests to learn what the chain already says.
+      if (isRedirect && !visited.has(current) && hop < MAX_REDIRECT_HOPS) {
+        visited.add(current);
+        let next: string;
+        try {
+          next = new URL(location, current).href;
+        } catch {
+          next = location;
+        }
+        if (visited.has(next)) {
+          chain.push({ url: next, status: res.status });
+          // Fall through to reading this response's body: there is nothing
+          // else to fetch, and the status recorded is the redirect's.
+        } else {
+          current = next;
+          continue;
+        }
+      }
+
+      const html = await res.text();
+      return {
+        url,
+        finalUrl: res.url || current,
+        status: res.status,
+        html,
+        cacheControl: res.headers.get("cache-control"),
+        age: res.headers.get("age"),
+        xRobotsTag: res.headers.get("x-robots-tag"),
+        passwordProtected: isPasswordPage(html),
+        chain,
+      };
+    }
+
+    // More hops than MAX_REDIRECT_HOPS. Reported as a chain, not as an error:
+    // the addresses are known and B19 states them.
     return {
       url,
-      finalUrl: res.url || url,
-      status: res.status,
-      html,
-      cacheControl: res.headers.get("cache-control"),
-      age: res.headers.get("age"),
-      xRobotsTag: res.headers.get("x-robots-tag"),
-      passwordProtected: isPasswordPage(html),
+      finalUrl: current,
+      status: chain[chain.length - 1]?.status ?? 0,
+      html: "",
+      cacheControl: null,
+      age: null,
+      xRobotsTag: null,
+      passwordProtected: false,
+      chain,
+      error: `more than ${MAX_REDIRECT_HOPS} redirects`,
     };
   } catch (error) {
     return {
       url,
-      finalUrl: url,
+      finalUrl: current,
       status: 0,
       html: "",
       cacheControl: null,
       age: null,
       xRobotsTag: null,
       passwordProtected: false,
+      chain,
       error: describeError(error),
     };
+  }
+}
+
+/**
+ * One internal link, asked only whether it answers. HEAD first, because that
+ * is what the question needs and it is the cheaper request for the merchant's
+ * own storefront; a server that refuses HEAD (405, or 501) is asked again with
+ * GET, because "this server does not do HEAD" is not "this link is broken".
+ */
+export async function checkOneLink(
+  url: string,
+  cookie: string | null,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LinkResult> {
+  const headers: Record<string, string> = { "User-Agent": SCAN_USER_AGENT };
+  if (cookie) headers.Cookie = cookie;
+  try {
+    const head = await fetchImpl(url, { method: "HEAD", headers, redirect: "follow" });
+    if (head.status !== 405 && head.status !== 501) return { url, status: head.status };
+    const get = await fetchImpl(url, { method: "GET", headers, redirect: "follow" });
+    return { url, status: get.status };
+  } catch {
+    // Zero, never a 5xx: the request could not be made, which is a different
+    // thing from a server answering badly, and B16 prints them differently.
+    return { url, status: 0 };
   }
 }
 
@@ -657,6 +932,24 @@ export type PageContext = {
   markets: MarketsInfo | null;
   /** Null when the sitemap could not be read: A7 then says nothing. */
   sitemap: SitemapRead | null;
+  /**
+   * B23. The one robots.txt read this pass already made, reviewed. Null when
+   * the file could not be fetched, and the row then says nothing at all rather
+   * than reporting an empty file as a clean one.
+   */
+  robots?: RobotsReview | null;
+  /**
+   * B21. Title tag to handles, built once per pass from what is stored on the
+   * shop's other rows. Null means the comparison was not made - on a single
+   * page read from the product editor, for instance - and B21 is then silent.
+   */
+  titlesByKey?: Map<string, string[]> | null;
+  /**
+   * B16. What the link fetches answered, and how many of the page's links they
+   * covered. Null means no link was fetched, and B16 says nothing: "not
+   * checked" is never rendered as "nothing broken".
+   */
+  links?: { results: LinkResult[]; plan: LinkPlan; checked: number } | null;
 };
 
 export type MarketsInfo = {
@@ -849,6 +1142,11 @@ export type PageRow = {
   cacheControl: string | null;
   age: string | null;
   findings: Finding[];
+  /**
+   * The page's title tag, for the SeoScan column B21 compares against on later
+   * nights. Null when the page carries no title tag or could not be read.
+   */
+  pageTitle: string | null;
 };
 
 /**
@@ -915,7 +1213,14 @@ export function readingOf(
     appBlock: null,
     cacheControl: page.cacheControl,
     age: page.age,
+    pageTitle: null,
   };
+
+  // B19 is asked before every other branch, and this is the reason: a redirect
+  // loop never reaches a 200, so a chain check that ran only on a page that
+  // answered would be silent on exactly the case it exists for. B5 says the
+  // page could not be read; B19 says why, with the addresses.
+  const b19 = checkRedirectChain(page.chain ?? []);
 
   if (page.error) {
     return {
@@ -923,6 +1228,7 @@ export function readingOf(
       status: "error",
       findings: [
         { code: "B5", source: "B", detail: { reason: "unreachable", error: page.error } },
+        ...(b19 ? [b19] : []),
       ],
     };
   }
@@ -950,6 +1256,7 @@ export function readingOf(
             finalUrl: page.finalUrl,
           },
         },
+        ...(b19 ? [b19] : []),
       ],
     };
   }
@@ -1077,6 +1384,35 @@ export function readingOf(
   const a2 = offer ? checkOfferConsistency(offer, extractSchemaOffer(page.html)) : null;
   if (a2) findings.push(a2);
 
+  // B10 to B24 (PRD-SEO-FULL-ONPAGE sections 3 and 5a). Every one is a pure
+  // function over this page's HTML, and every one is pushed in code order so
+  // the row's findings read the same way twice. Three of them need something a
+  // single page does not have, and each returns null rather than guessing when
+  // the caller did not supply it: B16 the results of the link fetches, B21 the
+  // other pages' titles, B23 the shop's robots.txt.
+  const pageTitle = extractTitleTag(page.html);
+
+  const onPage: (Finding | null)[] = [
+    checkTitleTag(page.html),
+    checkMetaDescription(page.html),
+    checkH1(page.html),
+    checkOpenGraph(page.html),
+    checkTwitterCard(page.html),
+    checkPageAltText(page.html),
+    context.links
+      ? checkInternalLinks(context.links.results, context.links.plan, context.links.checked)
+      : null,
+    thinContentOf(page.html),
+    checkHandle(context.handle),
+    b19,
+    checkMixedContent(page.html, page.finalUrl),
+    context.titlesByKey ? checkDuplicateTitle(pageTitle, context.handle, context.titlesByKey) : null,
+    checkDeprecatedNodes(nodes),
+    checkRobotsReview(context.robots ?? null),
+    checkMetaKeywords(page.html),
+  ];
+  for (const finding of onPage) if (finding) findings.push(finding);
+
   return {
     status: "ok",
     nodes,
@@ -1086,7 +1422,28 @@ export function readingOf(
     cacheControl: page.cacheControl,
     age: page.age,
     findings,
+    pageTitle,
   };
+}
+
+/**
+ * B17, with the description taken off the page rather than out of the
+ * catalogue: this is the source B row, and what the merchant's admin holds is
+ * not necessarily what the theme rendered.
+ */
+function thinContentOf(html: string): Finding | null {
+  let ldDescription: string | null = null;
+  for (const node of extractLdObjects(html)) {
+    const types = node?.["@type"];
+    const list = Array.isArray(types) ? types.map(String) : types ? [String(types)] : [];
+    if (!list.includes("Product")) continue;
+    if (typeof node?.description === "string" && node.description.trim() !== "") {
+      ldDescription = node.description;
+      break;
+    }
+  }
+  const { text, source } = pageDescription(html, ldDescription);
+  return checkThinContent(html, text, source);
 }
 
 // --- the nightly pass ------------------------------------------------------
@@ -1140,6 +1497,20 @@ export type SourceBReport = {
     stale?: number;
     error?: string;
   };
+  /**
+   * B16's spend. Link fetches come out of the same daily budget as the pages
+   * (PRD section 3), so a night that read 480 pages and 20 links spent 500 -
+   * and the report says which was which rather than leaving a reader to
+   * wonder why 480 pages exhausted a 500-page allowance.
+   */
+  links?: {
+    /** Distinct link addresses fetched tonight, across every page. */
+    fetched: number;
+    /** Pages whose links were checked at all. */
+    pages: number;
+    /** Pages that carried more links than the per-page cap. */
+    capped: number;
+  };
 };
 
 export type ScanDeps = {
@@ -1150,6 +1521,23 @@ export type ScanDeps = {
 };
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One title into B21's map. Silent on a null title or a null handle: a page
+ * that has never been read has nothing to compare and must not become a
+ * duplicate of every other unread page.
+ */
+function addTitle(
+  map: Map<string, string[]>,
+  title: string | null,
+  handle: string | null,
+): void {
+  if (!title || title.trim() === "" || !handle) return;
+  const key = titleKey(title);
+  const list = map.get(key);
+  if (!list) map.set(key, [handle]);
+  else if (!list.includes(handle)) list.push(handle);
+}
 
 /** The columns tonight's pass reads back before it writes. */
 type Candidate = {
@@ -1301,6 +1689,29 @@ export async function scanShopPages(input: {
   // budget a figure rather than a limit.
   const allowance = Math.max(0, allowanceBeforeSitemap - sitemap.fetches);
 
+  // B23: the robots.txt this pass already fetched, reviewed once and written
+  // onto every page row. Not a second request.
+  const robotsReview = reviewRobots(robots);
+
+  // B21: every title tag this shop has stored, by its comparison key. Read
+  // once, before the loop, because the pages that share a title were read on
+  // other nights - 500 a night means a large catalogue spreads one comparison
+  // over many of them. Rows read tonight are folded into the same map as they
+  // are read, so two products scanned in the same pass see each other too.
+  //
+  // Not read at all when there is no allowance left: a pass that will fetch
+  // nothing asks the database nothing either, which is the same promise the
+  // sitemap fetch above keeps.
+  const titlesByKey = new Map<string, string[]>();
+  if (allowance > 0) {
+    for (const stored of await db.seoScan.findMany({
+      where: { shopId, handle: { not: null }, pageTitle: { not: null } },
+      select: { handle: true, pageTitle: true },
+    })) {
+      addTitle(titlesByKey, stored.pageTitle, stored.handle);
+    }
+  }
+
   const candidates: Candidate[] =
     allowance === 0
       ? []
@@ -1311,18 +1722,74 @@ export async function scanShopPages(input: {
           select: { id: true, productId: true, handle: true, offer: true, findings: true },
         });
 
+  // What is left of tonight's allowance, decremented by every request this
+  // loop makes - pages and B16's links alike. `candidates` was taken at
+  // `allowance` on the assumption that every request is a page; link checks
+  // spend from the same number, so a night that checks links reads fewer
+  // pages, and the pass stops when this reaches zero rather than when the
+  // candidate list runs out. Without this the budget would be a figure about
+  // pages rather than a limit on what this app asks of a storefront.
+  let left = allowance;
+  const linkCache = new Map<string, number>();
+  const linkSpend = { fetched: 0, pages: 0, capped: 0 };
+
   let first = true;
   for (const row of candidates) {
+    if (left <= 0) break;
     if (!first) await sleep(REQUEST_INTERVAL_MS);
     first = false;
 
     const url = `${origin}${PRODUCTS_PATH}${row.handle}`;
     const page = await readProductPage(url, cookie, fetchImpl);
+    left -= 1;
+
+    // B16, and only on a page that answered: fetching the links of a password
+    // form would spend the budget checking the theme's login page.
+    let links: { results: LinkResult[]; plan: LinkPlan; checked: number } | null = null;
+    if (page.status === 200 && !page.passwordProtected && !page.error) {
+      const plan = internalLinks(page.html, page.finalUrl, LINK_CHECK_CAP);
+      if (plan.urls.length > 0) {
+        const results: LinkResult[] = [];
+        let checked = 0;
+        for (const link of plan.urls) {
+          // Each distinct address is charged once per pass. A storefront links
+          // to the same collection from the breadcrumb, the menu and the
+          // footer on every one of its pages; paying for that once a night is
+          // the difference between B16 costing 20 requests a page and costing
+          // 20 requests a store.
+          const cached = linkCache.get(link);
+          if (cached !== undefined) {
+            results.push({ url: link, status: cached });
+            checked += 1;
+            continue;
+          }
+          if (left <= 0) break;
+          await sleep(REQUEST_INTERVAL_MS);
+          const result = await checkOneLink(link, cookie, fetchImpl);
+          left -= 1;
+          linkCache.set(link, result.status);
+          await spendPages(shopId, 1, startedAt);
+          linkSpend.fetched += 1;
+          results.push(result);
+          checked += 1;
+        }
+        if (checked > 0) {
+          links = { results, plan, checked };
+          linkSpend.pages += 1;
+          if (plan.capped) linkSpend.capped += 1;
+        }
+      }
+    }
+
     const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null, {
       handle: row.handle,
       markets,
       sitemap: sitemap.read,
+      robots: robotsReview,
+      titlesByKey,
+      links,
     });
+    addTitle(titlesByKey, reading.pageTitle, row.handle);
 
     // Spent as it is spent, not once at the end. A throw from the update
     // below, or the worker machine going away mid-pass, used to discard the
@@ -1356,18 +1823,25 @@ export async function scanShopPages(input: {
         noindex: reading.noindex,
         appBlock: reading.appBlock,
         cacheControl: reading.cacheControl,
+        pageTitle: reading.pageTitle,
         findings: [...keptFromSourceA, ...reading.findings] as any,
       },
     });
   }
 
+  report.links = linkSpend;
+
   report.remaining = await waiting();
   // Three states, never conflated. A shop with no rows has not finished; it has
   // not started, and the thing to do is the catalogue pass, not another night.
+  // `left`, not `scanned >= allowance`: B16's link fetches spend from the same
+  // number, so a night can exhaust the budget with fewer pages read than the
+  // allowance it started with. Counting pages here would report that night as
+  // "up to date" while pages were still waiting.
   report.stopped =
     report.rows === 0
       ? "no_catalogue"
-      : report.scanned >= allowance && report.remaining > 0
+      : left <= 0 && report.remaining > 0
         ? "budget"
         : "up_to_date";
   report.nightsToFinish = budget > 0 ? Math.ceil(report.remaining / budget) : 0;
@@ -1452,6 +1926,21 @@ export async function scanOneProductPage(input: {
     handle: row.handle,
     markets,
     sitemap: null,
+    // B23 costs nothing extra: robots.txt was fetched two lines above, because
+    // this button obeys the same Disallow the nightly pass obeys.
+    robots: reviewRobots(robots),
+    // B16 and B21 are deliberately not asked here.
+    //
+    // B16 would spend up to twenty more storefront requests on one click, and
+    // the guard on this action is one page of budget. A merchant pressing a
+    // button must not be able to spend twenty-one.
+    //
+    // B21 compares this page's title against every other page's, and that
+    // comparison is a query over the whole table; the nightly pass makes it
+    // once for the whole catalogue. Both are carried forward below rather than
+    // recomputed, so a press never clears a finding it did not re-ask.
+    titlesByKey: null,
+    links: null,
   });
 
   const keptFromSourceA = findingsOf(row.findings).filter(isSourceAFinding);
@@ -1459,11 +1948,14 @@ export async function scanOneProductPage(input: {
   // owns the code and rewrites its whole half, so without this a button press
   // would silently clear a finding the nightly pass established - "not
   // re-checked" reported as "no longer true". The same applies to B9 when the
-  // markets read is unavailable.
+  // markets read is unavailable, and to B16 and B21, which this path never
+  // asks at all.
   const carried = findingsOf(row.findings).filter(
     (f) =>
       (f.code === "A7" && !reading.findings.some((n) => n.code === "A7")) ||
-      (f.code === "B9" && markets === null),
+      (f.code === "B9" && markets === null) ||
+      f.code === "B16" ||
+      f.code === "B21",
   );
   reading.findings = [...reading.findings, ...carried];
   const scannedAt = now();
@@ -1477,6 +1969,7 @@ export async function scanOneProductPage(input: {
       noindex: reading.noindex,
       appBlock: reading.appBlock,
       cacheControl: reading.cacheControl,
+      pageTitle: reading.pageTitle,
       findings: [...keptFromSourceA, ...reading.findings] as any,
     },
   });

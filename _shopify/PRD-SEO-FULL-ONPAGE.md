@@ -596,3 +596,143 @@ the difference between "we did work" and "here is what changed".
 
 Final count: 16 data checks (A1 to A16) and 32 page checks (B1 to B32), every
 one a row with a denominator, none a score.
+
+---
+
+## 8. Build step 4 as built, 4 September 2026: B10 to B24
+
+Every deviation from sections 3 and 5a is named here rather than left for the
+next reader to find. Where this document and the code disagreed, the document
+is corrected and the correction is said out loud.
+
+### 8.1 What was built
+
+All fifteen checks, in the order the step asked for, each with its test before
+the next started, and B16 last because it spends budget. Every one is a source
+B row on `SeoScan`, a row on the findings card with its own denominator
+(`CHECKS` in `seo-aggregate.ts`, all fifteen `basis: "pagesRead"`), and a line
+in the product editor's "What a crawler sees" section. The pure checks are in
+`app/services/seo-onpage.ts`, which imports nothing with a `.server` suffix, so
+each is asserted from a string of HTML.
+
+`read_markets` was added to `access_scopes` (Marius, 4 September 2026). B9 now
+runs for real; its "not applicable" state for a single-market shop and its
+"could not be read" state for a refusal are both still reachable and both still
+tested.
+
+### 8.2 Deviations from sections 3 and 5a
+
+1. **B17 asks about the product description, not "the description" in general.**
+   Section 3 says "the description under 40 words". Taking that from the meta
+   description makes B11 and B17 contradict each other on every product in every
+   catalogue: B11 reports a meta description over about 160 characters, and 160
+   characters cannot hold 40 words. B17 reads the description from the page's
+   own Product node and reports null - "could not be asked" - when the page
+   states none.
+2. **B12 absorbs B12a rather than giving the logo case its own code**, as
+   section 5b's own table proposes ("added to B12's row as a named case"). One
+   H1 that is the logo is a finding with `logoInH1: true` and the signals that
+   were seen; the count is separately correct and the row says so.
+3. **B16's cap is per page and its cache is per pass.** Section 3 says "one
+   fetch per distinct URL per pass, with a cap of 20 links per page", and that
+   is what is built - a storefront links to the same collection from the
+   breadcrumb, the menu and the footer of every page, so the second page's links
+   usually cost nothing. What the section did not say, and what is now explicit
+   in the tests, is the arithmetic across the whole pass: pages and links come
+   out of one allowance, and `stopped` is computed from what is left of it
+   rather than from pages read. Counting pages alone would have reported a night
+   that spent its budget on links as finished, with pages still waiting.
+4. **B16 does not run on the "Read this page now" button.** The button is
+   guarded by one page of budget; checking links there would let one click spend
+   twenty-one requests. The previous B16 finding is carried forward untouched,
+   the same rule A7 and B9 already follow: not re-checked is never rendered as
+   no longer true. B21 is carried forward for the same reason - its comparison
+   is a query over the whole table, made once per pass.
+5. **B19 is asked before the response branches, and it changed how a page is
+   fetched.** `readProductPage` follows redirects by hand (`redirect: "manual"`,
+   five hops maximum) instead of with `redirect: "follow"`. Identical HTTP
+   traffic; the difference is that the chain is visible at all. A loop never
+   reaches a 200, so a chain check that ran only on pages that answered would be
+   silent on exactly the case it exists for.
+6. **B21 needed a column.** `SeoScan.pageTitle`, migration
+   `20260906090000_seo_scan_page_title`, down path written first. Not in this
+   document, and unavoidable: at 500 pages a night the two products sharing a
+   title are read on different nights.
+7. **B22's type list is two entries, and the sitelinks search box is
+   deliberately not one of them.** It is a property on a `WebSite` node, not a
+   type, and this app emits a `WebSite` node itself; a check by type would have
+   reported our own correct output as deprecated.
+8. **B23 is written onto every page row of the pass rather than being a
+   per-shop row.** The file applies to every page, so its denominator is the
+   pages read and "500 of 500" is the honest reading of one edited line. A shop
+   whose robots.txt turns the scan away reads zero pages, so B23 shows "not yet
+   read" there and the card's existing robots sentence carries the Disallow -
+   which is the sentence that screen already had.
+9. **B24 states Google's position without the word it cannot use.** The PRD
+   asks for "Google's sentence that it has no effect", and Google's own sentence
+   names indexing and ranking. Section 5's grep forbids "rank" on any screen.
+   The row says Google does not use the tag and that it has no effect on
+   indexing, which is the same fact with the forbidden half left out rather than
+   the rule quietly broken. A test asserts both.
+10. **A method line exists, and it is a new thing.** Section 3 asks for the
+    threshold source "in the row's method line" without saying where such a line
+    lives. `CHECK_METHOD` in `seo-findings.ts`, rendered under the label on the
+    SEO card and under the finding in the product editor. Ten of the fifteen
+    have one; the other five quote nothing and carry none.
+
+### 8.3 Two things a live read corrected, and what they say about writing from memory
+
+`scripts/read-onpage-checks.ts` (new, read-only: no database, no Admin call, and
+it does not touch the shop's daily budget) fetches a store's product sitemap and
+runs every check against real pages. Run against `mrdigital-dev` before this
+step was called done, it found two defects that no unit test could have:
+
+- **The list of Shopify's own robots.txt Disallow lines was written from
+  memory** and matched 25 of the dev store's 40, so B23 reported 15 unrecognised
+  lines on a store nobody had touched. Shopify's file has changed shape - it now
+  carries an Allow block and agent instructions in comments. Read off the live
+  file it matches all 40. The row's wording was already the careful one ("not
+  part of the file Shopify ships as this app knows it") and that is what saved
+  it from being a false accusation rather than a wrong number.
+- **`seo-onpage.ts` had its own six-entry entity table.** A dev store title came
+  back as "Aarhus Round Dining Set & 4 Chairs - Nordwood &ndash; MRDigital-dev":
+  `ndash` was not in it, so B10 would have printed an entity at a merchant and
+  counted it as seven characters instead of one. Entity handling now comes from
+  the engine, where every other text this app shows already got it.
+
+### 8.4 What the checks find on the dev store, 4 September 2026
+
+Twenty product pages, read through the storefront password, nothing written:
+
+```
+robots.txt: read, 40 lines Shopify ships, 0 it does not recognise,
+            blocking neither /products/ nor /collections/
+Sitemap: 50 product URLs, reading 20.
+Pages read as a crawler sees them: 20. Could not be read: 0.
+
+  B13   20 of 20  Open Graph tags absent            (og:image, on every page)
+  B14   20 of 20  Twitter card tags absent          (twitter:image)
+  B22   20 of 20  Structured data Google no longer shows   (FAQPage)
+  B17   15 of 20  Short description, or little text  (36 words, from the Product node)
+  B10    1 of 20  Title length                       (61 characters)
+
+Raised nothing on these pages: B11, B12, B15, B16, B18, B19, B20, B21, B23, B24
+```
+
+B16 raised nothing because this script does not fetch links, and that is stated
+rather than counted as a pass. The other nine are genuine silences on this
+store.
+
+**The B22 result is this app's own output**, and it is the reason the two
+`FAQPage` nodes in the block gained the emitter marker the four other nodes
+already carried: without it the row named a node of ours without saying it was
+ours. Extension change, so it ships with the deploy.
+
+### 8.5 One defect found next door and not fixed here
+
+On a shop with a storefront password, A7 reports nothing at all: the nightly
+pass unlocks the storefront and then calls `fetchSitemap` with the plain fetch,
+so the sitemap answers with the password form. Found while writing
+`read-onpage-checks.ts`, which passes the cookie and reads the file. Not fixed
+in this step - A7 belongs to the step that built it, and a fix that arrives
+inside an unrelated wave is how a class of defect comes to be half closed.

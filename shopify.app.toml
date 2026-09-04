@@ -55,7 +55,16 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_themes"
+#
+# read_markets added 4 September 2026 (Marius). Check B9 asks whether a
+# multi-market shop declares hreflang; without this scope the `markets` query
+# is refused, readMarkets returns null and B9 can only ever say "could not be
+# read". Adding it re-prompts every merchant for authorisation on the next
+# load, which costs nothing today - the dev store is the only install.
+# The two states B9 keeps are both still reachable and both still tested: a
+# single-market shop reads "not applicable", and a refusal (an older token, a
+# plan that does not expose markets) still reads "could not be read".
+scopes = "read_products,write_products,read_themes,read_markets"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
