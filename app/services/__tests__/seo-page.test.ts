@@ -252,7 +252,12 @@ describe("what one page says", () => {
   it("finds nothing on a page with one theme node, a self canonical and our block", () => {
     const row = readingOf(page(CLEAN), null);
     expect(row.status).toBe("ok");
-    expect(row.findings).toEqual([]);
+    // B29 and B32 are on every page that answered, and always will be: they
+    // are counts and not verdicts, so "nothing wrong with this page" is the
+    // absence of every OTHER code rather than an empty array. They render in
+    // the card's own "counted, not judged" group and never as a finding.
+    // Changed 4 September 2026 when B25 to B32 were built.
+    expect(codes(row.findings)).toEqual(["B29", "B32"]);
     expect(row.appBlock).toBe("present");
     expect(row.canonical).toBe(URL_A);
     expect(row.noindex).toBe(false);
@@ -402,8 +407,9 @@ describe("what one page says", () => {
     expect(row.cacheControl).toBe("max-age=300");
     expect(row.age).toBe("120");
     // A cached page is a finding about the cache, not about the theme: the
-    // page's own findings are unaffected.
-    expect(row.findings).toEqual([]);
+    // page's own findings are unaffected - which is now the two counted rows
+    // every page carries and nothing else.
+    expect(codes(row.findings)).toEqual(["B29", "B32"]);
   });
 });
 
@@ -1475,6 +1481,232 @@ describe("B21 across the pass", () => {
 
     const findings = mockUpdate.mock.calls[0][0].data.findings as any[];
     expect(findings.some((f) => f.code === "B21")).toBe(false);
+  });
+});
+
+// --- B25 and B30 inside the pass, and what they spend ------------------------
+
+describe("B25 and B30 across the pass", () => {
+  const INDEX = `<?xml version="1.0"?><sitemapindex>
+      <sitemap><loc>${ORIGIN}/sitemap_products_1.xml</loc></sitemap>
+      <sitemap><loc>${ORIGIN}/sitemap_collections_1.xml</loc></sitemap>
+      <sitemap><loc>${ORIGIN}/sitemap_blogs_1.xml</loc></sitemap>
+    </sitemapindex>`;
+
+  /**
+   * A storefront with two collection pages and two blog posts, so the pass's
+   * arithmetic can be counted rather than described.
+   *
+   * The collection grid links p0 by its collection-prefixed address only and
+   * p1 by both, which is exactly the pair B25 exists to tell apart.
+   */
+  const COLLECTION_GRID = `<html><body>
+      <a href="${ORIGIN}/collections/mese/products/p0">p0</a>
+      <a href="${ORIGIN}/collections/mese/products/p1">p1</a>
+      <a href="${ORIGIN}/products/p1">p1 again</a>
+    </body></html>`;
+  const POST_WITH_LINK = `<html><body><a href="${ORIGIN}/products/p0">Buy</a></body></html>`;
+  const POST_WITHOUT = `<html><body><p>Just words, and <a href="/pages/about">about us</a>.</p></body></html>`;
+
+  function shopFetch(
+    options: {
+      collections?: number;
+      posts?: string[];
+    } = {},
+  ) {
+    const collectionCount = options.collections ?? 2;
+    const posts = options.posts ?? [POST_WITH_LINK, POST_WITHOUT];
+    const collectionUrls = Array.from(
+      { length: collectionCount },
+      (_, i) => `${ORIGIN}/collections/c${i}`,
+    );
+    const postUrls = posts.map((_, i) => `${ORIGIN}/blogs/news/post-${i}`);
+    const fetched: string[] = [];
+
+    const impl = vi.fn(async (url: string) => {
+      fetched.push(url);
+      if (url.endsWith("/robots.txt")) return reply(ROBOTS_OPEN);
+      if (url.endsWith("/sitemap.xml")) return reply(INDEX);
+      if (url.includes("sitemap_products")) {
+        return reply(`<urlset><url><loc>${ORIGIN}/products/p0</loc></url></urlset>`);
+      }
+      if (url.includes("sitemap_collections")) {
+        return reply(
+          `<urlset>${collectionUrls.map((u) => `<url><loc>${u}</loc></url>`).join("")}</urlset>`,
+        );
+      }
+      if (url.includes("sitemap_blogs")) {
+        return reply(`<urlset>${postUrls.map((u) => `<url><loc>${u}</loc></url>`).join("")}</urlset>`);
+      }
+      if (url.includes("/collections/")) return reply(COLLECTION_GRID, { url });
+      if (url.includes("/blogs/")) return reply(posts[postUrls.indexOf(url)], { url });
+      return reply(CLEAN, { url });
+    });
+    return { impl, fetched, collectionUrls, postUrls };
+  }
+
+  it("puts B25 on the product whose canonical nothing links to, and on no other", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl } = shopFetch();
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    const b25 = mockUpdate.mock.calls
+      .map((call: any) => ({
+        id: call[0].where.id,
+        finding: (call[0].data.findings as any[]).find((f) => f.code === "B25"),
+      }))
+      .filter((row) => row.finding);
+    // p0 is linked only by the long form; p1 is linked by both, so its
+    // canonical is linked and B25 has nothing to say about it.
+    expect(b25).toHaveLength(1);
+    expect(b25[0].id).toBe("row0");
+    // Two, not one: both collection pages carry the grid, and the count is
+    // summed across every collection page the pass read. That is the point of
+    // summing rather than taking the last page's answer - a product linked
+    // plainly from one collection and long-form from another has its canonical
+    // linked, and only a sum can see that.
+    expect(b25[0].finding.detail).toEqual({ long: 2, short: 0 });
+  });
+
+  it("reads the collection pages before any product page, and charges every one", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl, fetched } = shopFetch();
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    // Before, because a product row is written once per pass: a B25 computed
+    // after the loop would have no row left to sit on.
+    const firstProduct = fetched.findIndex((u) => u.includes("/products/"));
+    const lastCollection = fetched.map((u) => u.includes("/collections/")).lastIndexOf(true);
+    expect(lastCollection).toBeLessThan(firstProduct);
+
+    // The arithmetic, stated: 1 sitemap index + 3 child sitemaps + 2
+    // collection pages + 2 product pages + 2 blog posts = 10 requests, and
+    // every one of them is charged to the same daily counter.
+    expect(report.sitemap?.fetches).toBe(4);
+    expect(report.collections).toEqual({ available: 2, read: 2, fetches: 2 });
+    expect(report.scanned).toBe(2);
+    expect(report.blog).toEqual({ available: 2, read: 2, withoutLinks: 1 });
+    const spends = mockSettingUpsert.mock.calls.filter(
+      (c: any) => c[0].create.key === SPEND_SETTING_KEY,
+    );
+    // Four for the sitemaps in one write, then one per page thereafter.
+    expect(spends.map((c: any) => JSON.parse(c[0].update.value).pages)).toEqual([
+      4, 5, 6, 7, 8, 9, 10,
+    ]);
+  });
+
+  it("gives blog posts only what is left after the products, and says it read none", async () => {
+    // The budget arithmetic B30 turns on, and the reason it is read last.
+    // Budget 8: 4 sitemap fetches, then 2 collection pages, leaves 2 - which
+    // the two product pages take in full. Nothing is left for the blog, and
+    // the report must say it read no post rather than that no post lacks a
+    // link.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl, fetched } = shopFetch();
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 8,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(report.collections?.fetches).toBe(2);
+    expect(report.scanned).toBe(2);
+    expect(report.blog).toEqual({ available: 2, read: 0, withoutLinks: 0 });
+    expect(fetched.some((u) => u.includes("/blogs/news/"))).toBe(false);
+    // Nothing was recorded, so the screen says no post has been read rather
+    // than keeping a number from a night that did read some.
+    expect(mockSettingDeleteMany).toHaveBeenCalledWith({
+      where: { shopId: "shop1", key: "seo_blog_posts" },
+    });
+  });
+
+  it("stops reading collection pages when the allowance runs out before them", async () => {
+    // Budget 5: the four sitemap fetches leave one, so one collection page is
+    // read and the second is not - and no product page is read at all. The row
+    // for the product that was never read carries no B25, which is the honest
+    // answer and not a clean one.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 2 });
+    const { impl } = shopFetch();
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 5,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(report.collections).toEqual({ available: 2, read: 1, fetches: 1 });
+    expect(report.scanned).toBe(0);
+    expect(report.stopped).toBe("budget");
+    expect(report.blog).toEqual({ available: 2, read: 0, withoutLinks: 0 });
+  });
+
+  it("records B25's per-collection half, which has no product row to sit on", async () => {
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(2)));
+    counts({ rows: 2, waiting: 0 });
+    const { impl } = shopFetch();
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    const write = mockSettingUpsert.mock.calls.find(
+      (c: any) => c[0].create.key === "seo_collection_links",
+    )!;
+    const value = JSON.parse(write[0].create.value);
+    expect(value).toMatchObject({ pagesRead: 2, pagesAvailable: 2, capped: false });
+    // Two long-form links and one plain one on each of the two pages.
+    expect(value.long).toBe(4);
+    expect(value.short).toBe(2);
+  });
+
+  it("says nothing about the blog or the collections when the sitemap names neither", async () => {
+    // A shop with no blog and no collection sitemap costs nothing extra and
+    // gets no line, rather than a line saying zero.
+    settings(0);
+    mockFindMany.mockImplementation(answerFindMany(rows(1)));
+    counts({ rows: 1, waiting: 0 });
+    const { impl } = routedFetch(
+      () => reply(CLEAN, { url: URL_A }),
+      ROBOTS_OPEN,
+      () => reply(`<urlset><url><loc>${ORIGIN}/products/p0</loc></url></urlset>`),
+    );
+
+    const report = await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep },
+    });
+
+    expect(report.collections).toEqual({ available: 0, read: 0, fetches: 0 });
+    expect(report.blog).toEqual({ available: 0, read: 0, withoutLinks: 0 });
   });
 });
 

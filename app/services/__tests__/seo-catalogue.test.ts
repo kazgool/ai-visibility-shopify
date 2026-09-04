@@ -281,6 +281,11 @@ describe("A16, orphan products", () => {
   const menus: MenuLinks = {
     productIds: new Set(["gid://shopify/Product/2"]),
     handles: new Set(["chair-c"]),
+    // B28 widened MenuLinks on 4 September 2026. A16 does not read either map,
+    // but the type is one thing and a literal that omits half of it is how a
+    // widened type is discovered by the compiler instead of by a reader.
+    productDepth: new Map([["gid://shopify/Product/2", 1], ["chair-c", 2]]),
+    collectionDepth: new Map([["chairs", 1]]),
   };
   const product = (id: string, handle: string, collections: { handle: string; title: string }[]) => ({
     id,

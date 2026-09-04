@@ -77,7 +77,25 @@ export type CheckBasis = "catalogue" | "pagesRead" | "pagesTried";
  * never runs would read "not yet read" for ever, which is a promise, not a
  * finding.
  */
-export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis }[] = [
+/**
+ * `reports: true` marks a check that counts and never judges.
+ *
+ * Two checks are like that so far, B29 and B32, and both for the same stated
+ * reason: no named source gives a target number for the internal links on a
+ * product page or for the scripts it loads, so this app gives none either.
+ * They are rendered at the bottom of the card with their numbers and no
+ * found-or-clean framing, which is Break The Web's own rule for an audit -
+ * do not report what the merchant cannot act on - applied to the screen.
+ *
+ * It is not a fourth `CheckBasis` and not a `source`: those say where a number
+ * came from, this says what the number means.
+ */
+export const CHECKS: {
+  code: FindingCode;
+  source: CheckSource;
+  basis: CheckBasis;
+  reports?: boolean;
+}[] = [
   { code: "A1", source: "A", basis: "catalogue" },
   // A + B: needs the page as well as the catalogue, so it is asked only of
   // pages that answered.
@@ -146,6 +164,36 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
   // inflation of it.
   { code: "B23", source: "B", basis: "pagesRead" },
   { code: "B24", source: "B", basis: "pagesRead" },
+  // B25 to B32 (PRD-SEO-FULL-ONPAGE section 5b, page half), built 4 September
+  // 2026. Read off the page like B10 to B24, so counted over the pages that
+  // answered - with two deliberate exceptions stated here rather than left to
+  // be inferred.
+  //
+  // B25 needs the collection pages this pass fetched as well as the product
+  // page, and a product that appeared on none of them produces no finding at
+  // all rather than a clean one. Its denominator is still the pages read,
+  // because the row is about the product whose canonical nothing links to.
+  { code: "B25", source: "B", basis: "pagesRead" },
+  { code: "B26", source: "B", basis: "pagesRead" },
+  // B27 is not here and is not a code: it is B1 with the sources named, and
+  // B1's detail carries them (seo-findings.ts says why at the union).
+  //
+  // B28 is the first exception: it is computed in source A's pass from the
+  // menu tree and collection membership, fetches no page at all, and is
+  // therefore counted over the catalogue. A7 is the same trade in the other
+  // direction - an A-numbered check that runs in source B's pass - and the
+  // rule both obey is that a count carries the denominator it was measured
+  // over, whatever the code's letter.
+  { code: "B28", source: "A", basis: "catalogue" },
+  // B29 and B32 are the second exception: counts, never verdicts.
+  { code: "B29", source: "B", basis: "pagesRead", reports: true },
+  // B30 is deliberately NOT here. Its denominator is the blog posts this pass
+  // read, which is not the catalogue and not the pages read, and a row must
+  // never borrow a denominator that is not its own (see CheckBasis). The SEO
+  // screen renders it from the per-shop record the pass writes, the same way
+  // it renders A10 and A11 from the collections report.
+  { code: "B31", source: "B", basis: "pagesRead" },
+  { code: "B32", source: "B", basis: "pagesRead", reports: true },
 ];
 
 /**
@@ -168,12 +216,23 @@ export const CHECKS: { code: FindingCode; source: CheckSource; basis: CheckBasis
  * see. Rendered as "clean" it would claim a check ran and passed, which is the
  * failure every other state on this list exists to prevent.
  */
+/**
+ * `counted` is the fifth state, added 4 September 2026 with B29 and B32.
+ *
+ * Every other state on this list answers "did the check pass". This one says
+ * the question was never a pass-or-fail: the row is a count with no target
+ * behind it, so "found" would invent a verdict this app has no source for and
+ * "clean" would invent the opposite. A `reports` check whose read has not
+ * happened yet is still `notYetRead` - a count of nothing measured is not a
+ * count of zero, which is the rule the whole list exists for.
+ */
 export type CheckState =
   | "found"
   | "clean"
   | "notYetRead"
   | "notApplicable"
-  | "couldNotRun";
+  | "couldNotRun"
+  | "counted";
 
 export type CheckRow = {
   code: FindingCode;
@@ -188,6 +247,13 @@ export type CheckRow = {
   notRead: number;
   /** Why the check could not run at all. Only set when the state says so. */
   reason?: string;
+  /**
+   * The numeric detail of a `reports` check, summed over every row that
+   * carries it. Only set on a `counted` row - B29's four link kinds, B32's
+   * script and origin counts - because those are the whole content of a row
+   * that states no verdict.
+   */
+  totals?: Record<string, number>;
 };
 
 export type FindingsAggregate = {
@@ -260,6 +326,14 @@ export type FindingsCounters = {
   passwordPages: number;
   couldNot: number;
   counts: Map<string, number>;
+  /**
+   * Per code, the sum of every numeric field in its detail across the rows
+   * that carry it. Only filled for `reports` codes: they are the only rows
+   * whose content is the numbers rather than the count of products, and
+   * summing every code's detail would put arithmetic on fields that are ids,
+   * lengths and statuses.
+   */
+  sums: Map<string, Record<string, number>>;
 };
 
 export function createFindingsCounters(): FindingsCounters {
@@ -271,8 +345,12 @@ export function createFindingsCounters(): FindingsCounters {
     passwordPages: 0,
     couldNot: 0,
     counts: new Map<string, number>(),
+    sums: new Map<string, Record<string, number>>(),
   };
 }
+
+/** The codes whose detail is summed. See FindingsCounters.sums. */
+const REPORTS_CODES = new Set(CHECKS.filter((c) => c.reports).map((c) => c.code as string));
 
 export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): void {
   counters.products += 1;
@@ -289,6 +367,13 @@ export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): v
     if (seen.has(finding.code)) continue;
     seen.add(finding.code);
     counters.counts.set(finding.code, (counters.counts.get(finding.code) ?? 0) + 1);
+    if (!REPORTS_CODES.has(finding.code)) continue;
+    const into = counters.sums.get(finding.code) ?? {};
+    for (const [key, value] of Object.entries(finding.detail ?? {})) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      into[key] = (into[key] ?? 0) + value;
+    }
+    counters.sums.set(finding.code, into);
   }
 }
 
@@ -327,7 +412,7 @@ export function buildFindingsAggregate(
   const singleMarket =
     typeof applicability.markets === "number" && applicability.markets <= 1;
 
-  const built: CheckRow[] = CHECKS.map(({ code, source, basis }) => {
+  const built: CheckRow[] = CHECKS.map(({ code, source, basis, reports }) => {
     const denominator = basisOf(basis);
     const notRead = products - denominator;
     const count = counts.get(code) ?? 0;
@@ -341,9 +426,15 @@ export function buildFindingsAggregate(
           ? "couldNotRun"
           : denominator === 0
             ? "notYetRead"
-            : count > 0
-              ? "found"
-              : "clean";
+            : // A reports check states no verdict, so it is never found and
+              // never clean - but it is still "not yet read" above when the
+              // read has not happened, because a count of nothing measured is
+              // not a count of zero.
+              reports
+              ? "counted"
+              : count > 0
+                ? "found"
+                : "clean";
     return {
       code,
       label: CHECK_LABEL[code],
@@ -353,6 +444,7 @@ export function buildFindingsAggregate(
       denominator,
       notRead,
       ...(refused ? { reason: refused } : {}),
+      ...(state === "counted" ? { totals: counters.sums.get(code) ?? {} } : {}),
     };
   });
 
@@ -379,6 +471,12 @@ export function buildFindingsAggregate(
   const couldNotRun = built
     .filter((r) => r.state === "couldNotRun")
     .sort((a, b) => a.code.localeCompare(b.code));
+  // Last of all, and that position is the point: these state no verdict, so
+  // putting them anywhere among the rows that do would invite a reader to
+  // treat them as one.
+  const counted = built
+    .filter((r) => r.state === "counted")
+    .sort((a, b) => a.code.localeCompare(b.code));
 
   return {
     products,
@@ -387,7 +485,7 @@ export function buildFindingsAggregate(
     pagesRead,
     couldNotBeRead: couldNot,
     neverScanned: products - pagesAttempted,
-    rows: [...found, ...notYetRead, ...couldNotRun, ...notApplicable],
+    rows: [...found, ...notYetRead, ...couldNotRun, ...notApplicable, ...counted],
     clean,
   };
 }
@@ -785,6 +883,49 @@ export function describeFinding(finding: Finding): string {
     }
     case "A16":
       return "This product is in no collection and no menu links to it, so the only route to it is the sitemap.";
+    case "B25": {
+      const n = Number(d.long ?? 0);
+      return (
+        `${n} link${n === 1 ? "" : "s"} on the collection pages read point at this product, and ` +
+        "every one of them uses the /collections/.../products/ form. Nothing links to the plain " +
+        "product address, which is the one the page asks Google to index."
+      );
+    }
+    case "B26":
+      return (
+        `This page says noindex, and the only thing it says is wrong with the product is that it ` +
+        `is out of stock (${d.availability}). A noindexed page behaves like a soft 404: the ` +
+        "address loses the standing it had, and it does not get it back when the product returns."
+      );
+    case "B28":
+      return (
+        `The shortest route from the home page to this product through your menus and collections ` +
+        `is ${d.depth} clicks, more than the ${d.limit} Break The Web state. No page was fetched to ` +
+        "work that out, so a link from inside a page's text is not counted."
+      );
+    case "B29":
+      return (
+        `Internal links on this page: ${d.breadcrumb} in a breadcrumb, ${d.related} in a related ` +
+        `or recommended block, ${d.collection} pointing at a collection, ${d.inDescription} inside ` +
+        `the description, ${d.total} distinct internal addresses in all. The kinds overlap. No ` +
+        "target number is stated, because no source states one."
+      );
+    case "B30":
+      return "This blog post links to no product and no collection.";
+    case "B31":
+      return (
+        "The first image inside the page body carries loading=\"lazy\", so the browser defers it " +
+        "until layout says it is near the viewport."
+      );
+    case "B32": {
+      const top = Array.isArray(d.top) ? d.top : [];
+      const named = top.map((o: any) => `${o.origin} (${o.count})`).join(", ");
+      return (
+        `${d.scripts} script tags from ${d.origins} origin${Number(d.origins) === 1 ? "" : "s"}` +
+        (named ? `: ${named}` : "") +
+        ". Counted, not judged - which of these you want is your call."
+      );
+    }
     case "B8": {
       const where = d.canonical ? `"${d.canonical}"` : "the canonical";
       const why =

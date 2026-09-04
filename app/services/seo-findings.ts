@@ -69,7 +69,30 @@ export type FindingCode =
   | "B21"
   | "B22"
   | "B23"
-  | "B24";
+  | "B24"
+  // B25 to B32: the page half of PRD-SEO-FULL-ONPAGE section 5b, built 4
+  // September 2026 (build step 4b).
+  //
+  // B27 is deliberately absent, and this is a different absence from A14's.
+  // A14 could not be built at all; B27 was built and put where it belongs.
+  // Section 5b describes it as "two Product nodes from two different sources,
+  // each with its own AggregateRating", and says in its own row that it is B1
+  // with the sources named. So B1's detail gained `origins` - which node came
+  // from the theme, which from an app, and which carries a rating - rather
+  // than the vocabulary gaining a second code that reports the same count of
+  // the same nodes on the same page. Two rows for one fact is a reader
+  // deciding which to believe.
+  //
+  // B28 is here even though it never reads a page: it is computed in source
+  // A's pass from the menu tree and collection membership. The number is the
+  // check; where it was measured is the method line's business.
+  | "B25"
+  | "B26"
+  | "B28"
+  | "B29"
+  | "B30"
+  | "B31"
+  | "B32";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -150,6 +173,17 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   B22: "Structured data on the page that Google no longer shows",
   B23: "robots.txt has been edited, or blocks products or collections",
   B24: "Meta keywords tag on the page",
+  B25: "Only collection-prefixed links point at this product, never its canonical URL",
+  B26: "The page says noindex on a product that is only out of stock",
+  // B28 is counted over the catalogue, not the pages read: no page is fetched
+  // to answer it. The row's own method line says so.
+  B28: "More than three clicks from the home page through menus and collections",
+  // B29 and B32 report counts and never a verdict, so their labels name what
+  // is being counted and claim nothing about it.
+  B29: "Internal links on the product page, by kind",
+  B30: "Blog post that links to no product and no collection",
+  B31: "The first image on the page is lazy-loaded",
+  B32: "Scripts the product page loads, by origin",
 };
 
 /**
@@ -188,6 +222,54 @@ export const CHECK_METHOD: Partial<Record<FindingCode, string>> = {
     "The product's collections from the catalogue read, and one menus query per " +
     "pass. No page is fetched and no link is followed, so this is what the Admin " +
     "API knows and not what a crawler would find.",
+  B25:
+    "Every link this pass saw pointing at this product used the " +
+    "/collections/x/products/y form. The Ahrefs Help Center describes the " +
+    "consequence on Shopify stores by name: the canonical URL then has no " +
+    "internal link pointing at it, so the address you are asking Google to " +
+    "index is the one address nothing on your shop links to. Read from the " +
+    "collection pages this pass fetched, so a product on no collection page " +
+    "is not checked rather than reported as clean.",
+  B26:
+    "Matthew Edgar and Glenn Davidson (Tomango) make the same point: a " +
+    "noindexed page behaves like a soft 404, so the address loses the " +
+    "standing it had and does not get it back when the product returns to " +
+    "stock - it has to be found and re-evaluated from nothing. The row states " +
+    "the availability the page itself declares. It does not say to remove the " +
+    "tag: on a product that is gone for good, noindex is a reasonable thing " +
+    "to have done, and only you know which of the two this is.",
+  B28:
+    "Break The Web's figure: more than three clicks from the home page. " +
+    "Computed from your menus and your collection membership with no crawl - " +
+    "a top-level menu item is one click, a product on a collection that item " +
+    "links to is two. A product reachable only through a link in a page's " +
+    "body text is counted at whatever its menu route costs, because no page " +
+    "is fetched to answer this.",
+  B29:
+    "Counts, and no target number, because no named source states one. The " +
+    "four kinds overlap and are not a partition: a related-products grid whose " +
+    "links are collection-prefixed is counted under both. A kind is read from " +
+    "the part of the markup a link sits in, so a theme that names its " +
+    "containers unusually will be counted unusually.",
+  B30:
+    "One fetch per post, out of the same daily allowance as the product " +
+    "pages, and read last so products keep the first claim on it. Counted " +
+    "over the posts this pass actually read, never over the posts you have. " +
+    "The row states what the post links to and nothing about what it ought to: " +
+    "a shipping-policy post that sells nothing is doing its job.",
+  B31:
+    "The first image inside the page body, and the loading attribute as " +
+    "found. Not \"the largest element\", which no server-side read can " +
+    "identify - what paints largest depends on the viewport and this app " +
+    "fetches HTML with no browser. On many themes the first image is the shop " +
+    "logo, which is a smaller fact than a lazy hero image.",
+  B32:
+    "A count of the script tags on the page by the host they load from, with " +
+    "inline scripts as their own group. Break The Web's \"ghost code\" is the " +
+    "practice behind it - scripts left behind by apps that are no longer "  +
+    "installed - but " +
+    "the count is a fact and the judgement is entirely yours: this app cannot " +
+    "know which host you want, and it names none of them as a problem.",
   B10:
     "Google: \"there's no limit on how long a title element can be, the title " +
     "link is truncated as needed, typically to fit the device width.\" " +

@@ -902,3 +902,161 @@ data the list already holds. Folding A4 into the list is a change to A4's
 semantics and to its tests, and a wave that reaches into a neighbouring check
 while nobody is looking is how a class of defect ends up half closed. Recorded
 here rather than done.
+
+---
+
+## 10. Build step 4b as built, 4 September 2026: B25 to B32
+
+### 10.0 The scope decision section 9.3 left to Marius, taken
+
+`read_online_store_navigation` is in `access_scopes`, on the same reasoning as
+`read_markets`: there are no merchant installs beyond the dev store, so the
+re-authorisation every merchant would be re-prompted for costs nothing today.
+One scope covers `urlRedirects` and `menus`, and therefore four checks - A4,
+A13, A16 and now B28 - of which A4 has been answering "not checked" on every
+renamed product since the day it was written.
+
+**It does not take effect until `npx shopify app deploy` runs and the dev store
+re-authorises.** The stored token still carries the old set, which is why
+section 10.5 below shows A13, A16 and B28 printing "could not be checked" from a
+run made after the toml changed. That is the refusal state working, not a
+regression, and it is the reason the state was kept rather than deleted the
+moment the scope was added: a refusal is still possible on an older token, and a
+check that was refused must never render as one that ran and passed.
+
+Section 9.6 stays undone and stays deliberate: A4 still makes its own
+single-redirect lookups rather than reading the list A13 now fetches. Folding
+one into the other changes A4's semantics and its tests, and this wave has
+already reached far enough.
+
+### 10.1 What was built
+
+B25, B26, B28, B29, B30, B31, B32 - seven codes for eight rows of section 5b,
+because B27 is not a code (10.2). The pure checks are in `seo-onpage.ts` beside
+B10 to B24, except B28, which is in `seo-catalogue.ts` because it fetches no
+page.
+
+Five are ordinary source B rows on `SeoScan`, counted over the pages read, on
+the findings card and in the product editor: B25, B26, B29, B31, B32. Two are
+not, and each says why on its own row:
+
+| Code | Denominator | Where it is rendered from |
+|---|---|---|
+| B28 | the catalogue | `CHECKS` with `basis: "catalogue"`, source A |
+| B30 | the blog posts a pass read | the per-shop record, like A10 and A11 |
+
+### 10.2 B27 is not a code, and this is not A14's kind of absence
+
+Section 5b's own row says what B27 is: "this is B1 with the sources named; B1's
+row gains the origin of each node". So it does. `B1.detail` now carries
+`origins` - for each Product node on the page, whether it came from the theme or
+from an app, its `@id`, and whether it carries its own `aggregateRating` - and
+`aggregateRatings`, the count of those that do. `LdNode.hasAggregateRating` was
+already read by `extractLdNodes`, because on this platform AggregateRating is
+never a top-level node.
+
+A14 could not be built: the Admin API does not expose the setting. B27 was built
+and put where section 5b said to put it. The two absences are recorded in the
+same place - the `FindingCode` union - and the note there says which is which,
+so a later reader does not conclude that one of them was forgotten.
+
+### 10.3 The card gained a fifth state, and a place at the bottom
+
+`CheckState` now has `counted`, and `CHECKS` entries carry `reports?: boolean`.
+Two checks use it, B29 and B32, and the reason is one sentence: no named source
+states a target for the internal links on a product page or for the scripts it
+loads, so this app states none. Rendered as "found" they would invent a verdict;
+rendered as "clean" they would invent the opposite. They sit last in
+`aggregate.rows` and last on the card, under the heading "Counted, not judged",
+which is Break The Web's own rule for an audit applied to the screen.
+
+`reports` is not a sixth `CheckBasis` and not a `source`. Those two say where a
+number came from; this one says what the number means.
+
+A `reports` check whose read has not happened is still `notYetRead`. A count of
+nothing measured is not a count of zero, and that rule does not stop applying to
+a row because the row states no verdict.
+
+### 10.4 Deviations from section 5b, and what each one cost
+
+1. **B25 is a row on a product, and section 5b describes a row on a collection
+   page.** Both exist. The finding sits on the product whose canonical nothing
+   links to, which is the defect Ahrefs actually describes and which needs the
+   product denominator; the per-collection-page counts are recorded per shop
+   and stated as a line under the row. This is A13's shape, taken deliberately
+   and for the same reason: a fact with no product row is stated beside the
+   rows rather than dropped.
+2. **B25 costs up to 20 page fetches per pass, before any product page.**
+   Before, because a product row is written once per pass and a B25 computed
+   after the loop would have no row left to sit on. Out of the same allowance,
+   because a collection page is a request to the merchant's storefront like any
+   other. The consequence is stated rather than hidden: a shop with 20
+   collections reads 20 fewer product pages tonight, and `SourceBReport.collections`
+   says so.
+3. **B25's predicate is "every link this pass saw", not "every link there is".**
+   A product linked plainly from a page nobody fetched still reads as unlinked.
+   The method line says the row is read from the collection pages the pass
+   fetched, and a product that appeared on none of them produces nothing at all
+   rather than a clean result.
+4. **B28 is a B-numbered check counted over the catalogue.** A7 is the
+   mirror-image trade and has been since section 2. The rule both obey: a count
+   carries the denominator it was measured over, whatever the code's letter.
+5. **B28 is not a crawl and does not claim to be.** A product reachable in two
+   clicks through a link in a page's body text is counted at whatever its menu
+   route costs. Same caveat as A16, same reason, and it is on the method line.
+6. **B29's four kinds overlap and are not a partition**, and a link's kind is
+   read from the markup it sits in. A theme that names its containers unusually
+   is counted unusually. Stated on the method line rather than presented as a
+   measurement.
+7. **B30 is not in `CHECKS`.** Its denominator is neither the catalogue nor the
+   pages read, and a row must never borrow a denominator that is not its own.
+8. **B31 reads the first image in the body, not the LCP element.** What paints
+   largest depends on the viewport and this app fetches HTML with no browser.
+   On many themes the first image is the shop logo, which is a smaller fact
+   than a lazy hero, and the method line says so.
+9. **Every page that answers now carries two findings.** B29 and B32 fire on
+   every page, because they are counts. `readingOf` no longer returns an empty
+   `findings` array on a clean page, and the two tests that asserted that now
+   assert `["B29", "B32"]` with the reason written beside them. This is worth
+   knowing before reading any row's JSON.
+
+### 10.5 What these checks find on the dev store, 4 September 2026
+
+`npx tsx scripts/read-onpage-checks.ts https://mrdigital-dev.myshopify.com
+--limit 10 --password massive` (read-only, spends no budget):
+
+```
+Collection pages: 2 in the sitemap, 2 read; 0 collection-prefixed product links, 80 plain.
+Pages read as a crawler sees them: 10. Could not be read: 0.
+
+  B29   10 of 10  Internal links on the product page, by kind
+       0 in a breadcrumb, 0 in a related block, 4 pointing at a collection,
+       0 inside the description, 9 distinct internal addresses in all
+  B32   10 of 10  Scripts the product page loads, by origin
+       97 script tags from 3 origins: the shop (53), inline (40), cdn.shopify.com (4)
+
+B30   no blog post was read (0 in the sitemap), so nothing is reported about the blog
+Silent on these pages: B25, B26, B28, B31
+```
+
+`npx tsx scripts/read-catalogue-checks.ts mrdigital-dev.myshopify.com`:
+
+```
+  B28   could not be checked   More than three clicks from the home page
+```
+
+B25's zero is the interesting one and it is a real zero: this theme's collection
+grid links the plain `/products/` form, 80 times across two pages, and not once
+the long form. That is the check reading the right markup and finding nothing
+wrong, which is the only evidence worth having short of a store that has the
+defect. B26 and B31 are silent because no product on this store is noindexed and
+no first image is lazy. B30 says it read no post rather than that no post lacks
+a link, on a store whose sitemap names no blog. B28 says "could not be checked"
+until the scope of 10.0 is deployed and the store re-authorised.
+
+### 10.6 The count after step 4b
+
+16 data checks (A1 to A16, of which A14 does not exist) and 31 page checks (B1
+to B32, of which B27 is not a code). Every one a row with a denominator, and two
+of them - B29 and B32 - rows with numbers and no verdict at all. None is a
+score.

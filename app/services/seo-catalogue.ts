@@ -1,4 +1,6 @@
-// The catalogue checks of PRD-SEO-FULL-ONPAGE section 5b: A10 to A16.
+// The catalogue checks of PRD-SEO-FULL-ONPAGE section 5b: A10 to A16, and
+// B28, which is numbered with the page checks and computed here because it
+// needs no page (see clickDepthOf at the foot of this file).
 //
 // Everything here is computed from the Admin API alone - the catalogue read
 // source A already holds, plus two per-pass queries (the shop's URL redirects
@@ -32,6 +34,7 @@
 // a promise, not a finding.
 
 import { cleanOutput, stripTags } from "../engine/normalize";
+import { MAX_CLICK_DEPTH } from "./seo-onpage";
 import type { ProductInput } from "./facts.server";
 import type { Finding } from "./seo-findings";
 
@@ -342,7 +345,20 @@ export function checkImageFilenames(product: Pick<ProductInput, "imageUrl">): Fi
  * picked from the product list) or only a `url` (a link typed by hand), and a
  * product linked by one and not the other is still linked.
  */
-export type MenuLinks = { productIds: Set<string>; handles: Set<string> };
+export type MenuLinks = {
+  productIds: Set<string>;
+  handles: Set<string>;
+  /**
+   * B28: the shallowest menu level that links each product directly, keyed by
+   * both its id and its handle for the same reason the two sets above exist -
+   * a menu item carries one or the other, and a product linked by either is
+   * linked. Level 1 is a top-level menu item, so the product is one click from
+   * the home page.
+   */
+  productDepth: Map<string, number>;
+  /** B28: the same, for collections, keyed by handle and by id. */
+  collectionDepth: Map<string, number>;
+};
 
 /**
  * A16: the product is in no collection and no menu links to it.
@@ -370,5 +386,84 @@ export function checkOrphan(
     code: "A16",
     source: "A",
     detail: { inCollections: 0, inMenus: 0, handle: handle || null },
+  };
+}
+
+// --- B28: how many clicks from the home page ------------------------------
+
+/**
+ * B28: a product more than three clicks from the home page.
+ *
+ * Break The Web state the figure and the reason: the further a page is from
+ * the home page through the site's own navigation, the less often it is
+ * crawled and the less of the site's own standing reaches it. Three is their
+ * number, quoted, not invented here (MAX_CLICK_DEPTH in seo-onpage.ts).
+ *
+ * **Computed with no crawl at all**, which is why a B-numbered check lives in
+ * this file and runs in source A's pass: the menu tree comes from the one
+ * `menus` query A16 already makes, and collection membership comes from the
+ * catalogue read. Its denominator is therefore the catalogue and not the pages
+ * read, and `CHECKS` says so. The precedent is A7, an A-numbered check that
+ * runs in source B's pass for the mirror-image reason.
+ *
+ * The model, stated plainly because it is the whole of the check:
+ *
+ *  - the home page is depth 0;
+ *  - a menu item at the first level of a menu is depth 1, one nested inside it
+ *    is depth 2, and so on;
+ *  - a product a menu links to directly is at that item's depth;
+ *  - a product in a collection a menu links to is one click further, because
+ *    the visitor clicks the collection and then the product;
+ *  - the shortest of those routes is the product's depth.
+ *
+ * What it is not: a crawl. A product reachable in two clicks through a link in
+ * a page's body text is three clicks by this check and two to a browser. The
+ * method line says so, and the same caveat is on A16 for the same reason.
+ */
+export function clickDepthOf(
+  product: Pick<ProductInput, "id" | "handle" | "collections">,
+  menus: MenuLinks | null,
+): number | null {
+  if (!menus) return null;
+  const handle = (product.handle ?? "").trim();
+  const routes: number[] = [];
+
+  const direct = [
+    menus.productDepth.get(product.id),
+    handle === "" ? undefined : menus.productDepth.get(handle),
+  ].filter((d): d is number => typeof d === "number");
+  routes.push(...direct);
+
+  for (const collection of product.collections ?? []) {
+    const depth = menus.collectionDepth.get((collection.handle ?? "").trim());
+    // One click further than the collection: the collection page, then this
+    // product on it.
+    if (typeof depth === "number") routes.push(depth + 1);
+  }
+
+  if (routes.length === 0) return null;
+  return Math.min(...routes);
+}
+
+/**
+ * B28 as a row.
+ *
+ * Null on a product no menu route reaches at all. That is not "infinitely
+ * deep", it is A16's finding - the product is an orphan - and two rows saying
+ * the same absence differently is a reader deciding which to believe. Null,
+ * too, when the menus could not be read; the pass records B28 as a check that
+ * could not run, exactly as it does for A16.
+ */
+export function checkClickDepth(
+  product: Pick<ProductInput, "id" | "handle" | "collections">,
+  menus: MenuLinks | null,
+): Finding | null {
+  const depth = clickDepthOf(product, menus);
+  if (depth === null) return null;
+  if (depth <= MAX_CLICK_DEPTH) return null;
+  return {
+    code: "B28",
+    source: "A",
+    detail: { depth, limit: MAX_CLICK_DEPTH },
   };
 }

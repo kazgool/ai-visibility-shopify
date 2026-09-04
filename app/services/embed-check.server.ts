@@ -59,6 +59,21 @@ export type EmbedCheckResult = {
    */
   instances: number;
   activeInstances: number;
+  /**
+   * B32's other half: every app embed block in the published theme, ours and
+   * everyone else's, counted by the app handle in the block type.
+   *
+   * Read here because it is already in the file this function parses, and
+   * because it cannot be read from a page at all: an embed that is present and
+   * switched off renders nothing, so HTML shows the absence of a block that
+   * exists. Counts only, never a verdict - Break The Web's ghost code is the
+   * practice behind the row, and which of a shop's apps it wants is entirely
+   * the merchant's business.
+   *
+   * Absent when the settings file could not be read, which is not the same as
+   * a theme with no embeds and must not render as one.
+   */
+  appEmbeds?: { total: number; enabled: number; byApp: { app: string; count: number }[] };
 };
 
 // The block type in settings_data.json contains the extension uid
@@ -176,6 +191,28 @@ export async function checkAppEmbed(
   // Counted, not flagged: a boolean cannot tell one embed from two.
   let instances = 0;
   let activeInstances = 0;
+  // B32. Every app embed in the theme, ours included, before the filter below
+  // narrows to ours. `shopify://apps/<app>/blocks/<handle>/<uid>` is the shape;
+  // the app segment is what a merchant recognises on their apps list.
+  const embedsByApp = new Map<string, number>();
+  let embedTotal = 0;
+  let embedEnabled = 0;
+  for (const block of Object.values<any>(blocks)) {
+    const type = String(block?.type ?? "");
+    const app = /^shopify:\/\/apps\/([^/]+)\//.exec(type)?.[1];
+    if (!app) continue;
+    embedTotal += 1;
+    embedsByApp.set(app, (embedsByApp.get(app) ?? 0) + 1);
+    if (block?.disabled !== true) embedEnabled += 1;
+  }
+  const appEmbeds = {
+    total: embedTotal,
+    enabled: embedEnabled,
+    byApp: [...embedsByApp.entries()]
+      .map(([app, count]) => ({ app, count }))
+      .sort((a, b) => b.count - a.count || a.app.localeCompare(b.app)),
+  };
+
   for (const block of Object.values<any>(blocks)) {
     const type = String(block?.type ?? "");
     const ours = type.includes(`/blocks/${EXTENSION_HANDLE}/`) || type.includes(EXTENSION_UID);
@@ -207,6 +244,7 @@ export async function checkAppEmbed(
     outputDisabled,
     instances,
     activeInstances,
+    appEmbeds,
   };
 }
 

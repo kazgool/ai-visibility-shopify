@@ -49,26 +49,38 @@ import {
   type LdNode,
 } from "./theme-scan.server";
 import {
+  BLOG_POST_CAP,
+  COLLECTION_PAGE_CAP,
   LINK_CHECK_CAP,
+  checkBlogPostLinks,
   checkDeprecatedNodes,
   checkDuplicateTitle,
   checkH1,
   checkHandle,
+  checkInternalLinkKinds,
   checkInternalLinks,
+  checkLazyFirstImage,
+  checkLongFormLinks,
   checkMetaDescription,
   checkMetaKeywords,
   checkMixedContent,
+  checkNoindexOutOfStock,
   checkPageAltText,
   checkRedirectChain,
+  checkScriptOrigins,
   checkThinContent,
   checkTitleTag,
   checkOpenGraph,
   checkTwitterCard,
+  countLinkForms,
   extractTitleTag,
   internalLinks,
+  linksByKind,
   pageDescription,
+  productLinks,
   titleKey,
   type Hop,
+  type LinkFormCount,
   type LinkPlan,
   type LinkResult,
 } from "./seo-onpage";
@@ -353,6 +365,123 @@ export async function staleSitemapEntries(shopId: string): Promise<StaleSitemap 
   }
 }
 
+// --- B25 and B30: the two halves that have no product row ------------------
+
+/**
+ * B25's per-collection half.
+ *
+ * The row on a product says that nothing links to its canonical address. This
+ * says which collection pages were read to find that out and how many links of
+ * each shape each one carried - a fact about the theme's grid, not about any
+ * one product, so it has no product row to sit on and is recorded per shop.
+ * Exactly the shape A7's withdrawn-product half and A13's unmatched half
+ * already have.
+ */
+export const COLLECTION_LINKS_SETTING_KEY = "seo_collection_links";
+
+export type CollectionLinkReport = {
+  /** Collection pages fetched this pass. The denominator of the card's line. */
+  pagesRead: number;
+  /** Collection pages the sitemap named, before the cap. */
+  pagesAvailable: number;
+  /** True when the shop has more collection pages than one pass reads. */
+  capped: boolean;
+  long: number;
+  short: number;
+  /** The worst few, for the line's own sentence. */
+  worst: { url: string; long: number; short: number }[];
+  at: string;
+};
+
+export async function recordCollectionLinks(
+  shopId: string,
+  report: CollectionLinkReport | null,
+): Promise<void> {
+  if (report === null) {
+    // Deleted, not left: the same rule recordStaleSitemapEntries keeps a few
+    // lines up. Last night's numbers presented as tonight's answer is worse
+    // than no line at all.
+    await db.setting.deleteMany({ where: { shopId, key: COLLECTION_LINKS_SETTING_KEY } });
+    return;
+  }
+  const value = JSON.stringify(report);
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: COLLECTION_LINKS_SETTING_KEY } },
+    create: { shopId, key: COLLECTION_LINKS_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+export async function collectionLinkReport(
+  shopId: string,
+): Promise<CollectionLinkReport | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: COLLECTION_LINKS_SETTING_KEY } },
+  });
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * B30, whole: a blog post has no product row and never will.
+ *
+ * Its denominator is the posts this pass read, which is neither the catalogue
+ * nor the pages read, so it is not in CHECKS and the SEO screen renders it
+ * from here - the same way it renders A10 and A11 from the collections report.
+ * A row must never borrow a denominator that is not its own.
+ */
+export const BLOG_POSTS_SETTING_KEY = "seo_blog_posts";
+
+export type BlogPostReport = {
+  /** Posts fetched this pass. */
+  read: number;
+  /** Posts the sitemap named, before the cap and before the budget. */
+  available: number;
+  /** Of the posts read, how many link to no product and no collection. */
+  withoutLinks: number;
+  /** True when the budget ran out or the cap was reached before the last post. */
+  partial: boolean;
+  examples: string[];
+  at: string;
+};
+
+export async function recordBlogPosts(
+  shopId: string,
+  report: BlogPostReport | null,
+): Promise<void> {
+  if (report === null) {
+    // Deleted, not left: the same rule recordStaleSitemapEntries keeps a few
+    // lines up. Last night's numbers presented as tonight's answer is worse
+    // than no line at all.
+    await db.setting.deleteMany({ where: { shopId, key: BLOG_POSTS_SETTING_KEY } });
+    return;
+  }
+  const value = JSON.stringify(report);
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: BLOG_POSTS_SETTING_KEY } },
+    create: { shopId, key: BLOG_POSTS_SETTING_KEY, value },
+    update: { value },
+  });
+}
+
+export async function blogPostReport(shopId: string): Promise<BlogPostReport | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: BLOG_POSTS_SETTING_KEY } },
+  });
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Every `<loc>` in an XML document, in order. */
 export function locsOf(xml: string): string[] {
   return [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim());
@@ -431,6 +560,11 @@ export async function fetchSitemap(
 
   const handles = new Set<string>();
   let urls = 0;
+  // B25 and B30. Kept in insertion order and deduplicated, because the caller
+  // fetches a capped prefix of each and "the first twenty" has to mean the
+  // same twenty on two consecutive nights.
+  const collections = new Set<string>();
+  const articles = new Set<string>();
 
   const addFrom = (xml: string) => {
     for (const loc of locsOf(xml)) {
@@ -438,6 +572,41 @@ export async function fetchSitemap(
       if (handle === null) continue;
       urls += 1;
       handles.add(handle);
+    }
+  };
+
+  /**
+   * A collection sitemap lists collection pages and, on some shops, the
+   * products inside them. Only the plain collection address is taken: a
+   * `/collections/x/products/y` entry is a product URL and reading it as a
+   * collection page would make B25 fetch the very long-form address it exists
+   * to report.
+   */
+  const addCollectionsFrom = (xml: string) => {
+    for (const loc of locsOf(xml)) {
+      try {
+        if (/^(?:\/[a-z-]{2,10})?\/collections\/[^/]+\/?$/i.test(new URL(loc).pathname)) {
+          collections.add(loc);
+        }
+      } catch {
+        continue;
+      }
+    }
+  };
+
+  const addArticlesFrom = (xml: string) => {
+    for (const loc of locsOf(xml)) {
+      try {
+        // A blog post is /blogs/<blog>/<article>. The blog's own index page,
+        // /blogs/<blog>, is not a post and is not read: it links to every post
+        // on it, so it would answer B30's question about itself and nothing
+        // else.
+        if (/^(?:\/[a-z-]{2,10})?\/blogs\/[^/]+\/[^/]+\/?$/i.test(new URL(loc).pathname)) {
+          articles.add(loc);
+        }
+      } catch {
+        continue;
+      }
     }
   };
 
@@ -456,11 +625,39 @@ export async function fetchSitemap(
         error: `the index lists ${children.length} product sitemaps, more than the ${maxSitemaps} this pass reads`,
       };
     }
+
+    // B25 and B30's raw material, from the same index and under the same cap.
+    // Each is one more fetch charged to the same daily budget, which is why
+    // they are counted in `fetches` like every other request and why the
+    // report states the number. A shop with no collection or blog sitemap
+    // costs nothing extra: there is no child to fetch.
+    //
+    // Unlike the product half above, exceeding the cap here does not fail the
+    // whole read. A7 needs every product URL to be able to say a product is
+    // missing from the file; B25 and B30 need a sample they can be honest
+    // about, and they say how many they read.
+    for (const child of locsOf(index)
+      .filter((loc) => /sitemap_collections/i.test(loc))
+      .slice(0, maxSitemaps)) {
+      const xml = await get(child);
+      if (xml) addCollectionsFrom(xml);
+    }
+    for (const child of locsOf(index)
+      .filter((loc) => /sitemap_blogs/i.test(loc))
+      .slice(0, maxSitemaps)) {
+      const xml = await get(child);
+      if (xml) addArticlesFrom(xml);
+    }
   } else {
     addFrom(index);
+    addCollectionsFrom(index);
+    addArticlesFrom(index);
   }
 
-  return { read: { handles, urls }, fetches };
+  return {
+    read: { handles, urls, collections: [...collections], articles: [...articles] },
+    fetches,
+  };
 }
 
 // --- robots.txt ------------------------------------------------------------
@@ -939,6 +1136,17 @@ export function extractSchemaOffer(html: string): SchemaOffer | null {
  * has a 500-page budget.
  */
 export type PageContext = {
+  /**
+   * B25. What shape the links pointing at THIS product had on the collection
+   * pages the pass read, or undefined when it appeared on none of them.
+   *
+   * Undefined and `{ long: 0, short: 0 }` are different answers and the
+   * distinction is the whole check: the first is a product no collection page
+   * this pass read mentioned, and the second cannot occur. Null on the context
+   * as a whole means no collection page was read at all, and B25 then says
+   * nothing about any product.
+   */
+  linkForms?: LinkFormCount | undefined;
   /** The product's handle, so B8 knows the address the canonical should carry. */
   handle: string | null;
   /** Null when the markets query was not made or failed: B9 then says nothing. */
@@ -977,6 +1185,20 @@ export type SitemapRead = {
   handles: Set<string>;
   /** How many product URLs were parsed, for the row's method line. */
   urls: number;
+  /**
+   * B25: the shop's collection page addresses, from `sitemap_collections_*`.
+   *
+   * Optional, and absent means the shop has no collection sitemap or the
+   * index did not name one - never that it has no collections. B25 then reads
+   * no collection page and says it checked none, rather than reporting that
+   * no product's canonical is unlinked.
+   */
+  collections?: string[];
+  /**
+   * B30: the shop's blog post addresses, from `sitemap_blogs_*`. Absent means
+   * the same thing, for the same reason.
+   */
+  articles?: string[];
 };
 
 /**
@@ -1294,11 +1516,34 @@ export function readingOf(
     ...(productNodes.some((n) => !isOurNode(n)) ? ["theme"] : []),
     ...(ours ? ["app"] : []),
   ];
+  // B27 of PRD-SEO-FULL-ONPAGE section 5b lives here rather than in a code of
+  // its own, because section 5b's own row says what it is: "this is B1 with
+  // the sources named". Ilana Davis's case is a theme and a review app each
+  // emitting a Product node with its own AggregateRating, and what a merchant
+  // needs is not a second row repeating the count - it is which node came from
+  // where, and which of them carries a rating, on the row that already reports
+  // the count. `hasAggregateRating` is read by extractLdNodes from the nested
+  // property, because on this platform AggregateRating is never a node of its
+  // own.
+  const origins = productNodes.map((node) => ({
+    from: isOurNode(node) ? "app" : "theme",
+    id: node.id || null,
+    aggregateRating: node.hasAggregateRating === true,
+  }));
+  const ratings = origins.filter((o) => o.aggregateRating).length;
   if (distinct !== 1) {
     findings.push({
       code: "B1",
       source: "B",
-      detail: { productNodes: distinct, emitters, ids: [...ids] },
+      detail: {
+        productNodes: distinct,
+        emitters,
+        ids: [...ids],
+        // Capped for the same reason every other list on a row is: a row is a
+        // sentence, not a file listing.
+        origins: origins.slice(0, 8),
+        aggregateRatings: ratings,
+      },
     });
   }
 
@@ -1423,6 +1668,24 @@ export function readingOf(
     checkDeprecatedNodes(nodes),
     checkRobotsReview(context.robots ?? null),
     checkMetaKeywords(page.html),
+    // B25 to B32 (section 5b, page half), after B10 to B24 and in code order,
+    // so a row's findings read the same way twice whichever of them fire.
+    //
+    // B25 asks nothing when the pass read no collection page, and nothing when
+    // this product appeared on none it did read: `undefined` is not a clean
+    // result. B26 reads the availability off the page's own Product node,
+    // which is where B3's noindex has to be judged against something -
+    // `offer` is the catalogue's answer and would be comparing the page's tag
+    // to the admin's stock. B29 and B32 are counts and fire on every page.
+    //
+    // B27 is not in this list because it is not a code: it is the `origins`
+    // B1's detail gained above. B28 is not here because it fetches no page and
+    // is computed in source A's pass (seo-catalogue.ts).
+    checkLongFormLinks(context.linkForms),
+    checkNoindexOutOfStock(noindex, extractSchemaOffer(page.html)?.availability ?? null),
+    checkInternalLinkKinds(linksByKind(page.html, page.finalUrl)),
+    checkLazyFirstImage(page.html),
+    checkScriptOrigins(page.html, page.finalUrl),
   ];
   for (const finding of onPage) if (finding) findings.push(finding);
 
@@ -1516,6 +1779,17 @@ export type SourceBReport = {
    * and the report says which was which rather than leaving a reader to
    * wonder why 480 pages exhausted a 500-page allowance.
    */
+  /**
+   * B25's spend and reach. Collection pages come out of the same allowance as
+   * the product pages and are read before them, so a reader can see why a
+   * 500-page night read 480 products.
+   */
+  collections?: { available: number; read: number; fetches: number };
+  /**
+   * B30's, and it is read last: `read` is what was left after everything else,
+   * so a zero here on a shop with a blog means the products used the night.
+   */
+  blog?: { available: number; read: number; withoutLinks: number };
   links?: {
     /** Distinct link addresses fetched tonight, across every page. */
     fetched: number;
@@ -1700,7 +1974,76 @@ export async function scanShopPages(input: {
   // number, so a 500-page budget reads 499 pages on a shop with one product
   // sitemap - understating what this app asks of a storefront would make the
   // budget a figure rather than a limit.
-  const allowance = Math.max(0, allowanceBeforeSitemap - sitemap.fetches);
+  const allowanceAfterSitemap = Math.max(0, allowanceBeforeSitemap - sitemap.fetches);
+
+  // B25: the collection pages, before any product page and out of the same
+  // allowance.
+  //
+  // Before, because every product row needs the answer: a product page is
+  // written once per pass, and a B25 finding computed after the loop would
+  // have no row left to sit on. Out of the same allowance, because a
+  // collection page is a request to the merchant's storefront like any other -
+  // `left` below starts at what remains after these, so a shop with 20
+  // collections reads 20 fewer product pages tonight and the report says so
+  // rather than letting the budget quietly become a figure about products.
+  //
+  // Capped at COLLECTION_PAGE_CAP so a shop with 400 collections cannot spend
+  // a night's whole allowance before the first product is read, and capped
+  // again by what is actually left.
+  const collectionUrls = sitemap.read?.collections ?? [];
+  const collectionsToRead = collectionUrls.slice(
+    0,
+    Math.max(0, Math.min(COLLECTION_PAGE_CAP, allowanceAfterSitemap)),
+  );
+  const linkForms = new Map<string, LinkFormCount>();
+  const collectionPages: { url: string; long: number; short: number }[] = [];
+  let collectionSpend = 0;
+  for (const url of collectionsToRead) {
+    if (allowanceAfterSitemap - collectionSpend <= 0) break;
+    await sleep(REQUEST_INTERVAL_MS);
+    const page = await readProductPage(url, cookie, fetchImpl);
+    collectionSpend += 1;
+    await spendPages(shopId, 1, startedAt);
+    if (page.status !== 200 || page.passwordProtected || page.error) continue;
+    const links = productLinks(page.html, page.finalUrl);
+    const counts = countLinkForms(links);
+    collectionPages.push({ url, long: counts.long, short: counts.short });
+    // Per product, summed across the collection pages: a product linked long
+    // form on one page and plain on another has its canonical linked, and
+    // checkLongFormLinks reads that correctly only if both are counted.
+    for (const link of links) {
+      const seen = linkForms.get(link.handle) ?? { long: 0, short: 0 };
+      if (link.long) seen.long += 1;
+      else seen.short += 1;
+      linkForms.set(link.handle, seen);
+    }
+  }
+
+  // Null when no collection page was read at all, which clears the line rather
+  // than leaving last night's numbers on the screen beside tonight's silence.
+  await recordCollectionLinks(
+    shopId,
+    collectionPages.length === 0
+      ? null
+      : {
+          pagesRead: collectionPages.length,
+          pagesAvailable: collectionUrls.length,
+          capped: collectionUrls.length > collectionsToRead.length,
+          long: collectionPages.reduce((sum, p) => sum + p.long, 0),
+          short: collectionPages.reduce((sum, p) => sum + p.short, 0),
+          worst: [...collectionPages].sort((a, b) => b.long - a.long).slice(0, 5),
+          at: startedAt.toISOString(),
+        },
+  );
+  report.collections = {
+    available: collectionUrls.length,
+    read: collectionPages.length,
+    fetches: collectionSpend,
+  };
+
+  // What is left for product pages: the allowance after the sitemap, minus
+  // what the collection pages above just spent.
+  const allowance = Math.max(0, allowanceAfterSitemap - collectionSpend);
 
   // B23: the robots.txt this pass already fetched, reviewed once and written
   // onto every page row. Not a second request.
@@ -1801,6 +2144,10 @@ export async function scanShopPages(input: {
       robots: robotsReview,
       titlesByKey,
       links,
+      // B25. `undefined` when this product appeared on no collection page the
+      // pass read, which is not the same as appearing with no long-form link -
+      // see checkLongFormLinks.
+      linkForms: row.handle ? linkForms.get(row.handle) : undefined,
     });
     addTitle(titlesByKey, reading.pageTitle, row.handle);
 
@@ -1841,6 +2188,53 @@ export async function scanShopPages(input: {
       },
     });
   }
+
+  // B30, last of everything, and last on purpose.
+  //
+  // The arithmetic, stated because a budget that is not stated is a figure:
+  // `left` is what remains of tonight's allowance after the sitemap fetches,
+  // the collection pages and every product page and link check above. Blog
+  // posts get that and nothing more, so on a catalogue larger than the nightly
+  // budget they get nothing at all - and the report then says it read no posts
+  // rather than that no post lacks a link. Products have the first claim on a
+  // merchant's storefront requests; a blog report is worth having and is not
+  // worth a product page.
+  const articleUrls = sitemap.read?.articles ?? [];
+  const postsToRead = articleUrls.slice(0, Math.max(0, Math.min(BLOG_POST_CAP, left)));
+  const postsWithoutLinks: string[] = [];
+  let postsRead = 0;
+  for (const url of postsToRead) {
+    if (left <= 0) break;
+    await sleep(REQUEST_INTERVAL_MS);
+    const page = await readProductPage(url, cookie, fetchImpl);
+    left -= 1;
+    await spendPages(shopId, 1, startedAt);
+    if (page.status !== 200 || page.passwordProtected || page.error) continue;
+    postsRead += 1;
+    if (checkBlogPostLinks(page.html, page.finalUrl)) postsWithoutLinks.push(url);
+  }
+
+  // Null when no post was read, for the same reason B25's record is: a line
+  // that keeps last night's numbers beside tonight's silence is worse than no
+  // line, because it reads as tonight's answer.
+  await recordBlogPosts(
+    shopId,
+    postsRead === 0
+      ? null
+      : {
+          read: postsRead,
+          available: articleUrls.length,
+          withoutLinks: postsWithoutLinks.length,
+          partial: articleUrls.length > postsToRead.length || left <= 0,
+          examples: postsWithoutLinks.slice(0, 5),
+          at: startedAt.toISOString(),
+        },
+  );
+  report.blog = {
+    available: articleUrls.length,
+    read: postsRead,
+    withoutLinks: postsWithoutLinks.length,
+  };
 
   report.links = linkSpend;
 
@@ -1942,7 +2336,7 @@ export async function scanOneProductPage(input: {
     // B23 costs nothing extra: robots.txt was fetched two lines above, because
     // this button obeys the same Disallow the nightly pass obeys.
     robots: reviewRobots(robots),
-    // B16 and B21 are deliberately not asked here.
+    // B16, B21 and B25 are deliberately not asked here.
     //
     // B16 would spend up to twenty more storefront requests on one click, and
     // the guard on this action is one page of budget. A merchant pressing a
@@ -1954,6 +2348,12 @@ export async function scanOneProductPage(input: {
     // recomputed, so a press never clears a finding it did not re-ask.
     titlesByKey: null,
     links: null,
+    // B25 for the same reason as B16 and B21: it is answered from the
+    // collection pages the nightly pass reads, and reading them on a button
+    // press would spend up to twenty storefront requests when the guard on
+    // this action is one page of budget. Carried forward below, never
+    // recomputed and never cleared.
+    linkForms: undefined,
   });
 
   const keptFromSourceA = findingsOf(row.findings).filter(isSourceAFinding);
@@ -1968,7 +2368,8 @@ export async function scanOneProductPage(input: {
       (f.code === "A7" && !reading.findings.some((n) => n.code === "A7")) ||
       (f.code === "B9" && markets === null) ||
       f.code === "B16" ||
-      f.code === "B21",
+      f.code === "B21" ||
+      f.code === "B25",
   );
   reading.findings = [...reading.findings, ...carried];
   const scannedAt = now();

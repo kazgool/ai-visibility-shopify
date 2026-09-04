@@ -598,11 +598,13 @@ describe("the vocabulary", () => {
     // over the wrong denominator.
     const counted = CHECKS.map((c) => c.code).sort();
     const labelled = Object.keys(CHECK_LABEL).sort();
-    // A6, A10 and A11 are the three codes with a denominator of their own -
-    // collections, not products - so they are labelled and deliberately not in
-    // CHECKS. The SEO screen renders them from the collections report.
-    const COLLECTION_CODES = ["A6", "A10", "A11"];
-    expect(labelled.filter((code) => !COLLECTION_CODES.includes(code))).toEqual(counted);
+    // Four codes are labelled and deliberately not in CHECKS, every one of
+    // them because its denominator is not this aggregate's and a row must
+    // never borrow one that is not its own: A6, A10 and A11 are counted over
+    // collections, and B30 over the blog posts a pass read. The SEO screen
+    // renders all four from the record their own pass writes.
+    const OWN_DENOMINATOR = ["A6", "A10", "A11", "B30"];
+    expect(labelled.filter((code) => !OWN_DENOMINATOR.includes(code))).toEqual(counted);
   });
 
   it("carries all fifteen new codes in both", () => {

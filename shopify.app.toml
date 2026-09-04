@@ -64,7 +64,27 @@ api_version = "2026-07"
 # The two states B9 keeps are both still reachable and both still tested: a
 # single-market shop reads "not applicable", and a refusal (an older token, a
 # plan that does not expose markets) still reads "could not be read".
-scopes = "read_products,write_products,read_themes,read_markets"
+#
+# read_online_store_navigation added 4 September 2026 (Marius), on the same
+# reasoning as read_markets above: there are no merchant installs beyond the
+# dev store, so the re-authorisation every merchant would otherwise be
+# re-prompted for costs nothing today, and it will never be this cheap again.
+#
+# One scope unlocks three checks that were all built and all silent without it,
+# because `urlRedirects` and `menus` both sit under Online Store - Navigation:
+#   A4  - a renamed product's old address: whether a redirect was left behind.
+#         This has been answering "not checked" on every renamed product since
+#         it was written, and no screen said why.
+#   A13 - a URL redirect whose target is the home page (soft 404, John Mueller
+#         via Matthew Edgar).
+#   A16 - orphan products: in no collection and linked from no menu.
+#   B28 - click depth, which reads the same menu tree A16 does.
+#
+# The could-not-be-read state stays on all of them and stays tested. A refusal
+# is still possible - an older stored token, a shop that has not re-authorised
+# yet - and a check that was refused must never render as a check that ran and
+# passed.
+scopes = "read_products,write_products,read_themes,read_markets,read_online_store_navigation"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

@@ -1,4 +1,5 @@
-// The on-page checks of PRD-SEO-FULL-ONPAGE sections 3 and 5a: B10 to B24.
+// The on-page checks of PRD-SEO-FULL-ONPAGE sections 3, 5a and 5b: B10 to
+// B24, and then B25 to B32 (the practitioner layer, built 4 September 2026).
 //
 // Pure, and with no ".server" suffix, for the same two reasons seo-findings.ts
 // and seo-aggregate.ts have none. Every function here takes a string of HTML
@@ -736,4 +737,440 @@ export function checkMetaKeywords(html: string): Finding | null {
       sample: content.slice(0, 120),
     },
   };
+}
+
+// ===========================================================================
+// B25 to B32: the practitioner layer of PRD-SEO-FULL-ONPAGE section 5b, built
+// 4 September 2026 (build step 4b).
+//
+// The three rules at the top of this file bind these as tightly as they bind
+// B10 to B24, and two of them are the reason B29 and B32 look unlike every
+// other check here. Neither produces a verdict: they report counts and stop,
+// because no named source states a target number for either, and Break The
+// Web's own rule for an audit is not to report what the merchant cannot act
+// on. So both are "reports" codes in CHECKS and both render at the bottom of
+// the card with their numbers and no found-or-clean framing.
+//
+// Two of section 5b's page-half codes are not in this file:
+//
+//  - **B27 is not a code at all.** "Two Product nodes from two different
+//    sources, each with its own AggregateRating" is B1 with the sources named,
+//    so B1's detail gained `origins` rather than the vocabulary gaining a
+//    second row that says the same thing about the same page. Ilana Davis's
+//    case is the theme and a review app both emitting a rating; what a
+//    merchant needs is which node came from where, and that belongs on the row
+//    that already reports the count. See `readingOf` in seo-page.server.ts.
+//  - **B28 is in seo-catalogue.ts**, because it is computed from the menu tree
+//    and collection membership with no page fetch at all, in source A's pass
+//    where the one `menus` query already happens for A16. Its denominator is
+//    the catalogue, not the pages read, and it says so.
+// ===========================================================================
+
+/**
+ * B25: at most this many collection pages one pass reads.
+ *
+ * A collection page is a page fetch like any other and comes out of the same
+ * daily budget, so a shop with 400 collections must not be able to spend a
+ * night's whole allowance before the first product page is read. Beyond the
+ * cap the read is partial and the row says how many were looked at.
+ */
+export const COLLECTION_PAGE_CAP = 20;
+
+/**
+ * B30: at most this many blog posts one pass reads, and they are read last.
+ *
+ * Last because they spend budget that products have the first claim on: a
+ * shop whose product pages are not all read yet is not helped by a report on
+ * its blog. What is left after the products is what the blog gets, which on a
+ * catalogue larger than the nightly budget is nothing at all - and B30 then
+ * says it read no posts rather than that no post lacks a link.
+ */
+export const BLOG_POST_CAP = 25;
+
+/** B28's figure, from Break The Web. Quoted, not invented. */
+export const MAX_CLICK_DEPTH = 3;
+
+// --- B25: the two shapes of a product link ---------------------------------
+
+export type ProductLink = {
+  /** The product handle the link names. */
+  handle: string;
+  /** True for /collections/x/products/y, false for the plain /products/y. */
+  long: boolean;
+  /** The address as resolved, for the row's own sentence. */
+  href: string;
+};
+
+/**
+ * Every link on this page that names a product, and which of the two shapes it
+ * uses.
+ *
+ * Shopify serves a product at both /products/y and, inside a collection,
+ * /collections/x/products/y. Only the first is the canonical address. The
+ * Ahrefs Help Center describes the consequence on Shopify stores specifically:
+ * when a theme's collection grid links the long form, the canonical URL has no
+ * internal link pointing at it, so the address the shop is asking Google to
+ * index is the one address nothing on the shop links to.
+ *
+ * A market or locale prefix (/en-gb/products/y) is part of neither shape and
+ * is skipped rather than counted as long: it is a different market's copy of
+ * the same page and belongs to B9's question, not this one.
+ */
+export function productLinks(html: string, pageUrl: string): ProductLink[] {
+  let origin: string;
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    return [];
+  }
+
+  const out: ProductLink[] = [];
+  for (const match of html.matchAll(/<a\b[^>]*>/gi)) {
+    const href = attributeOf(match[0], "href");
+    if (!href) continue;
+    const raw = href.trim();
+    if (raw === "" || raw.startsWith("#")) continue;
+    if (/^(mailto:|tel:|javascript:|data:|sms:)/i.test(raw)) continue;
+    let resolved: URL;
+    try {
+      resolved = new URL(raw, pageUrl);
+    } catch {
+      continue;
+    }
+    if (resolved.origin !== origin) continue;
+    const path = resolved.pathname;
+    const long = /^\/collections\/[^/]+\/products\/([^/?#]+)\/?$/i.exec(path);
+    if (long) {
+      out.push({ handle: decodeURIComponent(long[1]), long: true, href: resolved.href });
+      continue;
+    }
+    const short = /^\/products\/([^/?#]+)\/?$/i.exec(path);
+    if (short) {
+      out.push({ handle: decodeURIComponent(short[1]), long: false, href: resolved.href });
+    }
+  }
+  return out;
+}
+
+/** How many links of each shape one page carries. B25's per-page half. */
+export type LinkFormCount = { long: number; short: number };
+
+export function countLinkForms(links: ProductLink[]): LinkFormCount {
+  return {
+    long: links.filter((l) => l.long).length,
+    short: links.filter((l) => !l.long).length,
+  };
+}
+
+/**
+ * B25 for one product: every link the pass saw pointing at it used the long
+ * form, so its canonical address has no internal link.
+ *
+ * Silent when the product was linked at least once by its plain address - the
+ * canonical is then linked and the check has nothing to report, however many
+ * long-form links sit beside it. Silent, too, when the pass saw no link to
+ * this product at all: `undefined` is a product that appeared on no collection
+ * page this pass read, and a product nobody links to is A16's finding and not
+ * this one. A zero here would claim the canonical was checked.
+ */
+export function checkLongFormLinks(counts: LinkFormCount | undefined): Finding | null {
+  if (!counts) return null;
+  if (counts.long === 0) return null;
+  if (counts.short > 0) return null;
+  return {
+    code: "B25",
+    source: "B",
+    detail: { long: counts.long, short: counts.short },
+  };
+}
+
+// --- B26: noindex on a product that is only out of stock -------------------
+
+/**
+ * B26: the page says noindex, and the only thing wrong with the product is
+ * that it is out of stock.
+ *
+ * Matthew Edgar and Glenn Davidson (Tomango) make the same argument from
+ * different directions: a noindexed page behaves like a soft 404, so the
+ * address loses the standing it had, and it does not get it back when the
+ * product comes back into stock - the page has to be found and re-evaluated
+ * from nothing. Their reasoning is what the row states; it does not say to
+ * remove the tag, because a product that is gone for good is a case where
+ * noindex is a reasonable thing to have done and only the merchant knows
+ * which of the two this is.
+ *
+ * Both halves must be present. A noindex on a product that is in stock is
+ * B3's finding and not this one, and an out-of-stock product with no noindex
+ * is not a finding at all. A page that states no availability produces
+ * nothing: "not stated" is not "out of stock".
+ */
+export function checkNoindexOutOfStock(
+  noindex: boolean,
+  availability: string | null,
+): Finding | null {
+  if (!noindex) return null;
+  const said = (availability ?? "").trim();
+  if (said === "") return null;
+  if (!/OutOfStock|SoldOut|Discontinued/i.test(said)) return null;
+  return { code: "B26", source: "B", detail: { availability: said } };
+}
+
+// --- the region reader B29 shares with itself ------------------------------
+
+/**
+ * The inner HTML of every element of one of `tags` whose opening tag matches
+ * `pattern`, with nesting counted so a div class="breadcrumb" containing three
+ * more divs closes where it really closes.
+ *
+ * A regex is not a parser and this does not pretend to be one. It exists
+ * because B29 has to say which part of the page a link sits in, and the
+ * alternative - classifying a link by its own href alone - cannot tell a
+ * breadcrumb link to a collection from a footer link to the same collection.
+ * Where it is wrong it over-counts a region rather than losing one, which is
+ * the direction that keeps a real number visible (DICTIONARY-PORT 10.1).
+ */
+export function elementRegions(html: string, tags: string[], pattern: RegExp): string[] {
+  const out: string[] = [];
+  const opener = new RegExp(`<(${tags.join("|")})\\b[^>]*>`, "gi");
+  for (const match of html.matchAll(opener)) {
+    if (!pattern.test(match[0])) continue;
+    if (/\/>\s*$/.test(match[0])) continue;
+    const tag = match[1].toLowerCase();
+    const start = (match.index ?? 0) + match[0].length;
+    // Forward from here, counting opens and closes of this tag name only.
+    const scanner = new RegExp(`<(/?)${tag}\\b[^>]*>`, "gi");
+    scanner.lastIndex = start;
+    let depth = 1;
+    let end = html.length;
+    let step: RegExpExecArray | null;
+    while ((step = scanner.exec(html)) !== null) {
+      depth += step[1] === "/" ? -1 : 1;
+      if (depth === 0) {
+        end = step.index;
+        break;
+      }
+    }
+    out.push(html.slice(start, end));
+  }
+  return out;
+}
+
+const BREADCRUMB = /breadcrumb/i;
+const RELATED = /related|recommend|you-may-also|complementary|also-bought/i;
+const DESCRIPTION = /product[-_]{0,2}description|product__description|\brte\b/i;
+
+// --- B29: internal links on the product page, by kind ----------------------
+
+export type LinkKinds = {
+  breadcrumb: number;
+  related: number;
+  collection: number;
+  inDescription: number;
+  /** Distinct same-origin addresses on the page, from B16's own counter. */
+  total: number;
+};
+
+/**
+ * B29: how many internal links this product page carries, by kind.
+ *
+ * Counts, and nothing else. No named practitioner states a target for any of
+ * the four, so this app states none either - the row reports what the page has
+ * and the merchant decides whether it is enough. That is why B29 is a reports
+ * code and never renders as found or clean.
+ *
+ * **The four kinds overlap and are not a partition.** A related-products grid
+ * whose links are collection-prefixed is counted under `related` and under
+ * `collection` both, because it is both, and a row that silently picked one
+ * would be answering a question nobody asked. `total` is B16's own count of
+ * distinct internal addresses and is not the sum of the four.
+ */
+export function linksByKind(html: string, pageUrl: string): LinkKinds {
+  const countLinks = (fragment: string) => [...fragment.matchAll(/<a\b[^>]*\bhref\s*=/gi)].length;
+  const inRegions = (tags: string[], pattern: RegExp) =>
+    elementRegions(html, tags, pattern).reduce((sum, region) => sum + countLinks(region), 0);
+
+  let collection = 0;
+  let origin: string | null = null;
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    origin = null;
+  }
+  if (origin !== null) {
+    for (const match of html.matchAll(/<a\b[^>]*>/gi)) {
+      const href = attributeOf(match[0], "href");
+      if (!href) continue;
+      try {
+        const resolved = new URL(href.trim(), pageUrl);
+        if (resolved.origin !== origin) continue;
+        if (/^(?:\/[a-z-]{2,10})?\/collections\//i.test(resolved.pathname)) collection += 1;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return {
+    breadcrumb: inRegions(["nav", "ol", "ul", "div", "section"], BREADCRUMB),
+    related: inRegions(["div", "section", "ul", "aside"], RELATED),
+    collection,
+    inDescription: inRegions(["div", "section", "p"], DESCRIPTION),
+    total: internalLinks(html, pageUrl, Number.MAX_SAFE_INTEGER).total,
+  };
+}
+
+/**
+ * B29 as a row. Always present on a page that answered, because the row is a
+ * count and a count of zero is the interesting one: a product page with no
+ * breadcrumb and no related products is a real thing to know, and it is the
+ * one case that would disappear if this returned null on nothing found.
+ */
+export function checkInternalLinkKinds(kinds: LinkKinds): Finding | null {
+  return { code: "B29", source: "B", detail: { ...kinds } };
+}
+
+// --- B31: the first image, lazy-loaded -------------------------------------
+
+export type FirstImage = { src: string | null; loading: string | null };
+
+/**
+ * The first img inside body, and the `loading` attribute as found.
+ *
+ * The first image in the body and not "the LCP element", which no server-side
+ * read can identify: what paints largest depends on the viewport, and this app
+ * fetches one HTML document with no browser. Stated plainly in the method
+ * line, because on many themes the first image is the shop's logo and a lazy
+ * logo is a different, smaller fact from a lazy hero.
+ */
+export function firstImage(html: string): FirstImage | null {
+  const body = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(html);
+  const source = body ? body[1] : html;
+  const match = /<img\b[^>]*>/i.exec(source);
+  if (!match) return null;
+  return {
+    src: attributeOf(match[0], "src"),
+    loading: attributeOf(match[0], "loading"),
+  };
+}
+
+/**
+ * B31: the first image on the page is lazy-loaded.
+ *
+ * Mechanically certain even though the practice source is unnamed: a browser
+ * defers a loading="lazy" image until layout says it is near the viewport, so
+ * an above-the-fold image marked lazy is fetched later than it would have
+ * been. The row states the attribute as found and says nothing about page
+ * speed scores, which are out of scope by PRD section 6.
+ */
+export function checkLazyFirstImage(html: string): Finding | null {
+  const image = firstImage(html);
+  if (!image) return null;
+  if ((image.loading ?? "").trim().toLowerCase() !== "lazy") return null;
+  return { code: "B31", source: "B", detail: { loading: "lazy", src: image.src } };
+}
+
+// --- B32: what else the page loads -----------------------------------------
+
+export type ScriptOrigin = { origin: string; count: number };
+
+/**
+ * Every script tag on the page, grouped by where it comes from.
+ *
+ * `inline` is its own group: a script with no src is markup the theme or an
+ * app wrote into the page, and folding it in with a CDN would hide the
+ * difference. A relative src resolves to the shop's own host and is grouped
+ * there, because that is where the browser fetches it from.
+ */
+export function scriptOrigins(html: string, pageUrl: string): ScriptOrigin[] {
+  const counts = new Map<string, number>();
+  const add = (key: string) => counts.set(key, (counts.get(key) ?? 0) + 1);
+  for (const match of html.matchAll(/<script\b[^>]*>/gi)) {
+    const src = attributeOf(match[0], "src");
+    if (!src || src.trim() === "") {
+      add("inline");
+      continue;
+    }
+    try {
+      add(new URL(src.trim(), pageUrl).host);
+    } catch {
+      add("unparseable");
+    }
+  }
+  return [...counts.entries()]
+    .map(([origin, count]) => ({ origin, count }))
+    .sort((a, b) => b.count - a.count || a.origin.localeCompare(b.origin));
+}
+
+/**
+ * B32: the scripts this page loads, counted by origin. Never a verdict.
+ *
+ * Break The Web's "ghost code" is the practice this comes from - scripts left
+ * behind by apps that were uninstalled - and the count is a fact while the
+ * judgement is entirely the merchant's: this app cannot know that an analytics
+ * host is wanted and a review host is not. So the row counts and stops, and it
+ * sits at the bottom of the card with B29 under the rule Break The Web states
+ * for an audit: do not report what the merchant cannot act on.
+ *
+ * The theme's app embed blocks are the other half of this row and are not read
+ * from the page at all - they come from settings_data.json via `readAppEmbeds`
+ * in embed-check.server.ts, because an embed that is present and switched off
+ * renders nothing and so cannot be seen in HTML.
+ */
+export function checkScriptOrigins(html: string, pageUrl: string): Finding | null {
+  const origins = scriptOrigins(html, pageUrl);
+  const scripts = origins.reduce((sum, o) => sum + o.count, 0);
+  return {
+    code: "B32",
+    source: "B",
+    detail: {
+      scripts,
+      origins: origins.length,
+      // Capped: a storefront with a dozen apps carries a long tail, and a row
+      // is a sentence rather than a file listing.
+      top: origins.slice(0, 8),
+    },
+  };
+}
+
+// --- B30: a blog post that links to nothing you sell -----------------------
+
+/**
+ * B30: this blog post links to no product and no collection.
+ *
+ * One fetch per post, charged to the same daily budget as every other request
+ * (PRD section 3), and read last so products keep the first claim on it. The
+ * row states what the post links to and never that it should link to
+ * something: a shipping-policy post that sells nothing is doing its job.
+ *
+ * A post has no product row to sit on, so B30 is recorded per shop and
+ * rendered with its own denominator - the posts this pass read - exactly as
+ * A10 and A11 are rendered from the collections report. Its `Finding` shape
+ * exists so the code reads like every other one and so the weekly diff sees
+ * the same vocabulary.
+ */
+export function checkBlogPostLinks(html: string, pageUrl: string): Finding | null {
+  let origin: string;
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    return null;
+  }
+  let products = 0;
+  let collections = 0;
+  for (const match of html.matchAll(/<a\b[^>]*>/gi)) {
+    const href = attributeOf(match[0], "href");
+    if (!href) continue;
+    let resolved: URL;
+    try {
+      resolved = new URL(href.trim(), pageUrl);
+    } catch {
+      continue;
+    }
+    if (resolved.origin !== origin) continue;
+    const path = resolved.pathname;
+    if (/^(?:\/[a-z-]{2,10})?\/products\//i.test(path)) products += 1;
+    else if (/^(?:\/[a-z-]{2,10})?\/collections\//i.test(path)) collections += 1;
+  }
+  if (products > 0 || collections > 0) return null;
+  return { code: "B30", source: "B", detail: { products: 0, collections: 0, url: pageUrl } };
 }

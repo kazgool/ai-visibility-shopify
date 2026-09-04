@@ -26,7 +26,15 @@ import {
   PRODUCTS_PATH,
 } from "../app/services/seo-page.server";
 import { storefrontCookie } from "../app/services/theme-scan.server";
-import { titleKey } from "../app/services/seo-onpage";
+import {
+  BLOG_POST_CAP,
+  COLLECTION_PAGE_CAP,
+  checkBlogPostLinks,
+  countLinkForms,
+  productLinks,
+  titleKey,
+  type LinkFormCount,
+} from "../app/services/seo-onpage";
 import { describeFinding } from "../app/services/seo-aggregate";
 import { CHECK_LABEL } from "../app/services/seo-findings";
 import type { Finding } from "../app/services/seo-findings";
@@ -82,6 +90,36 @@ async function main() {
   console.log(`Sitemap: ${sitemap.read.urls} product URLs, reading ${handles.length}.`);
   console.log("");
 
+  // B25: the collection pages first, exactly as the nightly pass reads them,
+  // because every product row needs the answer before it is written. This
+  // script spends no budget, but it reads in the same order so what it prints
+  // is what the pass would find.
+  const collectionUrls = (sitemap.read.collections ?? []).slice(0, COLLECTION_PAGE_CAP);
+  const linkForms = new Map<string, LinkFormCount>();
+  let collectionPagesRead = 0;
+  let longLinks = 0;
+  let shortLinks = 0;
+  for (const url of collectionUrls) {
+    const page = await readProductPage(url, cookie);
+    if (page.status !== 200 || page.passwordProtected || page.error) continue;
+    collectionPagesRead += 1;
+    const links = productLinks(page.html, page.finalUrl);
+    const counts = countLinkForms(links);
+    longLinks += counts.long;
+    shortLinks += counts.short;
+    for (const link of links) {
+      const seen = linkForms.get(link.handle) ?? { long: 0, short: 0 };
+      if (link.long) seen.long += 1;
+      else seen.short += 1;
+      linkForms.set(link.handle, seen);
+    }
+  }
+  console.log(
+    `Collection pages: ${(sitemap.read.collections ?? []).length} in the sitemap, ${collectionPagesRead} read; ` +
+      `${longLinks} collection-prefixed product links, ${shortLinks} plain.`,
+  );
+  console.log("");
+
   const titlesByKey = new Map<string, string[]>();
   const byCode = new Map<string, { count: number; example: Finding }>();
   let read = 0;
@@ -98,6 +136,7 @@ async function main() {
       // Link checks are not made here: they would multiply this script's
       // requests to the merchant's storefront by twenty, and it is a read.
       links: null,
+      linkForms: linkForms.get(handle),
     });
     if (reading.status !== "ok") {
       couldNotBeRead += 1;
@@ -131,6 +170,23 @@ async function main() {
     console.log(`  ${code.padEnd(4)} ${String(entry.count).padStart(3)} of ${read}  ${label}`);
     console.log(`       example: ${describeFinding(entry.example)}`);
   }
+  // B30 last, as the pass reads it and for the same reason.
+  const articles = (sitemap.read.articles ?? []).slice(0, BLOG_POST_CAP);
+  let postsRead = 0;
+  let postsWithoutLinks = 0;
+  for (const url of articles) {
+    const page = await readProductPage(url, cookie);
+    if (page.status !== 200 || page.passwordProtected || page.error) continue;
+    postsRead += 1;
+    if (checkBlogPostLinks(page.html, page.finalUrl)) postsWithoutLinks += 1;
+  }
+  console.log("");
+  console.log(
+    postsRead === 0
+      ? `B30   no blog post was read (${(sitemap.read.articles ?? []).length} in the sitemap), so nothing is reported about the blog`
+      : `B30   ${postsWithoutLinks} of ${postsRead}  ${CHECK_LABEL.B30}`,
+  );
+
   const silent = Object.keys(CHECK_LABEL).filter((code) => !byCode.has(code));
   console.log("");
   console.log(`Checks that raised nothing on these pages: ${silent.join(", ")}`);

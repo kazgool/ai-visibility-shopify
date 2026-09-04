@@ -74,6 +74,8 @@ import {
 } from "../services/graphql-errors";
 import {
   DEFAULT_DAILY_BUDGET,
+  blogPostReport,
+  collectionLinkReport,
   dailyBudget,
   robotsBlock,
   staleSitemapEntries,
@@ -205,7 +207,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // nightly page read" rows and a night that has already decided to fetch
   // nothing. The sentence at the top of the card has to say so (QA, 3
   // September 2026).
-  const [scan, scanBudget, scanRobotsBlock, staleSitemap, homeRedirects] = shop
+  const [
+    scan,
+    scanBudget,
+    scanRobotsBlock,
+    staleSitemap,
+    homeRedirects,
+    collectionLinks,
+    blogPosts,
+  ] = shop
     ? await Promise.all([
         readSeoAggregates(shop.id),
         dailyBudget(shop.id),
@@ -216,8 +226,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // A13's other half, and the same shape for the same reason: a redirect
         // from a deleted product or a collection names no product row.
         homeRedirectsFor(shop.id),
+        // B25's per-collection half: which collection pages were read, and how
+        // many of their product links used the long form. The product rows say
+        // which canonicals nothing links to; this says where that was measured.
+        collectionLinkReport(shop.id),
+        // B30, whole. A blog post has no product row, so its denominator is
+        // the posts the last pass read and it is rendered from here.
+        blogPostReport(shop.id),
       ])
-    : [null, DEFAULT_DAILY_BUDGET, null, null, null];
+    : [null, DEFAULT_DAILY_BUDGET, null, null, null, null, null];
 
   // The since-card (PRD-SEO-FULL-ONPAGE §1.2). Two rows, both already
   // computed: the before, written once at unlock, and the rolling current,
@@ -241,6 +258,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     unlocked: true as const,
     staleSitemap,
     homeRedirects,
+    collectionLinks,
+    blogPosts,
+    // B32's other half, from the settings file checkAppEmbed already parsed:
+    // every app embed in the published theme, ours included. Counts only.
+    appEmbeds: embed.appEmbeds ?? null,
     collections: {
       queueJob: collectionQueueJob,
       applyJob: collectionApplyJob,
@@ -1483,6 +1505,31 @@ function SeoListingsCard({
  *  - print a wall of zeros. Checks that ran and found nothing collapse into
  *    one line, so a clean store reads as clean.
  */
+/**
+ * The numbers on a counted row, summed over every page that carried the
+ * finding.
+ *
+ * Written per code rather than by iterating the totals map, because not every
+ * number in a detail means anything when it is added up. B32's `origins` is
+ * how many distinct hosts one page loaded from; summed across fifty pages it
+ * is a number with no referent, so it is not shown. The scripts are, because a
+ * script tag on each of fifty pages is fifty script tags.
+ */
+function countedTotals(row: { code: string; denominator: number; totals?: Record<string, number> }): string {
+  const t = row.totals ?? {};
+  const pages = `across ${row.denominator} page${row.denominator === 1 ? "" : "s"}`;
+  if (row.code === "B29") {
+    return (
+      `${t.breadcrumb ?? 0} breadcrumb, ${t.related ?? 0} related, ` +
+      `${t.collection ?? 0} to collections, ${t.inDescription ?? 0} in the description, ${pages}`
+    );
+  }
+  if (row.code === "B32") {
+    return `${t.scripts ?? 0} script tags ${pages}`;
+  }
+  return pages;
+}
+
 function FindingsPerProductCard({
   aggregate,
   budget,
@@ -1490,6 +1537,9 @@ function FindingsPerProductCard({
   collectionReport,
   staleSitemap,
   homeRedirects,
+  collectionLinks,
+  blogPosts,
+  appEmbeds,
 }: {
   aggregate: FindingsAggregate;
   budget: number;
@@ -1501,12 +1551,25 @@ function FindingsPerProductCard({
   staleSitemap: { handles: string[]; total: number } | null;
   /** A13's other half: home-page redirects whose path names no product. */
   homeRedirects: { paths: string[]; total: number } | null;
+  /** B25's other half: the collection pages the long-form links were read on. */
+  collectionLinks: {
+    pagesRead: number;
+    pagesAvailable: number;
+    capped: boolean;
+    long: number;
+    short: number;
+  } | null;
+  /** B30, whole: its denominator is the posts read and never the catalogue. */
+  blogPosts: { read: number; withoutLinks: number; available: number } | null;
+  /** B32's other half, from the theme's settings file. Counts only. */
+  appEmbeds: { total: number; enabled: number; byApp: { app: string; count: number }[] } | null;
 }) {
   const clean = cleanSentence(aggregate);
   const found = aggregate.rows.filter((r) => r.state === "found");
   const notYetRead = aggregate.rows.filter((r) => r.state === "notYetRead");
   const notApplicable = aggregate.rows.filter((r) => r.state === "notApplicable");
   const couldNotRun = aggregate.rows.filter((r) => r.state === "couldNotRun");
+  const counted = aggregate.rows.filter((r) => r.state === "counted");
 
   return (
     <Card>
@@ -1642,6 +1705,52 @@ function FindingsPerProductCard({
               </InlineStack>
             ))}
 
+            {/* B30 counts blog posts, which are neither products nor
+                collections, so like A10 and A11 it carries its own denominator
+                and is rendered from the pass's own record. */}
+            <InlineStack align="space-between" blockAlign="center" wrap={false}>
+              <BlockStack gap="050">
+                <Text as="p" variant="bodySm">
+                  {CHECK_LABEL.B30}
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Counted over the blog posts the last pass read, not over the
+                  posts you have.
+                </Text>
+                {CHECK_METHOD.B30 ? (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    {CHECK_METHOD.B30}
+                  </Text>
+                ) : null}
+              </BlockStack>
+              <Text
+                as="span"
+                fontWeight={blogPosts ? "semibold" : undefined}
+                tone={blogPosts ? undefined : "subdued"}
+              >
+                {blogPosts
+                  ? `${blogPosts.withoutLinks} of ${blogPosts.read}`
+                  : "No blog post read yet"}
+              </Text>
+            </InlineStack>
+
+            {/* B25's other half: where the product rows above were measured.
+                A fact about the theme's collection grid, which is not a fact
+                about any one product and so has no product row. */}
+            {collectionLinks ? (
+              <Text as="p" tone="subdued" variant="bodySm">
+                {`Read from ${collectionLinks.pagesRead} collection page${
+                  collectionLinks.pagesRead === 1 ? "" : "s"
+                }${
+                  collectionLinks.capped
+                    ? ` of the ${collectionLinks.pagesAvailable} this shop has`
+                    : ""
+                }: ${collectionLinks.long} product link${
+                  collectionLinks.long === 1 ? "" : "s"
+                } of the collection-prefixed form and ${collectionLinks.short} of the plain form.`}
+              </Text>
+            ) : null}
+
             {/* A read that was asked for and refused. Not "clean", which would
                 claim the check ran and passed, and not "not yet read", which
                 would promise a night that will answer it. */}
@@ -1688,6 +1797,65 @@ function FindingsPerProductCard({
               <Text as="p" tone="subdued" variant="bodySm">
                 {`${homeRedirects.total} redirect${homeRedirects.total === 1 ? "" : "s"} in this shop point at the home page from an address that is not a product: ${homeRedirects.paths.slice(0, 5).join(", ")}${homeRedirects.total > 5 ? ", and others" : ""}. Google treats those as soft 404s, so the old addresses earn nothing. They have no product row, which is why they are counted here rather than on one.`}
               </Text>
+            ) : null}
+
+            {/* Counted, not judged. At the bottom of the card and visibly
+                apart from every row above it, which is Break The Web's own
+                rule for an audit applied to the screen: do not report what the
+                merchant cannot act on. B29 and B32 state numbers and no
+                target, because no named source states one. */}
+            {counted.length > 0 ? (
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingSm">
+                  Counted, not judged
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Numbers with no verdict attached. Nothing here is a finding
+                  and nothing here says what the number should be.
+                </Text>
+                {counted.map((row) => (
+                  <InlineStack key={row.code} align="space-between" blockAlign="start" wrap={false}>
+                    <BlockStack gap="050">
+                      <Text as="p" variant="bodySm">
+                        {row.label}
+                      </Text>
+                      {CHECK_METHOD[row.code] ? (
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          {CHECK_METHOD[row.code]}
+                        </Text>
+                      ) : null}
+                    </BlockStack>
+                    <Text as="span" tone="subdued">
+                      {countedTotals(row)}
+                    </Text>
+                  </InlineStack>
+                ))}
+                {appEmbeds ? (
+                  <InlineStack align="space-between" blockAlign="start" wrap={false}>
+                    <BlockStack gap="050">
+                      <Text as="p" variant="bodySm">
+                        App embed blocks in the published theme
+                      </Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        Read from the theme's own settings file, not from the
+                        page: an embed that is present and switched off renders
+                        nothing, so a page cannot show you it is there. This
+                        app's own block is counted with the rest.
+                      </Text>
+                    </BlockStack>
+                    <Text as="span" tone="subdued">
+                      {`${appEmbeds.enabled} on of ${appEmbeds.total}${
+                        appEmbeds.byApp.length > 0
+                          ? `: ${appEmbeds.byApp
+                              .slice(0, 5)
+                              .map((a) => `${a.app} (${a.count})`)
+                              .join(", ")}`
+                          : ""
+                      }`}
+                    </Text>
+                  </InlineStack>
+                ) : null}
+              </BlockStack>
             ) : null}
 
             {clean ? (
@@ -1858,6 +2026,9 @@ export default function Seo() {
             collectionReport={data.collections.report as unknown as CollectionSeoQueue | null}
             staleSitemap={data.staleSitemap}
             homeRedirects={data.homeRedirects}
+            collectionLinks={data.collectionLinks}
+            blogPosts={data.blogPosts}
+            appEmbeds={data.appEmbeds}
           />
         ) : null}
 

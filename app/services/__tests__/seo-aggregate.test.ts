@@ -144,13 +144,22 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // off the page and so all fifteen over the 20 pages read.
     // A12, A13, A15 and A16 joined on 4 September (section 5b), all four over
     // the catalogue, so the catalogue group grows from three to seven.
+    // B25, B26 and B31 joined the same day with the page half of 5b, over the
+    // pages read; B28 joined the catalogue group, because it is computed from
+    // the menu tree with no page fetched. B29 and B32 are deliberately absent
+    // from this list and from every count in it: they state no verdict, so
+    // they are never clean and never found (state "counted"), and folding them
+    // into "found nothing" would be inventing the verdict their whole design
+    // refuses to state. B30 is absent because its denominator is the blog
+    // posts a pass read, which is neither of these two.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
       "A12", "A13", "A15", "A16", "A2", "A4", "A5", "A7", "B1", "B10", "B11",
       "B12", "B13", "B14", "B15", "B16", "B17", "B18", "B19", "B20", "B21",
-      "B22", "B23", "B24", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
+      "B22", "B23", "B24", "B25", "B26", "B28", "B3", "B31", "B4", "B5", "B6",
+      "B7", "B8", "B9",
     ]);
     expect(cleanSentence(aggregate)).toBe(
-      "24 checks found nothing on 20 products; 7 checks found nothing on 50 products.",
+      "27 checks found nothing on 20 products; 8 checks found nothing on 50 products.",
     );
   });
 
@@ -242,10 +251,14 @@ describe("a store where source B has never run", () => {
   });
 
   it("collapses only the A checks that ran, and says 50 rather than 0", () => {
+    // B28 is in the catalogue group and not the page group: it is a B-numbered
+    // check that fetches no page, so a store where source B has never run
+    // still has an answer for it. That is the whole reason CHECKS carries a
+    // basis separately from a source.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A12", "A13", "A15", "A16", "A3", "A4", "A5", "B6",
+      "A12", "A13", "A15", "A16", "A3", "A4", "A5", "B28", "B6",
     ]);
-    expect(cleanSentence(aggregate)).toBe("8 checks found nothing on 50 products.");
+    expect(cleanSentence(aggregate)).toBe("9 checks found nothing on 50 products.");
   });
 
   it("puts the not-yet-read rows after the ones that found something", () => {

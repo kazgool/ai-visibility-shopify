@@ -937,7 +937,7 @@ describe("the section 5b checks inside source A's pass", () => {
     expect(JSON.parse(write[0].create.value).paths).toEqual(["/collections/old-range"]);
   });
 
-  it("records A13 and A16 as checks that could not run when the Admin read is refused", async () => {
+  it("records A13, A16 and B28 as checks that could not run when the Admin read is refused", async () => {
     // The state on this app's own dev store today: neither `urlRedirects` nor
     // `menus` is readable with the scopes it carries. Both must read as
     // "could not be checked" and never as "nothing found".
@@ -952,10 +952,14 @@ describe("the section 5b checks inside source A's pass", () => {
 
     expect(report?.byCode.A13).toBeUndefined();
     expect(report?.byCode.A16).toBeUndefined();
+    // B28 reads the same menu tree A16 does, so the same refusal refuses it,
+    // and a click depth computed from no menus is not a depth of one - it is
+    // no answer. Added 4 September 2026 with B25 to B32.
+    expect(report?.byCode.B28).toBeUndefined();
     const write = setting.upsert.mock.calls.find(
       (c: any) => c[0].create.key === "seo_checks_unavailable",
     );
-    expect(Object.keys(JSON.parse(write[0].create.value)).sort()).toEqual(["A13", "A16"]);
+    expect(Object.keys(JSON.parse(write[0].create.value)).sort()).toEqual(["A13", "A16", "B28"]);
   });
 
   it("fires A15 on a camera filename and stays silent on a name a person wrote", async () => {

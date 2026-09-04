@@ -180,10 +180,60 @@ describe("fetching the sitemap", () => {
 
     expect(out.read?.handles.has("masa-oslo")).toBe(true);
     expect(out.read?.urls).toBe(1);
-    // The collections sitemap is never fetched: it holds no product URLs, and
-    // every fetch here is charged to the shop's daily page budget.
-    expect(calls).toEqual(["https://x/sitemap.xml", "https://x/sitemap_products_1.xml"]);
-    expect(out.fetches).toBe(2);
+    // The collections sitemap IS fetched, from 4 September 2026: B25 needs the
+    // shop's collection page addresses and this index is where they are named.
+    // It is one more request charged to the same daily budget, which is why it
+    // is counted in `fetches` and why the pass reports the number - a budget
+    // that is not stated is a figure rather than a limit.
+    expect(calls).toEqual([
+      "https://x/sitemap.xml",
+      "https://x/sitemap_products_1.xml",
+      "https://x/sitemap_collections_1.xml",
+    ]);
+    expect(out.fetches).toBe(3);
+  });
+
+  it("collects collection pages for B25 and blog posts for B30, and neither as a product", async () => {
+    const impl = (async (url: string) => {
+      if (String(url).endsWith("/sitemap.xml")) {
+        return xmlResponse(
+          `<sitemapindex>
+             <sitemap><loc>https://x/sitemap_products_1.xml</loc></sitemap>
+             <sitemap><loc>https://x/sitemap_collections_1.xml</loc></sitemap>
+             <sitemap><loc>https://x/sitemap_blogs_1.xml</loc></sitemap>
+           </sitemapindex>`,
+        );
+      }
+      if (String(url).includes("collections")) {
+        return xmlResponse(
+          `<urlset>
+             <url><loc>https://x/collections/sofas</loc></url>
+             <url><loc>https://x/collections/sofas/products/masa-oslo</loc></url>
+           </urlset>`,
+        );
+      }
+      if (String(url).includes("blogs")) {
+        return xmlResponse(
+          `<urlset>
+             <url><loc>https://x/blogs/news/how-to-choose</loc></url>
+             <url><loc>https://x/blogs/news</loc></url>
+           </urlset>`,
+        );
+      }
+      return xmlResponse(`<urlset><url><loc>https://x/products/masa-oslo</loc></url></urlset>`);
+    }) as unknown as typeof fetch;
+
+    const out = await fetchSitemap("https://x", impl);
+
+    // The long-form product URL inside the collections sitemap is not a
+    // collection page. Reading it as one would make B25 fetch the very address
+    // it exists to report.
+    expect(out.read?.collections).toEqual(["https://x/collections/sofas"]);
+    // The blog's own index page is not a post: it links to every post on it,
+    // so B30 would only ever be answering about itself.
+    expect(out.read?.articles).toEqual(["https://x/blogs/news/how-to-choose"]);
+    // And neither has become a product handle.
+    expect([...(out.read?.handles ?? [])]).toEqual(["masa-oslo"]);
   });
 
   it("reads a small shop's sitemap.xml when it is a urlset rather than an index", async () => {

@@ -26,6 +26,7 @@ import {
   checkDuplicateDescription,
   checkHomeRedirect,
   checkImageFilenames,
+  checkClickDepth,
   checkOrphan,
   duplicateDescriptions,
   homePageRedirects,
@@ -82,7 +83,7 @@ async function main() {
     `URL redirects: ${redirects ? `${redirects.read} read${redirects.partial ? " (capped)" : ""}` : "COULD NOT BE READ - the Admin API refused the query"}`,
   );
   console.log(
-    `Menus: ${menus ? `${menus.productIds.size} products linked by id, ${menus.handles.size} by address` : "COULD NOT BE READ - the Admin API refused the query"}`,
+    `Menus: ${menus ? `${menus.productIds.size} products linked by id, ${menus.handles.size} by address, ${menus.collectionDepth.size} collections in the tree` : "COULD NOT BE READ - the Admin API refused the query"}`,
   );
   console.log("");
 
@@ -117,14 +118,17 @@ async function main() {
     bump(checkHomeRedirect(homeRedirects?.byHandle.get(handle), redirects), handle);
     bump(checkImageFilenames(product), handle);
     bump(checkOrphan(product, menus), handle);
+    // B28: numbered with the page checks, computed here because it needs no
+    // page - the same menu tree A16 just used, plus collection membership.
+    bump(checkClickDepth(product, menus), handle);
   }
 
   console.log("Product checks, count of products read:");
-  for (const code of ["A12", "A13", "A15", "A16"]) {
+  for (const code of ["A12", "A13", "A15", "A16", "B28"]) {
     const entry = counts.get(code);
     // A check whose read was refused is said to be refused. A zero here would
     // claim it ran and found nothing.
-    if ((code === "A13" && !redirects) || (code === "A16" && !menus)) {
+    if ((code === "A13" && !redirects) || ((code === "A16" || code === "B28") && !menus)) {
       console.log(`  ${code.padEnd(4)}  could not be checked   ${CHECK_LABEL[code as "A13"]}`);
       continue;
     }

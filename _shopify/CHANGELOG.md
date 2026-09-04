@@ -16,6 +16,131 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### One more scope, and the page half of the practitioner layer (4 September 2026)
+
+`PRD-SEO-FULL-ONPAGE.md` section 5b, build step 4b: B25 to B32. No extension
+changed, but **the access scopes did**, so this one needs
+`npx shopify app deploy` and a re-authorisation on every store before three of
+the checks below can answer anything.
+
+**`read_online_store_navigation` added to `shopify.app.toml`**, on the same
+reasoning Marius took for `read_markets` earlier the same day: there are no
+merchant installs beyond the dev store, so the re-prompt costs nothing today and
+will never be this cheap again. One scope unlocks four checks that were all
+built and all silent without it, because `urlRedirects` and `menus` both sit
+under Online Store - Navigation: A4 (which has been answering "not checked" on
+every renamed product since it was written, with no screen saying why), A13,
+A16, and now B28. The could-not-be-read state stays on all of them and stays
+tested - an older stored token or a shop that has not re-authorised is still a
+refusal, and a refused check must never render as one that ran and passed. The
+plans screen's permissions sentence, which claims to be the whole list, now
+names five scopes and says what the navigation one reads.
+
+**B25: only collection-prefixed links point at this product.** Shopify serves a
+product at both `/products/y` and `/collections/x/products/y`, and only the
+first is canonical. The Ahrefs Help Center describes the consequence on Shopify
+stores by name: when the collection grid links the long form, the canonical URL
+has no internal link pointing at it. The pass reads up to 20 collection pages
+from the shop's own collection sitemap, before any product page and out of the
+same daily allowance, and a product every one of those links names in the long
+form gets the row. A product linked plainly even once does not - the canonical
+is linked, and how many long-form links sit beside it is Shopify being Shopify.
+A product that appeared on no collection page read gets nothing at all, which is
+not a clean result. The per-collection half has no product row to sit on and is
+recorded per shop, stated as a line under the row - the same shape A7's
+withdrawn-product half and A13's unmatched half already have.
+
+**B26: noindex on a product that is only out of stock.** Matthew Edgar and Glenn
+Davidson (Tomango) make the same argument: a noindexed page behaves like a soft
+404, the address loses the standing it had, and it does not get it back when the
+product returns - the page has to be found and re-evaluated from nothing. Both
+halves must be true: a noindex on a product that is in stock is B3's row, and a
+page that states no availability produces nothing, because "not stated" is not
+"out of stock". The row never says to remove the tag; on a product that is gone
+for good, noindex is a reasonable thing to have done.
+
+**B27 is not a code, and the absence is deliberate.** Section 5b's own row says
+what it is - "this is B1 with the sources named" - so B1's detail gained
+`origins`: which node came from the theme, which from an app, and which carries
+its own `AggregateRating`. Ilana Davis's case is a theme and a review app both
+emitting a rating, and what a merchant needs is which node came from where, on
+the row that already reports the count. A second code repeating the same count
+of the same nodes on the same page is two rows for one fact. This is a different
+absence from A14's: A14 could not be built at all, B27 was built and put where
+it belongs.
+
+**B28: click depth, with no crawl.** Break The Web's figure, quoted: more than
+three clicks from the home page. Computed in source A's pass from the one
+`menus` query A16 already makes plus collection membership - a top-level menu
+item is one click, a product on a collection that item links to is two, and the
+shortest route wins. So B28 is a B-numbered check counted over the **catalogue**
+and not over the pages read, and `CHECKS` says so; A7 is the same trade in the
+other direction. What it is not is a crawl: a product reachable in two clicks
+through a link in a page's body text is counted at whatever its menu route
+costs, and the method line says so.
+
+**B29 and B32 count and never judge, and the card gained a place to put them.**
+No named source states a target for the internal links on a product page or for
+the scripts it loads, so this app states none. `CHECKS` entries carry
+`reports: true`, `CheckState` gained `counted`, and both render at the bottom of
+the findings card under "Counted, not judged" with their numbers and no
+found-or-clean framing - Break The Web's own rule for an audit, applied to the
+screen. B29's four kinds (breadcrumb, related, collection, in-description)
+overlap on purpose and are not a partition; B32 groups script tags by the host
+they load from with inline as its own group, and its other half - every app
+embed block in the published theme, ours included - is read from
+`settings_data.json`, because an embed that is present and switched off renders
+nothing and cannot be seen in HTML at all.
+
+**B30: a blog post that links to no product and no collection.** One fetch per
+post, up to 25, out of the same allowance, and **read last** - what is left
+after the sitemaps, the collection pages, the product pages and B16's link
+checks is what the blog gets. On a catalogue larger than the nightly budget that
+is nothing, and the report then says it read no post rather than that no post
+lacks a link. A post has no product row, so B30's denominator is the posts a
+pass read: it is deliberately not in `CHECKS` and the screen renders it from the
+pass's own record, exactly as it renders A10 and A11 from the collections
+report.
+
+**B31: the first image on the page is lazy-loaded.** The first `img` inside the
+body and the `loading` attribute as found - not "the LCP element", which no
+server-side read can identify, and the method line says so rather than implying
+a browser was involved.
+
+**The sitemap read now collects three things instead of one.** `SitemapRead`
+carries the shop's collection page addresses and its blog post addresses beside
+the product handles, from the `sitemap_collections_*` and `sitemap_blogs_*`
+children of the same index. Each child is one more fetch charged to the same
+daily budget, which is why the report states the number: a budget that is not
+stated is a figure rather than a limit. A long-form product URL inside a
+collection sitemap is not read as a collection page - that would make B25 fetch
+the very address it exists to report - and a blog's own index page is not read
+as a post, because it links to every post on it.
+
+**49 new tests, and two of them changed an existing promise.** 42 in
+`seo-practice.test.ts` (the pure checks, the two deliberate absences, and how a
+counted row reaches the card) and 7 in `seo-page.test.ts` for the pass, where
+B25's and B30's budget arithmetic is counted rather than described: a shop with
+2 collections, 2 posts and 2 products spends 1 index + 3 child sitemaps + 2
+collection pages + 2 product pages + 2 posts, and the spend counter is asserted
+at every step. A budget of 8 on the same shop reads both collection pages, both
+product pages and **no post at all**, and a budget of 5 reads one collection
+page and no product page. The promise that changed: `readingOf` no longer
+returns an empty `findings` array on a clean page, because B29 and B32 are on
+every page that answered. Two tests said `toEqual([])` and now say
+`toEqual(["B29", "B32"])`, with the reason written where they say it.
+
+**Verified on the dev store, 4 September 2026**, read-only:
+`npx tsx scripts/read-onpage-checks.ts https://mrdigital-dev.myshopify.com
+--limit 10 --password massive` reads the 2 collection pages, finds 0
+collection-prefixed product links and 80 plain ones, so B25 is silent on all 10
+products - a real clean result and the evidence that the check reads the right
+markup. B29 and B32 report on all 10 (0 breadcrumb, 0 related, 4 collection
+links; 97 script tags from 3 origins). B26 and B31 are silent. B30 reads no post
+because the store has no blog sitemap, and says so rather than reporting zero.
+B28 prints "could not be checked" until the new scope is deployed and the store
+re-authorised, which is the whole of the refusal state working.
+
 ### The sitemap is read through the storefront password, and seven catalogue checks (4 September 2026)
 
 `PRD-SEO-FULL-ONPAGE.md` section 5b, build step 4a, plus the A7 defect step 4

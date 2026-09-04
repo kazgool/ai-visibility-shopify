@@ -46,6 +46,7 @@ import {
 } from "./seo-scan";
 import {
   REDIRECT_READ_CAP,
+  checkClickDepth,
   checkDuplicateDescription,
   checkHomeRedirect,
   checkImageFilenames,
@@ -244,18 +245,47 @@ export async function readMenus(graphql: GraphqlFn): Promise<MenuLinks | null> {
 
     const productIds = new Set<string>();
     const handles = new Set<string>();
-    const walk = (items: any[] | undefined) => {
+    // B28. The shallowest level wins, because a product linked from a
+    // top-level item and again from a third-level one is one click away, not
+    // three: `shallowest` never raises a depth already recorded.
+    const productDepth = new Map<string, number>();
+    const collectionDepth = new Map<string, number>();
+    const shallowest = (map: Map<string, number>, key: string, depth: number) => {
+      if (key === "") return;
+      const known = map.get(key);
+      if (known === undefined || depth < known) map.set(key, depth);
+    };
+
+    const walk = (items: any[] | undefined, depth: number) => {
       for (const item of items ?? []) {
         const resourceId = typeof item?.resourceId === "string" ? item.resourceId : "";
-        if (resourceId.includes("/Product/")) productIds.add(resourceId);
+        if (resourceId.includes("/Product/")) {
+          productIds.add(resourceId);
+          shallowest(productDepth, resourceId, depth);
+        }
+        if (resourceId.includes("/Collection/")) shallowest(collectionDepth, resourceId, depth);
         const url = typeof item?.url === "string" ? item.url : "";
-        const match = /\/products\/([^/?#]+)/.exec(url);
-        if (match) handles.add(match[1]);
-        walk(item?.items);
+        const product = /\/products\/([^/?#]+)/.exec(url);
+        if (product) {
+          handles.add(product[1]);
+          shallowest(productDepth, product[1], depth);
+        }
+        // The collection half of the same hand-typed-URL case. Deliberately
+        // not matched on /collections/x/products/y: that link names a product
+        // and is already handled above, and counting it as a link to the
+        // collection would make every long-form product link shorten the
+        // depth of a collection nobody linked to.
+        const collection = /^(?:https?:\/\/[^/]+)?(?:\/[a-z-]{2,10})?\/collections\/([^/?#]+)\/?(?:[?#]|$)/i.exec(
+          url,
+        );
+        if (collection) shallowest(collectionDepth, collection[1], depth);
+        walk(item?.items, depth + 1);
       }
     };
-    for (const menu of nodes) walk(menu?.items);
-    return { productIds, handles };
+    // Depth 1, not 0: the home page is depth 0 and a top-level menu item is
+    // one click from it.
+    for (const menu of nodes) walk(menu?.items, 1);
+    return { productIds, handles, productDepth, collectionDepth };
   } catch {
     return null;
   }
@@ -562,9 +592,15 @@ async function sourceAPass(
 
   const menus = products.length > 0 ? await readMenus(graphql) : null;
   if (products.length > 0 && menus === null) {
+    const reason =
+      "The shop's menus could not be read, so nothing is known about what links to what.";
     unavailable.A16 =
       "The shop's menus could not be read. This app's access does not include navigation, " +
       "so a product with no collection cannot be told apart from one a menu links to.";
+    // B28 reads the same menu tree, so it is refused by exactly the same
+    // refusal and must say so for exactly the same reason: a click depth
+    // computed from no menus is not a depth of one, it is no answer.
+    unavailable.B28 = reason;
   }
 
   // A4 first, because it is the only part that costs a request. Only products
@@ -639,6 +675,10 @@ async function sourceAPass(
     if (a15) findings.push(a15);
     const a16 = checkOrphan(product, menus);
     if (a16) findings.push(a16);
+    // B28, from the same menu tree A16 just used. Numbered with the page
+    // checks and computed here because it needs no page: see clickDepthOf.
+    const b28 = checkClickDepth(product, menus);
+    if (b28) findings.push(b28);
 
     // B6 last, so the order stays stable for the "did this row change"
     // comparison (rule 1) whichever findings a product happens to carry.
