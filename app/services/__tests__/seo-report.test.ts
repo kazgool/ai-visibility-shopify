@@ -225,6 +225,20 @@ describe("filenames a merchant can tell apart", () => {
     );
   });
 
+  it("keeps the three screens' files apart when they share a table name", () => {
+    // The merchant dashboard and the operator screen both export "since";
+    // the Report screen's files are not about the SEO module at all.
+    expect(exportFilename("mrdigital-dev.myshopify.com", "since", NOW)).toBe(
+      "ai-visibility-seo-mrdigital-dev-since-2026-09-05.csv",
+    );
+    expect(exportFilename("mrdigital-dev.myshopify.com", "since", NOW, "seo-operator")).toBe(
+      "ai-visibility-seo-operator-mrdigital-dev-since-2026-09-05.csv",
+    );
+    expect(exportFilename("mrdigital-dev.myshopify.com", "families", NOW, "report")).toBe(
+      "ai-visibility-report-mrdigital-dev-families-2026-09-05.csv",
+    );
+  });
+
   it("cannot carry a quote out of the header it sits in", () => {
     const name = exportFilename('a"; drop', "listing", NOW);
     expect(name).not.toContain('"');
@@ -481,7 +495,7 @@ describe("the vocabulary guard covers all five merchant files (R1 4.2)", () => {
           nodeType: "WebSite/SearchAction",
           emitted: false,
           reason:
-            "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
+            "This app adds WebSite/SearchAction on the home page only, and the last scan of the home page did not find it there although the app embed is active.",
         },
         {
           nodeType: "AggregateRating",

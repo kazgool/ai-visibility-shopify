@@ -1618,6 +1618,7 @@ first two columns are the unit tests; the last is the by-hand check.
 | Deleted outright | `products/delete` handler with `{id: 1}`: `deleteMany` by `gid://shopify/Product/1` (exists); and `reconcileMirrors` with the product absent from the read: deleted 1 | delete a mirrored product; the two fetches; then repeat with the worker stopped and the sweep run by hand |
 | Legitimately empty catalogue | read with `expected.root: 0, read.root: 0, complete: true` and three rows: deleted 3, queued 0 | on a dev store with every product unpublished, run the sweep: A.4 reads `No product page yet`, llms.txt reads `Nothing processed yet.` |
 | NULL-productId row whose product is live | read containing handle `x` with id 7, row `{handle: "x", productId: null}`: adopted 1, deleted 0 | - |
+| None eligible, rows of products not in the read (added 5 September 2026) | complete read of 50 products, every `onlineStoreUrl` null, 401 rows all NULL-productId, 352 under handles the read does not contain: `skipped: true, deleted: 352`, the 49 rows under current handles untouched; a read where one product has no handle: deleted 0; a row whose productId is in the read under a new handle: kept | the dev store on 5 September 2026 held exactly this shape (password-protected storefront, so no product carries `onlineStoreUrl`); after the next pass `SELECT count(*) FROM "MirrorCache"` for the shop reads 49 |
 | Second render | after any of the above, the A.4 Plain text pages count equals `SELECT count(*) FROM "MirrorCache" WHERE "shopId" = ...` | read the card, run the count in Neon |
 
 ---
@@ -1827,7 +1828,11 @@ render honestly:
   skipped: `Shopify's catalogue download was short ({read} of {expected}
   products), so nothing was withdrawn. It will be tried again on the next
   pass or the weekly check.` The three sentences come from the JobRun
-  report, never from local state.
+  report, never from local state. Since 5 September 2026 a skipped run
+  under the none-eligible floor may still have withdrawn the pages of
+  products the read does not contain at all, and the sentence then says
+  `so only the N pages of products no longer in the catalogue were
+  withdrawn` rather than "nothing".
 - Turning a toggle on adds nothing by itself: `reconcileMirrors` queues
   `extract_product` for every eligible product without a row, and those
   jobs write the pages. The help text says "after the next catalogue pass",

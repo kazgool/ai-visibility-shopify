@@ -541,6 +541,16 @@ export type MissingReason = {
   fixScreen: string | null;
 };
 
+/** The WebSite node was read for on the home page, where alone this app adds it, and was absent. */
+export const NOT_FOUND_ON_HOME_PAGE =
+  "This app adds WebSite/SearchAction on the home page only, and the last scan of the home page " +
+  "did not find it there although the app embed is active.";
+
+/** The BreadcrumbList was read for on the product page this app adds it to, and was absent. */
+export const NOT_FOUND_ON_PRODUCT_PAGE =
+  "This app adds BreadcrumbList on product pages, and the last scan of this product's page " +
+  "did not find it there although the app embed is active.";
+
 /**
  * For each node type the extension is capable of emitting, say whether it is
  * emitted and, when not, the concrete reason - derived from real state, not
@@ -596,11 +606,27 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
   // gated on seo_unlocked, but "emitted" is read off what the scan actually
   // found on the page, never inferred from the gate being open - the same
   // pattern hasRating uses.
-  const scanned: { nodeType: string; found: boolean | null }[] = [
-    { nodeType: "WebSite/SearchAction", found: input.hasWebSiteNode },
-    { nodeType: "BreadcrumbList", found: input.hasBreadcrumbNode },
+  //
+  // The not-found reason is per node and names the page this app adds it on
+  // (ai-visibility.liquid: WebSite under template.name == 'index', the
+  // BreadcrumbList under 'product'). It no longer says "check that the app
+  // embed is active": this branch is only reached with embedActive true, so
+  // that sentence told the merchant to check something the same read had
+  // just established (5 September 2026; on the dev store it stood on 50 of
+  // 50 product rows for a node that is never on a product page).
+  const scanned: { nodeType: string; found: boolean | null; notFound: string }[] = [
+    {
+      nodeType: "WebSite/SearchAction",
+      found: input.hasWebSiteNode,
+      notFound: NOT_FOUND_ON_HOME_PAGE,
+    },
+    {
+      nodeType: "BreadcrumbList",
+      found: input.hasBreadcrumbNode,
+      notFound: NOT_FOUND_ON_PRODUCT_PAGE,
+    },
   ];
-  for (const { nodeType, found } of scanned) {
+  for (const { nodeType, found, notFound } of scanned) {
     if (!input.seoUnlocked) {
       reasons.push({
         nodeType,
@@ -621,7 +647,7 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
       reasons.push({
         nodeType,
         emitted: false,
-        reason: "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
+        reason: notFound,
         fixScreen: "/app/diagnostics",
       });
     }

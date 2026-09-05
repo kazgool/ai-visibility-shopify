@@ -97,9 +97,25 @@ export async function reconcileMirrors(
   // different: Shopify announced no products, and emptying the mirror is
   // exactly right (I.6 row 7).
   if (read.read.root > 0 && handles.length === 0) {
+    // What the floor protects is the row of a product that IS in the read
+    // and merely failed a field. It never protected a row whose product is
+    // in the read by neither id nor handle: that product is not in the
+    // catalogue at all, and no field arriving late can bring it back. Found
+    // on the dev store on 5 September 2026: 352 rows from a 355-product
+    // catalogue replaced by a 50-product one sat behind this return for a
+    // month, because a password-protected storefront nulls onlineStoreUrl
+    // on every product and so nothing was ever eligible. The same shape on a
+    // live shop is a catalogue swap plus any lapse that empties the eligible
+    // set, and the old pages would serve until the lapse ended.
+    //
+    // The withdrawal below needs the read's handles, so it runs only when
+    // every product read carries one; a read where handles stopped arriving
+    // would otherwise match every row as "not in the catalogue".
+    summary.deleted = await withdrawNotInCatalogue(shop, read);
     summary.skipped = true;
     log(
-      `reconcile ${shop.domain}: ${read.read.root} products read, none eligible, nothing deleted`,
+      `reconcile ${shop.domain}: ${read.read.root} products read, none eligible, ` +
+        `${summary.deleted} page(s) of products no longer in the catalogue withdrawn, nothing else deleted`,
     );
     return summary;
   }
@@ -175,4 +191,47 @@ export async function reconcileMirrors(
       `${summary.queued} queued, from ${summary.read} of ${summary.expected} products`,
   );
   return summary;
+}
+
+/**
+ * Withdraw rows whose product is in the complete read by neither id nor
+ * handle, and only those. Eligibility plays no part: this is the one
+ * judgement that needs no field beyond the product's identity, so it is safe
+ * under the floor above, where every field-based judgement is refused.
+ *
+ * Refuses to act, returning 0, when any product read has no handle: the
+ * handle set would then be short, and a row could be called "not in the
+ * catalogue" because of a field that stopped arriving - the exact failure
+ * the floor exists to prevent. A read whose handles are all present is
+ * trusted for this one rule even when nothing in it is eligible.
+ */
+async function withdrawNotInCatalogue(
+  shop: { id: string },
+  read: CatalogueRead,
+): Promise<number> {
+  const ids = new Set<string>();
+  const handles = new Set<string>();
+  for (const product of read.products) {
+    if (!product.handle || !product.id) return 0;
+    ids.add(product.id);
+    handles.add(product.handle);
+  }
+  if (handles.size === 0) return 0;
+
+  const rows = await db.mirrorCache.findMany({
+    where: { shopId: shop.id },
+    select: { id: true, handle: true, productId: true },
+  });
+  const stale = rows
+    .filter(
+      (row: { handle: string; productId: string | null }) =>
+        !handles.has(row.handle) && (row.productId === null || !ids.has(row.productId)),
+    )
+    .map((row: { id: string }) => row.id);
+  if (stale.length === 0) return 0;
+
+  const { count } = await db.mirrorCache.deleteMany({
+    where: { shopId: shop.id, id: { in: stale } },
+  });
+  return count;
 }

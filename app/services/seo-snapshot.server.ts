@@ -34,6 +34,7 @@ import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
 import { fetchAllProducts } from "./catalogue.server";
 import { parseState, type ProductInput } from "./facts.server";
+import { ALT_TEXT_KEY, WRITTEN_KEYS } from "./seo-since";
 import { catalogueQuery } from "./eligibility";
 import { prefsFor } from "./eligibility.server";
 import { classifyMetaField } from "./seo.server";
@@ -195,33 +196,11 @@ export function snapshotFacts(
 
 // --- "Written by this app since then" (PRD section 1.2, second block) -------
 
-/**
- * The metafield keys this app writes that carry a timestamped state entry, and
- * therefore the only things that can honestly be counted "since <date>".
- *
- * **Alt text and structured data nodes are not here, and the card says so
- * rather than showing a number.** PRD section 1.2 lists both. Neither is
- * countable as specified, and the reason is in the writers rather than in this
- * module: `writeAltText` writes `alt` straight onto Shopify media through
- * `productUpdateMedia` and records no state entry anywhere, and structured data
- * nodes are not written at all - the Liquid block renders them at request time
- * from the facts and summary metafields, so nothing is stamped when a node
- * starts appearing. There is no timestamp to compare against the snapshot for
- * either. Inventing one from a JobRun report would count only the bulk passes
- * and miss every write from the product editor, which is a number that looks
- * real and is wrong. Recorded as an amendment for approval; it is not a
- * deliberate omission.
- */
-export const WRITTEN_KEYS = [
-  "seo_title",
-  "seo_description",
-  "questions",
-  "facts",
-  "summary",
-  "fit_for",
-] as const;
-
-export type WrittenKey = (typeof WRITTEN_KEYS)[number];
+// The keys this app stamps with a date live in seo-since.ts (WRITTEN_KEYS),
+// one list shared with the merchant labels, so the counter below and the card
+// cannot disagree about what is countable. Alt text joined it on 5 September
+// 2026, stamped per media id by writeAltText; structured data nodes are still
+// not countable, for the reason given beside the list.
 
 /** Count, and the span it happened over, for one key. */
 export type WrittenSinceEntry = {
@@ -252,18 +231,32 @@ export function writtenSince(products: ProductInput[], since: Date): WrittenSinc
   const out: WrittenSince = {};
   const sinceMs = since.getTime();
 
+  const count = (key: string, stampedAt: string | undefined) => {
+    const at = Date.parse(stampedAt ?? "");
+    if (!Number.isFinite(at) || at <= sinceMs) return;
+    const when = stampedAt as string;
+    const row = (out[key] ??= { count: 0, earliest: null, latest: null });
+    row.count += 1;
+    if (row.earliest === null || when < row.earliest) row.earliest = when;
+    if (row.latest === null || when > row.latest) row.latest = when;
+  };
+
   for (const product of products) {
     const state = parseState(product);
     for (const key of WRITTEN_KEYS) {
       const entry = state[key];
       if (!entry || entry.source !== "auto") continue;
-      const at = Date.parse(entry.at ?? "");
-      if (!Number.isFinite(at) || at <= sinceMs) continue;
-
-      const row = (out[key] ??= { count: 0, earliest: null, latest: null });
-      row.count += 1;
-      if (row.earliest === null || entry.at < row.earliest) row.earliest = entry.at;
-      if (row.latest === null || entry.at > row.latest) row.latest = entry.at;
+      // Alt text is one entry per product carrying one date per photo, and
+      // the figure is photos, not products: a product whose gallery was
+      // described across two passes, one before the snapshot and one after,
+      // counts only the photos from the second. An entry with no per-photo
+      // map (none is written that way, but a JSON column can hold anything)
+      // is counted once by its own date, like every other key.
+      if (key === ALT_TEXT_KEY && entry.media && typeof entry.media === "object") {
+        for (const at of Object.values(entry.media)) count(key, typeof at === "string" ? at : undefined);
+        continue;
+      }
+      count(key, entry.at);
     }
   }
   return out;
@@ -316,6 +309,66 @@ export async function recordCurrentFacts(
     update: data,
   });
 
+  return { written: true };
+}
+
+/**
+ * Refresh the page-derived half of the `current` row after a nightly page
+ * read, without a catalogue read (R2 U3, settled 5 September 2026).
+ *
+ * The row is rewritten whole by every catalogue pass, and nothing else
+ * touched it, so on a shop unlocked on a Tuesday the since card's "Now"
+ * column said pages were "not read" until the Monday sweep while the header
+ * beside it, read live off the scan table, said every product was fully
+ * checked. The page half - pagesRead, the theme's Product nodes, the node
+ * types, the count per code - is computed from the scan table alone, so it
+ * can be brought up to date the moment the scan finishes. The catalogue half
+ * is left exactly as the last catalogue pass wrote it, and `takenAt` with it:
+ * the method line names that pass and a page read is not one.
+ *
+ * Nothing is written when there is no `current` row: a row of catalogue
+ * figures cannot be invented from the scan table, and a page half with no
+ * catalogue half is the fabricated-zero shape this table exists to avoid.
+ * Identical values are not rewritten, so a night that read no page writes
+ * nothing.
+ */
+export async function refreshCurrentPageFacts(
+  shopId: string,
+): Promise<{ written: boolean; reason?: "no_current" | "unchanged" }> {
+  const current = await db.seoSnapshot.findUnique({
+    where: { shopId_takenBy: { shopId, takenBy: CURRENT } },
+  });
+  if (!current) return { written: false, reason: "no_current" };
+
+  const rows = (await db.seoScan.findMany({
+    where: { shopId },
+    select: SCAN_COLUMNS,
+  })) as ScanRowLike[];
+  const facts = snapshotFacts([], rows);
+
+  const next = {
+    productNodeTheme: facts.productNodeTheme,
+    productNodeNone: facts.productNodeNone,
+    themeNodeTypes: facts.themeNodeTypes,
+    findingsByCode: facts.findingsByCode,
+    pagesRead: facts.pagesRead,
+  };
+  const same =
+    current.pagesRead === next.pagesRead &&
+    current.productNodeTheme === next.productNodeTheme &&
+    current.productNodeNone === next.productNodeNone &&
+    JSON.stringify(current.themeNodeTypes ?? null) === JSON.stringify(next.themeNodeTypes) &&
+    JSON.stringify(current.findingsByCode ?? null) === JSON.stringify(next.findingsByCode);
+  if (same) return { written: false, reason: "unchanged" };
+
+  await db.seoSnapshot.update({
+    where: { shopId_takenBy: { shopId, takenBy: CURRENT } },
+    data: {
+      ...next,
+      themeNodeTypes: next.themeNodeTypes ?? undefined,
+      findingsByCode: next.findingsByCode ?? undefined,
+    },
+  });
   return { written: true };
 }
 

@@ -351,14 +351,26 @@ export function isoDay(date: Date): string {
  * the shop, the table, the date. The domain is reduced to the characters a
  * Content-Disposition header and every filesystem accept, which also means the
  * value can never carry a quote out of the header it sits in.
+ *
+ * `module` names the screen the file came from, so the two exports that share
+ * a table name cannot share a filename: the merchant dashboard's `since` is
+ * `ai-visibility-seo-<shop>-since-<date>.csv` and the operator's per-code
+ * `since` from /app/seo is `ai-visibility-seo-operator-...`. The Report
+ * screen's attribute files are `ai-visibility-report-...`, because they are
+ * not about the SEO module at all (5 September 2026, Amendment 8 closed).
  */
-export function exportFilename(domain: string, table: string, date: Date): string {
+export function exportFilename(
+  domain: string,
+  table: string,
+  date: Date,
+  module: "seo" | "seo-operator" | "report" = "seo",
+): string {
   const shop = domain
     .toLowerCase()
     .replace(/\.myshopify\.com$/, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `ai-visibility-seo-${shop || "shop"}-${table}-${isoDay(date)}.csv`;
+  return `ai-visibility-${module}-${shop || "shop"}-${table}-${isoDay(date)}.csv`;
 }
 
 // ---------------------------------------------------------------------------

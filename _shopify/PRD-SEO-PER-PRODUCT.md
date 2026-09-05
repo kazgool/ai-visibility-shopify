@@ -347,10 +347,22 @@ catalogue read source A already holds carries each product's metafields, so
 `hasFacts`, `hasSummary` and `hasFitFor` cost nothing. The mode and the embed
 state are one `checkAppEmbed` call and one `businessFor` call **per pass**, not
 per product - asserted by a test, because a per-product embed read would be one
-Admin call per product. The three page-derived inputs (`hasRating`,
+Admin call per product. ~~The three page-derived inputs (`hasRating`,
 `hasWebSiteNode`, `hasBreadcrumbNode`) are read off this product's own stored
-`nodes` from the last source B scan, and are null until source B has read it,
-which B6 reports as "could not be determined" and never as missing.
+`nodes` from the last source B scan~~ Corrected 5 September 2026: two
+page-derived inputs (`hasRating`, `hasBreadcrumbNode`) are read off this
+product's own stored `nodes`, and only when that page answered 200 (`status`
+"ok"); a page that answered anything else stores an empty list and is
+"could not be determined", never "missing" (the dev store had four rows at
+429 reported as lacking the BreadcrumbList). `hasWebSiteNode` is not a
+product-page fact at all: this app adds the WebSite node on the home page
+only, so it is read once per pass off the home page of the newest theme scan
+(`homeWebSiteSeen`), null when there is none. Before the correction every
+product row of every shop carried a false "not found" for it. All are null
+until the page in question has been read, which B6 reports as "could not be
+determined" and never as missing. The not-found reason is per node and names
+the page this app adds it on; it no longer says "check that the app embed is
+active", which the same read had already established.
 
 **It carries `source: "A"`, and section 2.1's table is amended above.** Source A
 computes it, so source A must own it: a `"B"` there would have source B erase it
@@ -430,7 +442,16 @@ and before the 04:00 weekly watch.
   pages read; the rest by tomorrow night." On a 20,000-product store it reads
   "500 of 20,000 pages read; the rest over the next 39 nights", which is the
   true sentence and the reason the cap is a per-shop setting an operator can
-  raise for a client who pays for it.
+  raise for a client who pays for it. Amended 5 September 2026: that clause
+  is a promise, and it is made only while the nightly pass has moved on the
+  shop within the last 36 hours (`FindingsAggregate.lastPageAttemptAt`, the
+  latest `scannedAt` on the scan table, against the moment of rendering;
+  `nightlyPassMoved` in `seo-aggregate.ts`). Otherwise the sentence reads
+  "the rest is waiting: last page attempted 2026-09-03, nothing has moved
+  since" (merchant wording: "the last page was opened on 3 September 2026 and
+  nothing has moved since"). A shop with no attempt on record is told the pass
+  "has not run for this shop yet", never "starting tonight". Both screens
+  read it from the aggregate; neither computes it.
 - Rate: one request at a time per shop, 500 ms apart. 500 pages is about four
   minutes. Two shops in parallel at most, the worker's concurrency.
 - Respects the shop's own robots.txt for the app's user agent; a Disallow

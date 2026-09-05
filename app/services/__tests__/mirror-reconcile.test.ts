@@ -37,6 +37,7 @@ vi.mock("../../db.server", () => ({
         const before = rows.length;
         rows = rows.filter((r) => {
           if (r.shopId !== where.shopId) return true;
+          if (where.id?.in) return !where.id.in.includes(r.id);
           if (where.handle?.notIn) return where.handle.notIn.includes(r.handle);
           return false;
         });
@@ -305,7 +306,74 @@ describe("the floor on the eligible set", () => {
     expect(result.queued).toBe(0);
     expect(rows).toHaveLength(2);
     expect(logged[0]).toContain("2 products read, none eligible");
-    expect(logged[0]).toContain("nothing deleted");
+    expect(logged[0]).toContain("0 page(s) of products no longer in the catalogue withdrawn");
+    expect(logged[0]).toContain("nothing else deleted");
+  });
+
+  // The dev store on 5 September 2026: 401 rows, all with a NULL productId,
+  // 352 of them from a 355-product catalogue replaced by a 50-product one,
+  // and 49 whose handles are the current products'. Every read found 50 of
+  // 50 and none eligible, because a password-protected storefront nulls
+  // onlineStoreUrl, so the floor returned before any delete for a month.
+  it("withdraws, under the floor, the rows of products the complete read does not contain at all", async () => {
+    const current = Array.from({ length: 50 }, (_, i) =>
+      product(`current-${i + 1}`, `gid://shopify/Product/${i + 1}`, { onlineStoreUrl: null }),
+    );
+    rows = [
+      ...Array.from({ length: 352 }, (_, i) => ({
+        id: `old-${i + 1}`,
+        shopId: "shop1",
+        handle: `old-${i + 1}`,
+        productId: null,
+      })),
+      ...Array.from({ length: 49 }, (_, i) => ({
+        id: `cur-${i + 1}`,
+        shopId: "shop1",
+        handle: `current-${i + 1}`,
+        productId: null,
+      })),
+    ];
+    expect(rows).toHaveLength(401);
+
+    const result = await run(current);
+
+    expect(result.skipped).toBe(true);
+    expect(result.deleted).toBe(352);
+    expect(result.adopted).toBe(0);
+    expect(result.queued).toBe(0);
+    expect(rows).toHaveLength(49);
+    expect(rows.every((r) => r.handle.startsWith("current-"))).toBe(true);
+    expect(logged[0]).toContain("50 products read, none eligible");
+    expect(logged[0]).toContain("352 page(s) of products no longer in the catalogue withdrawn");
+  });
+
+  it("keeps, under the floor, a row whose product is in the read by id under a new handle", async () => {
+    // A rename cannot be judged without eligibility, so the row stays until
+    // the eligible set returns; only a product in the read by neither key goes.
+    rows = [
+      { id: "1", shopId: "shop1", handle: "old-name", productId: "gid://shopify/Product/1" },
+      { id: "2", shopId: "shop1", handle: "vanished", productId: "gid://shopify/Product/9" },
+    ];
+    const result = await run([product("new-name", "gid://shopify/Product/1", { onlineStoreUrl: null })]);
+    expect(result.skipped).toBe(true);
+    expect(result.deleted).toBe(1);
+    expect(rows.map((r) => r.handle)).toEqual(["old-name"]);
+  });
+
+  it("withdraws nothing under the floor when a product read carries no handle", async () => {
+    // Handles stopped arriving: every row would look absent from the
+    // catalogue, which is the failure the floor exists to prevent.
+    rows = [
+      { id: "1", shopId: "shop1", handle: "a", productId: null },
+      { id: "2", shopId: "shop1", handle: "gone", productId: null },
+    ];
+    const result = await run([
+      product("a", "gid://shopify/Product/1", { onlineStoreUrl: null }),
+      product("b", "gid://shopify/Product/2", { onlineStoreUrl: null, handle: undefined }),
+    ]);
+    expect(result.skipped).toBe(true);
+    expect(result.deleted).toBe(0);
+    expect(rows).toHaveLength(2);
   });
 
   it("still empties the mirror when Shopify announced no products at all", async () => {

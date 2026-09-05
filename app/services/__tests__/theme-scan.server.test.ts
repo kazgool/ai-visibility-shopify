@@ -6,12 +6,14 @@ import {
   OUR_NODE_MARKER,
   canonicalNodeId,
   deriveMissingReasons,
+  NOT_FOUND_ON_HOME_PAGE,
+  NOT_FOUND_ON_PRODUCT_PAGE,
   organizationPairIsInformational,
   mergeNarrowScanIntoDetail,
   themeRowKey,
   type ThemeScanResult,
 } from "../theme-scan.server";
-import { MERCHANT_REASON } from "../seo-readiness";
+import { LEGACY_MERCHANT_REASON, MERCHANT_REASON, merchantReason } from "../seo-readiness";
 
 function withScript(json: string): string {
   return `<html><head><script type="application/ld+json">${json}</script></head><body></body></html>`;
@@ -378,9 +380,19 @@ describe("deriveMissingReasons", () => {
     const notFound = deriveMissingReasons(unlocked);
     expect(notFound.find((r) => r.nodeType === "WebSite/SearchAction")!.emitted).toBe(false);
     expect(notFound.find((r) => r.nodeType === "BreadcrumbList")!.emitted).toBe(false);
-    expect(notFound.find((r) => r.nodeType === "WebSite/SearchAction")!.reason).toMatch(
-      /did not find this node/,
-    );
+    // Per node, naming the page this app adds it on, and never "check that
+    // the app embed is active": this branch is only reached once the embed
+    // has been read as active (5 September 2026).
+    const site = notFound.find((r) => r.nodeType === "WebSite/SearchAction")!.reason!;
+    const crumbs = notFound.find((r) => r.nodeType === "BreadcrumbList")!.reason!;
+    expect(site).toBe(NOT_FOUND_ON_HOME_PAGE);
+    expect(crumbs).toBe(NOT_FOUND_ON_PRODUCT_PAGE);
+    expect(site).toContain("home page only");
+    expect(crumbs).toContain("product pages");
+    for (const reason of [site, crumbs]) {
+      expect(reason).toContain("although the app embed is active");
+      expect(reason).not.toMatch(/check that/i);
+    }
 
     const found = deriveMissingReasons({
       ...unlocked,
@@ -587,8 +599,25 @@ describe("every reason deriveMissingReasons can record has a merchant sentence",
   });
 
   it("keeps the merchant sentences free of the operator's words", () => {
-    for (const sentence of Object.values(MERCHANT_REASON)) {
+    for (const sentence of [...Object.values(MERCHANT_REASON), ...Object.values(LEGACY_MERCHANT_REASON)]) {
       expect(sentence).not.toMatch(/\b(nodes?|metafields?|scan|operator)\b/i);
     }
+  });
+
+  it("holds the retired sentences apart, and the scan writes none of them today", () => {
+    const recorded = new Set<string>();
+    for (const input of inputs) {
+      for (const r of deriveMissingReasons(input)) if (r.reason !== null) recorded.add(r.reason);
+    }
+    for (const key of Object.keys(LEGACY_MERCHANT_REASON)) {
+      expect(recorded.has(key), `still written today, so it belongs in MERCHANT_REASON: ${key}`).toBe(false);
+      expect(MERCHANT_REASON[key]).toBeUndefined();
+    }
+    // A stored row from before 5 September 2026 still reads in plain words.
+    expect(
+      merchantReason(
+        "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
+      ),
+    ).toContain("recorded before 5 September 2026");
   });
 });

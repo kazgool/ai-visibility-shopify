@@ -19,6 +19,7 @@ const mockSettingUpsert = vi.fn(async () => {
 });
 const mockSnapshotFindUnique = vi.fn();
 const mockSnapshotUpsert = vi.fn(async () => ({}));
+const mockSnapshotUpdate = vi.fn(async () => ({}));
 const mockSnapshotCreate = vi.fn(async () => {
   order.push("snapshot");
 });
@@ -41,6 +42,7 @@ vi.mock("../../db.server", () => {
       findUnique: (...args: unknown[]) => mockSnapshotFindUnique(...(args as [])),
       create: (...args: unknown[]) => mockSnapshotCreate(...(args as [])),
       upsert: (...args: unknown[]) => mockSnapshotUpsert(...(args as [])),
+      update: (...args: unknown[]) => mockSnapshotUpdate(...(args as [])),
     },
     seoScan: {
       findMany: (...args: unknown[]) => mockScanFindMany(...(args as [])),
@@ -65,6 +67,7 @@ vi.mock("../catalogue.server", () => ({
 import { grantSeoUnlock } from "../billing.server";
 import {
   recordCurrentFacts,
+  refreshCurrentPageFacts,
   snapshotFacts,
   takeSeoSnapshot,
   writtenSince,
@@ -353,7 +356,9 @@ describe("snapshotFacts", () => {
 describe("writtenSince", () => {
   const snapshotAt = new Date("2026-09-05T08:00:00.000Z");
 
-  function stated(entries: Record<string, { source: string; at: string }>) {
+  function stated(
+    entries: Record<string, { source: string; at: string; media?: Record<string, string> }>,
+  ) {
     return product({ metafields: [{ key: "state", value: JSON.stringify(entries) }] });
   }
 
@@ -418,12 +423,18 @@ describe("writtenSince", () => {
           facts: { source: "auto", at: "2026-09-06T10:00:00.000Z" },
           summary: { source: "auto", at: "2026-09-06T10:00:00.000Z" },
           fit_for: { source: "auto", at: "2026-09-06T10:00:00.000Z" },
+          alt_text: {
+            source: "auto",
+            at: "2026-09-06T10:00:00.000Z",
+            media: { "gid://shopify/MediaImage/1": "2026-09-06T10:00:00.000Z" },
+          },
           something_else: { source: "auto", at: "2026-09-06T10:00:00.000Z" },
         }),
       ],
       snapshotAt,
     );
     expect(Object.keys(out).sort()).toEqual([
+      "alt_text",
       "facts",
       "fit_for",
       "questions",
@@ -431,6 +442,61 @@ describe("writtenSince", () => {
       "seo_title",
       "summary",
     ]);
+  });
+
+  // Alt text, stamped per photo since 5 September 2026 (item 6 of the same
+  // day). The figure is photos, and a photo described before the snapshot -
+  // or before the stamp existed at all - is never in it.
+  it("counts alt texts one per photo, only the photos stamped after the snapshot", () => {
+    const out = writtenSince(
+      [
+        // Three photos: one described before the snapshot, two after.
+        stated({
+          alt_text: {
+            source: "auto",
+            at: "2026-09-19T10:00:00.000Z",
+            media: {
+              "gid://shopify/MediaImage/1": "2026-08-20T10:00:00.000Z",
+              "gid://shopify/MediaImage/2": "2026-09-06T10:00:00.000Z",
+              "gid://shopify/MediaImage/3": "2026-09-19T10:00:00.000Z",
+            },
+          },
+        }),
+        // A product whose gallery was described before the stamp existed:
+        // no entry at all, so nothing to count - it is in the pass totals only.
+        stated({ facts: { source: "auto", at: "2026-09-06T10:00:00.000Z" } }),
+        // Every photo before the snapshot: the entry exists and counts nothing.
+        stated({
+          alt_text: {
+            source: "auto",
+            at: "2026-08-30T10:00:00.000Z",
+            media: { "gid://shopify/MediaImage/9": "2026-08-30T10:00:00.000Z" },
+          },
+        }),
+      ],
+      snapshotAt,
+    );
+    expect(out.alt_text).toEqual({
+      count: 2,
+      earliest: "2026-09-06T10:00:00.000Z",
+      latest: "2026-09-19T10:00:00.000Z",
+    });
+  });
+
+  it("does not count a photo stamped exactly at the snapshot, nor an unparseable stamp", () => {
+    const out = writtenSince(
+      [
+        stated({
+          alt_text: {
+            source: "auto",
+            at: snapshotAt.toISOString(),
+            media: { a: snapshotAt.toISOString(), b: "whenever" },
+          },
+        }),
+      ],
+      snapshotAt,
+    );
+    expect(out.alt_text).toBeUndefined();
   });
 });
 
@@ -490,5 +556,77 @@ describe("recordCurrentFacts", () => {
     const data = (mockSnapshotUpsert.mock.calls as any[])[0][0].update;
     expect(data.writtenSince).toBeUndefined();
     expect(data.writtenSinceAt).toBeNull();
+  });
+});
+
+describe("refreshCurrentPageFacts (R2 U3, 5 September 2026)", () => {
+  // The today row was rewritten only by a catalogue pass, so between two of
+  // them the since card's Now column said pages were "not read" while the
+  // header beside it, live off the scan table, said every product was checked.
+  const currentRow = {
+    takenBy: "current",
+    takenAt: new Date("2026-09-02T05:00:00Z"),
+    products: 50,
+    metaTitleSet: 30,
+    pagesRead: 0,
+    productNodeTheme: null,
+    productNodeNone: null,
+    themeNodeTypes: null,
+    findingsByCode: {},
+  };
+  const readRows = [
+    scanRow({
+      productId: "gid://shopify/Product/1",
+      scannedAt: new Date("2026-09-05T03:45:00Z"),
+      status: "ok",
+      findings: [{ code: "B2", source: "B", detail: {} }],
+      nodes: [{ types: ["Product"], id: "x#product-theme" }],
+    }),
+    scanRow({ productId: "gid://shopify/Product/2" }),
+  ];
+
+  it("writes nothing when there is no today row: a page half cannot stand alone", async () => {
+    mockSnapshotFindUnique.mockReset().mockResolvedValue(null);
+    mockSnapshotUpdate.mockClear();
+    const out = await refreshCurrentPageFacts("shop");
+    expect(out).toEqual({ written: false, reason: "no_current" });
+    expect(mockSnapshotUpdate).not.toHaveBeenCalled();
+  });
+
+  it("updates the page half from the scan table and leaves the catalogue half and takenAt alone", async () => {
+    mockSnapshotFindUnique.mockReset().mockResolvedValue(currentRow);
+    mockScanFindMany.mockReset().mockResolvedValue(readRows as never);
+    mockSnapshotUpdate.mockClear();
+
+    const out = await refreshCurrentPageFacts("shop");
+    expect(out).toEqual({ written: true });
+
+    const call = (mockSnapshotUpdate.mock.calls as any[])[0][0];
+    expect(call.where).toEqual({ shopId_takenBy: { shopId: "shop", takenBy: "current" } });
+    expect(call.data.pagesRead).toBe(1);
+    expect(call.data.productNodeTheme).toBe(1);
+    expect(call.data.productNodeNone).toBe(0);
+    expect(call.data.findingsByCode).toEqual({ B2: 1 });
+    expect(call.data.themeNodeTypes).toEqual(["Product"]);
+    for (const key of ["takenAt", "products", "metaTitleSet", "withBarcode"]) {
+      expect(call.data).not.toHaveProperty(key);
+    }
+  });
+
+  it("writes nothing when the page half already matches the scan table", async () => {
+    mockSnapshotFindUnique.mockReset().mockResolvedValue({
+      ...currentRow,
+      pagesRead: 1,
+      productNodeTheme: 1,
+      productNodeNone: 0,
+      themeNodeTypes: ["Product"],
+      findingsByCode: { B2: 1 },
+    });
+    mockScanFindMany.mockReset().mockResolvedValue(readRows as never);
+    mockSnapshotUpdate.mockClear();
+
+    const out = await refreshCurrentPageFacts("shop");
+    expect(out).toEqual({ written: false, reason: "unchanged" });
+    expect(mockSnapshotUpdate).not.toHaveBeenCalled();
   });
 });

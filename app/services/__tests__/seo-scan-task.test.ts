@@ -44,6 +44,15 @@ vi.mock("../admin.server", () => ({
 
 const mockScanShopPages = vi.fn();
 const mockDailyBudget = vi.fn();
+const mockRefreshCurrentPageFacts = vi.fn(
+  async (_shopId: string): Promise<{ written: boolean; reason?: string }> => ({
+    written: false,
+    reason: "no_current",
+  }),
+);
+vi.mock("../seo-snapshot.server", () => ({
+  refreshCurrentPageFacts: (shopId: string) => mockRefreshCurrentPageFacts(shopId),
+}));
 vi.mock("../seo-page.server", () => ({
   scanShopPages: (...a: unknown[]) => mockScanShopPages(...a),
   dailyBudget: (...a: unknown[]) => mockDailyBudget(...a),
@@ -157,6 +166,35 @@ describe("seo_scan_products", () => {
     expect(data.progress).toBe(500);
     // The denominator is the catalogue still waiting, not tonight's budget.
     expect(data.total).toBe(20000);
+  });
+
+  it("refreshes the since card's today row, page half, once the scan is done (R2 U3)", async () => {
+    mockIsSeoUnlocked.mockResolvedValue(true);
+    mockMayProcessAutomatically.mockResolvedValue(true);
+    mockRefreshCurrentPageFacts.mockClear();
+
+    await seo_scan_products({}, helpers);
+
+    expect(mockRefreshCurrentPageFacts).toHaveBeenCalledTimes(1);
+    expect(mockRefreshCurrentPageFacts).toHaveBeenCalledWith("shop1");
+    // After the JobRun is marked done, so a failed refresh cannot undo a scan
+    // that happened.
+    const doneIndex = mockJobRunUpdate.mock.calls.findIndex((c) => c[0].data.status === "done");
+    expect(doneIndex).toBeGreaterThanOrEqual(0);
+    expect(mockRefreshCurrentPageFacts.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockJobRunUpdate.mock.invocationCallOrder[doneIndex],
+    );
+  });
+
+  it("still returns a done scan when the refresh throws", async () => {
+    mockIsSeoUnlocked.mockResolvedValue(true);
+    mockMayProcessAutomatically.mockResolvedValue(true);
+    mockRefreshCurrentPageFacts.mockRejectedValueOnce(new Error("Neon away"));
+
+    await seo_scan_products({}, helpers);
+
+    const data = mockJobRunUpdate.mock.calls.at(-1)?.[0].data;
+    expect(data.status).toBe("done");
   });
 
   it("marks the JobRun failed and does not take the other shops down with it", async () => {

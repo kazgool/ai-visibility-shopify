@@ -2,7 +2,7 @@
 //
 // The rule that makes this app honest (PRD §4.1, DICTIONARY-PORT §10):
 // a value a person wrote is never overwritten. Until the editor UI exists,
-// an existing value with no state entry is treated as human — the safe
+// an existing value with no state entry is treated as human - the safe
 // default, because the alternative is destroying merchant work.
 
 import type { Fact } from "../engine";
@@ -11,7 +11,18 @@ import type { GraphqlFn } from "./admin.server";
 export const NAMESPACE = "$app";
 export const ENGINE_VERSION = "1.0.0";
 
-export type FieldState = { source: "auto" | "human"; at: string; engine?: string };
+export type FieldState = {
+  source: "auto" | "human";
+  at: string;
+  engine?: string;
+  /**
+   * Only on the `alt_text` entry: when this app wrote each photo's
+   * description, keyed by media id, ISO. `at` is the latest of them. Stamped
+   * since 5 September 2026; a description written before that has no entry
+   * here and is counted in totals only, never "since" a date.
+   */
+  media?: Record<string, string>;
+};
 export type ProductState = Record<string, FieldState>;
 
 export type VariantInput = {
@@ -99,7 +110,7 @@ export function hasWithdrawableAutoValues(product: ProductInput): boolean {
 
 /**
  * May we write this key? No, if a human wrote it. No, if a value exists but
- * we have no record of writing it — that value came from somewhere else.
+ * we have no record of writing it - that value came from somewhere else.
  */
 export function mayWrite(product: ProductInput, key: string): boolean {
   const state = parseState(product);
@@ -200,9 +211,9 @@ export type WriteOutcome = {
   productId: string;
   written: string[];
   skipped: string[];
-  /** Already identical — not written, which is what stops the feedback loop. */
+  /** Already identical - not written, which is what stops the feedback loop. */
   unchanged: string[];
-  /** Auto-written values whose recomputation came back empty — withdrawn. */
+  /** Auto-written values whose recomputation came back empty - withdrawn. */
   removed: string[];
 };
 

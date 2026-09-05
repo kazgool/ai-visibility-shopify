@@ -9,6 +9,7 @@ import {
 } from "../services/seo-snapshot.server";
 import { sinceCsv, writtenCsv, type FactsRow } from "../services/seo-since";
 import { CSV_BOM } from "../services/report-metrics";
+import { exportFilename } from "../services/seo-report";
 
 // The since-card's CSVs (PRD-SEO-FULL-ONPAGE section 1.3). Same pattern as
 // app.report.export.$table.tsx, and the two reasons that route gives for its
@@ -75,10 +76,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // The byte order mark for the same reason the Report export carries one:
   // Excel on Windows opens a BOM-less UTF-8 file in the system code page.
+  // The shop and the date in the name, like every other download; the
+  // "seo-operator" module keeps this per-code file apart from the merchant
+  // dashboard's since file, which shares the table name (5 September 2026).
   return new Response(`${CSV_BOM}${body}\r\n`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="ai-visibility-seo-${table}.csv"`,
+      "Content-Disposition": `attachment; filename="${exportFilename(session.shop, table, new Date(), "seo-operator")}"`,
     },
   });
 };

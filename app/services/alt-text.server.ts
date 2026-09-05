@@ -4,12 +4,14 @@
 // product. On Shopify the same media can be attached to several products, so
 // a description generated for product A would silently describe product B.
 // We record which product each description came from and refuse to overwrite
-// a description generated for a different product — the merchant is told
+// a description generated for a different product - the merchant is told
 // instead of being surprised.
 
 import type { GraphqlFn } from "./admin.server";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import type { Fact } from "../engine";
+import { ENGINE_VERSION, NAMESPACE, type ProductState } from "./facts.server";
+import { ALT_TEXT_KEY } from "./seo-since";
 
 const PRODUCT_MEDIA = `#graphql
   query ProductMedia($id: ID!) {
@@ -17,6 +19,7 @@ const PRODUCT_MEDIA = `#graphql
       id
       title
       productType
+      state: metafield(namespace: "$app", key: "state") { value }
       media(first: 20) {
         nodes {
           ... on MediaImage {
@@ -37,6 +40,50 @@ const UPDATE_MEDIA = `#graphql
     }
   }
 `;
+
+const SET_STATE = `#graphql
+  mutation SetAltTextState($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      userErrors { field message code }
+    }
+  }
+`;
+
+/**
+ * The dated record of what was written, on the product's `state` metafield
+ * under `alt_text`: one timestamp per media id, and `at` the latest. Written
+ * only after a media update actually happened, so it can never be an
+ * identical write (the timestamps are new by construction) and never a write
+ * on a pass that changed nothing. Entries for media no longer on the product
+ * are dropped, so the map stays the size of the product's own gallery.
+ *
+ * Before 5 September 2026 nothing was stamped here, and the since card said
+ * so; descriptions from before that date have no entry and are counted in
+ * totals only.
+ */
+function stampedState(
+  raw: string | null | undefined,
+  currentMediaIds: string[],
+  written: string[],
+  now: string,
+): ProductState {
+  let state: ProductState = {};
+  if (raw) {
+    try {
+      state = JSON.parse(raw) as ProductState;
+    } catch {
+      state = {};
+    }
+  }
+  const media: Record<string, string> = {};
+  const keep = new Set(currentMediaIds);
+  for (const [id, at] of Object.entries(state[ALT_TEXT_KEY]?.media ?? {})) {
+    if (keep.has(id) && typeof at === "string") media[id] = at;
+  }
+  for (const id of written) media[id] = now;
+  state[ALT_TEXT_KEY] = { source: "auto", at: now, engine: ENGINE_VERSION, media };
+  return state;
+}
 
 export type AltOutcome = {
   written: number;
@@ -65,7 +112,7 @@ export async function writeAltText(
     // Someone wrote this. Never touch it.
     if (existing !== "" && !looksLikeMachineAlt(existing)) {
       // But if the same file already carries a description we generated for a
-      // different product, that is the reuse trap — flag it, do not "fix" it.
+      // different product, that is the reuse trap - flag it, do not "fix" it.
       const owner = seenMedia.get(item.id);
       if (owner && owner !== productGid) {
         outcome.sharedFlagged.push({ mediaId: item.id, alt: existing });
@@ -102,6 +149,32 @@ export async function writeAltText(
       throw new Error(`productUpdateMedia: ${JSON.stringify(errors)}`);
     }
     outcome.written = updates.length;
+
+    // The dated record, after the media write and only then: the media update
+    // has already marked the product as changed, so this write adds no
+    // trigger the pass did not already cause, and it never runs on a pass
+    // that wrote nothing.
+    const state = stampedState(
+      product.state?.value,
+      media.map((m: any) => String(m.id)),
+      updates.map((u) => u.id),
+      new Date().toISOString(),
+    );
+    const stamped = await graphql<any>(SET_STATE, {
+      metafields: [
+        {
+          ownerId: productGid,
+          namespace: NAMESPACE,
+          key: "state",
+          type: "json",
+          value: JSON.stringify(state),
+        },
+      ],
+    });
+    const stateErrors = stamped?.metafieldsSet?.userErrors ?? [];
+    if (stateErrors.length) {
+      throw new Error(`metafieldsSet (alt_text state): ${JSON.stringify(stateErrors)}`);
+    }
   }
 
   return outcome;

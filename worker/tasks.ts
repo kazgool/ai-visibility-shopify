@@ -1,7 +1,7 @@
 // graphile-worker task list (PHASE-2-SPEC §6).
 //
 // Jobs are resumable by construction: progress lives in JobRun, and writes are
-// idempotent — same input, same output, and the state metafield guards human
+// idempotent - same input, same output, and the state metafield guards human
 // values, so re-running never destroys anything.
 
 import type { Task } from "graphile-worker";
@@ -23,6 +23,7 @@ import { fetchCollections, writeCollections } from "../app/services/collections.
 import { pingCollections } from "../app/services/indexnow.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
+import { refreshCurrentPageFacts } from "../app/services/seo-snapshot.server";
 import {
   runCollectionSeoApply,
   runCollectionSeoQueueBuild,
@@ -63,7 +64,7 @@ import { describeGraphqlError } from "../app/services/graphql-errors";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
- * "recently changed" to the incremental poll — which would then queue a no-op
+ * "recently changed" to the incremental poll - which would then queue a no-op
  * job per product. Advancing the poll cursor after our own mass writes keeps
  * layer two focused on what merchants change, not on what we just did.
  */
@@ -289,7 +290,7 @@ const PRODUCTS_SINCE = `#graphql
  * reconciliation below).
  *
  * Every fifteen minutes we ask Shopify which products changed since we last
- * looked. This is cheap — one paginated query, no bulk operation — and it
+ * looked. This is cheap - one paginated query, no bulk operation - and it
  * closes the window when a webhook is dropped, delayed, or lost during a
  * deploy. Processing something twice is harmless: extraction is idempotent and
  * the state metafield protects human values.
@@ -411,7 +412,7 @@ export const poll_changes: Task = async (_payload, helpers) => {
 };
 
 /**
- * Layer three. Webhook delivery is not guaranteed — Shopify retries, but a
+ * Layer three. Webhook delivery is not guaranteed - Shopify retries, but a
  * failed endpoint or an app restart can still lose one. Once a week (Monday
  * 03:30 UTC, see worker/index.ts) we look for products that carry no
  * attributes yet and queue them, so a merchant never discovers months later
@@ -1099,6 +1100,20 @@ export async function scanProductPagesForShop(
         report: report as any,
       },
     });
+
+    // The since card's "today" row, page half only, from the rows this scan
+    // just wrote (R2 U3, 5 September 2026). Best effort and after the JobRun
+    // is marked done: the scan happened whether or not the card refreshed.
+    try {
+      const refreshed = await refreshCurrentPageFacts(shop.id);
+      if (refreshed.written) {
+        logger.info(`seo_scan ${shop.domain}: today's page figures refreshed`);
+      }
+    } catch (error) {
+      logger.info(
+        `seo_scan ${shop.domain}: today's page figures not refreshed (${describeError(error)})`,
+      );
+    }
     return { ran: true, budget, report };
   } catch (error) {
     await db.jobRun.update({

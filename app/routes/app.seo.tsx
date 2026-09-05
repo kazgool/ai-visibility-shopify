@@ -475,7 +475,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productRes = await named("FirstOnlineProductSeo", () => admin.graphql(FIRST_PRODUCT));
   const productJson = await productRes.json();
   const productNode = productJson.data?.products?.nodes?.[0];
-  const productUrl = productNode?.onlineStoreUrl ?? `https://${session.shop}`;
+  // onlineStoreUrl is null on a password-protected storefront (every dev
+  // store), and the fallback used to be the shop root: the "product page" the
+  // scan then read was the home page, which carries no Product node and no
+  // BreadcrumbList, and both were reported absent (5 September 2026). The
+  // handle route is the same address the mirror falls back to.
+  const productUrl =
+    productNode?.onlineStoreUrl ??
+    (productNode?.handle
+      ? `https://${session.shop}/products/${productNode.handle}`
+      : `https://${session.shop}`);
 
   const domainRes = await named("PrimaryDomainSeo", () => admin.graphql(PRIMARY_DOMAIN));
   const domainJson = await domainRes.json();

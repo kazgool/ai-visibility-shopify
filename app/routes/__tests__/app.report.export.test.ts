@@ -70,8 +70,11 @@ describe("the CSV export route", () => {
     const res = await load("families");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
-    expect(res.headers.get("Content-Disposition")).toBe(
-      'attachment; filename="ai-visibility-families.csv"',
+    // The shop and the date in the name, like every other download of this
+    // app (5 September 2026); "report" because the attribute pass is not the
+    // SEO module.
+    expect(res.headers.get("Content-Disposition")).toMatch(
+      /^attachment; filename="ai-visibility-report-example-families-\d{4}-\d{2}-\d{2}\.csv"$/,
     );
     expect(await res.text()).toBe(
       [
@@ -89,7 +92,9 @@ describe("the CSV export route", () => {
   it("exports the weakest table under its own name", async () => {
     const res = await load("weakest");
     const body = await res.text();
-    expect(res.headers.get("Content-Disposition")).toContain("ai-visibility-weakest.csv");
+    expect(res.headers.get("Content-Disposition")).toMatch(
+      /ai-visibility-report-example-weakest-\d{4}-\d{2}-\d{2}\.csv/,
+    );
     expect(body).toContain("Product,Families found,Families in this catalogue,Missing");
     expect(body).toContain('"Oslo sofa, grey",1,2,Dimensions');
   });

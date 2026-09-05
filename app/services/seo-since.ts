@@ -263,8 +263,10 @@ export function sinceHeading(before: FactsRow): string {
 export function sinceMethodLine(before: FactsRow, today: FactsRow | null): string {
   const source =
     "Both columns are counted the same way, from one catalogue read and the page scans as they stood.";
+  // Two dates on the today row since 5 September 2026: the catalogue half is
+  // from the last catalogue pass, the page half follows every nightly scan.
   const when = today
-    ? `Today's figures are from the catalogue pass of ${formatDay(today.takenAt)}.`
+    ? `Today's catalogue figures are from the catalogue pass of ${formatDay(today.takenAt)}; today's page figures are refreshed after every nightly page scan.`
     : "No catalogue pass has run since the snapshot was taken, so there is no today column yet.";
   const manual =
     before.takenBy === "manual"
@@ -282,7 +284,7 @@ export function ownerSinceMethodLine(before: FactsRow, today: FactsRow | null): 
   const source =
     "Both columns are counted the same way, from one catalogue read and the page reads as they stood.";
   const when = today
-    ? `Today's figures are from the catalogue pass of ${formatDay(today.takenAt)}.`
+    ? `Today's catalogue figures are from the catalogue pass of ${formatDay(today.takenAt)}; today's page figures are refreshed after every nightly page read.`
     : "No catalogue pass has run since the starting point was recorded, so there is no today column yet.";
   const manual =
     before.takenBy === "manual"
@@ -340,7 +342,40 @@ export const WRITTEN_LABEL: Record<string, string> = {
   facts: "Attribute sets",
   summary: "Summaries",
   fit_for: "Who it suits",
+  alt_text: "Alt texts (one per photo)",
 };
+
+/**
+ * The `state` key under which this app stamps its alt text writes, per media
+ * id (alt-text.server.ts, 5 September 2026). Named here, in the pure module,
+ * because both the writer and the counter import it and neither may import
+ * the other.
+ */
+export const ALT_TEXT_KEY = "alt_text";
+
+/**
+ * The state keys this app stamps with a date, and therefore the only things
+ * that can honestly be counted "since <date>". One list: the counter in
+ * seo-snapshot.server.ts walks it and the merchant labels below are typed
+ * over it, so a key added here without a plain label fails typecheck, and a
+ * key added to the counter without being here cannot happen (R1 U4, settled 5
+ * September 2026: the two lists are one).
+ *
+ * Structured data nodes are not here and cannot be: they are rendered at
+ * request time from the facts and summary metafields, so nothing is stamped
+ * when a node starts appearing.
+ */
+export const WRITTEN_KEYS = [
+  "seo_title",
+  "seo_description",
+  "questions",
+  "facts",
+  "summary",
+  "fit_for",
+  ALT_TEXT_KEY,
+] as const;
+
+export type WrittenKey = (typeof WRITTEN_KEYS)[number];
 
 /**
  * The same figures, in the words a shop owner reads (build step 5).
@@ -388,13 +423,8 @@ export type OwnerFigureKey =
   | "productNodeTheme"
   | "productNodeNone";
 
-export type OwnerWrittenKey =
-  | "seo_title"
-  | "seo_description"
-  | "questions"
-  | "facts"
-  | "summary"
-  | "fit_for";
+/** One list with WRITTEN_KEYS, by construction rather than by hand. */
+export type OwnerWrittenKey = WrittenKey;
 
 /** The same for the "written by this app since then" block. */
 export const OWNER_WRITTEN_LABEL: Record<OwnerWrittenKey, string> = {
@@ -404,6 +434,7 @@ export const OWNER_WRITTEN_LABEL: Record<OwnerWrittenKey, string> = {
   facts: "Sets of product details",
   summary: "Summaries",
   fit_for: "Who it suits",
+  alt_text: "Photo descriptions (one per photo)",
 };
 
 /**
@@ -523,26 +554,31 @@ export function writtenRows(before: FactsRow, today: FactsRow | null): WrittenRo
  * The line that has to appear under that block, every time.
  *
  * PRD section 1.2 lists alt texts and structured data nodes among the things
- * counted here. Neither can be: `writeAltText` writes alt text straight onto
- * Shopify media and records no state entry, and structured data nodes are not
- * written at all - the Liquid block renders them at request time from the
+ * counted here. Alt texts are, since 5 September 2026: `writeAltText` stamps
+ * one dated entry per media id on the product's `state`, and the count is per
+ * photo. Alt texts written before that date carry no entry, so they are in
+ * the totals the alt text pass reports and never in the since figure, and the
+ * sentence says so. Structured data nodes still cannot be counted: they are
+ * not written at all - the Liquid block renders them at request time from the
  * facts and summary metafields, so nothing is stamped when a node starts
- * appearing. There is no timestamp for either to compare against the snapshot.
- * The card says that rather than showing a number nobody measured; the
- * amendment is on the record in the PRD.
+ * appearing. The card says that rather than showing a number nobody measured.
  */
 export const WRITTEN_OMISSION_SENTENCE =
-  "Alt texts and structured data nodes are not counted here. This app stamps no dated record when it writes " +
-  "either, so there is no honest count of what it wrote since this date - only of what it wrote in total.";
+  "Alt texts are counted one per photo, from the dated record this app stamps since 5 September 2026; " +
+  "alt texts written before that date carry no record, so they are in the pass totals and never here. " +
+  "Structured data nodes are not counted: this app stamps no dated record when a node starts appearing, " +
+  "so there is no honest count of those since this date - only of what is published in total.";
 
 /**
  * The same sentence for the merchant dashboard, which may not use the words
- * the operator's one uses. Same fact, same omission, none of the vocabulary.
+ * the operator's one uses. Same fact, same limits, none of the vocabulary.
  */
 export const OWNER_WRITTEN_OMISSION_SENTENCE =
-  "Photo descriptions and the details this app publishes for search engines are not counted here. " +
-  "The app stamps no dated record when it writes either, so there is no honest count of what it " +
-  "wrote since this date - only of what it wrote in total. We would rather say that than guess.";
+  "Photo descriptions are counted one per photo, from the dated record this app keeps since " +
+  "5 September 2026; descriptions written before that date carry no record, so they are in the " +
+  "totals this app reports elsewhere and never here. The details this app publishes for search " +
+  "engines are not counted: nothing is dated when one starts appearing, so there is no honest count " +
+  "of those since this date - only of what is published in total. We would rather say that than guess.";
 
 /** "No field this app writes has been written since then." */
 export const WRITTEN_EMPTY_SENTENCE =

@@ -154,6 +154,18 @@ both halves, deliberately: a difference between the before and the today cannot
 then be an artefact of two different readings of one catalogue. Nothing is
 written on a short read, for the same reason a snapshot is not.
 
+Amended 5 September 2026 (R2 U3): the nightly page scan is not a catalogue
+pass, so between two catalogue passes the today row's page half - pages read,
+the theme's Product nodes, the node types, the count per code - stood still
+while the scan table moved, and on a shop unlocked on a Tuesday the Now
+column said "not read" until the Monday sweep. `refreshCurrentPageFacts` now
+rewrites that half from the scan table after every nightly scan, leaving the
+catalogue half and `takenAt` as the last catalogue pass wrote them; it writes
+nothing when there is no today row and nothing when the values already
+match. The method line under the card names both dates: the catalogue pass
+for the catalogue figures, and "refreshed after every nightly page read" for
+the page figures.
+
 **The amendment, and it needs Marius's approval before this section is closed.**
 1.2 says the second block counts "meta titles, meta descriptions, structured
 data nodes added per page type, alt texts, buyer questions... each counted from
@@ -177,6 +189,25 @@ states the omission in a sentence of its own rather than leaving a reader to
 assume the list is complete. If the figures matter, the way to get them is a
 dated record at the point of writing, which is a change to the alt-text writer
 and a new record for node emission - a wave of its own, not a line in this one.
+
+**Alt text, closed 5 September 2026.** `writeAltText` now stamps the dated
+record at the point of writing: a seventh `state` key, `alt_text`, with
+`source: "auto"`, `at` the latest write, and `media`, one ISO timestamp per
+media id written. It is written only after a `productUpdateMedia` that
+actually changed something, in the same pass, so it is never an identical
+write and never a write on a pass that wrote nothing (the media update has
+already marked the product as changed). Entries for media no longer on the
+product are dropped. `writtenSince` counts alt text one per photo, only the
+photos stamped after the snapshot; a product whose gallery was described
+across two passes counts only the photos from the pass after the snapshot.
+Alt texts written before 5 September 2026 have no entry: they are in the
+totals the alt text pass reports and never in the since figure, and both
+omission sentences now say exactly that. `WRITTEN_KEYS` moved to
+`seo-since.ts` and `OwnerWrittenKey` is that list's type, so the two lists R1
+U4 found hand-maintained are one. No Prisma schema change: the record lives
+on the product's own `state` metafield in Shopify and the count in the
+existing `writtenSince` JSON column. Structured data nodes remain uncounted,
+for the reason above.
 
 **Two further things the section did not specify.**
 
@@ -489,9 +520,17 @@ before snapshot exists, because that route answers a request without one with a
 match rather than left disagreeing.
 
 **Amendment 8: filenames carry the shop and the date.** `exportFilename` gives
-`ai-visibility-seo-<shop>-<table>-<YYYY-MM-DD>.csv`. The two older export routes
+`ai-visibility-seo-<shop>-<table>-<YYYY-MM-DD>.csv`. ~~The two older export routes
 keep their existing names; renaming files people already have is not worth the
-consistency, and this paragraph is the record that the difference is deliberate.
+consistency, and this paragraph is the record that the difference is deliberate.~~
+Closed 5 September 2026: both older routes now name their files through the
+same function, with a module token so no two exports can share a name:
+`/app/report/export/:table` gives `ai-visibility-report-<shop>-<families|weakest>-<date>.csv`
+(the attribute pass is not the SEO module), and the operator's
+`/app/seo/export/:table` gives `ai-visibility-seo-operator-<shop>-<since|written>-<date>.csv`,
+which keeps it apart from the merchant dashboard's `since` file. Nobody had a
+file under the old names that a rename could orphan: the shop has no paying
+customer, and the dev store's downloads are Marius's own.
 
 **Amendment 9, 5 September 2026: the then-and-now spreadsheet is a merchant
 route after all.** Amendment 7 reused `/app/seo/export/since` on the grounds of
@@ -503,9 +542,10 @@ points at `/app/seo/dashboard/export/since`, a resource route of its own with
 the same gate, which writes `ownerSinceCsv`: the report heading on line one,
 `OWNER_FIGURE_LABEL` and `OWNER_WRITTEN_LABEL`, dates through `formatDay`, the
 per-code rows dropped as the screen drops them, and `exportFilename` naming.
-The operator route is untouched and keeps its name under Amendment 8. The
-caption under the five buttons - "with the shop and the date in its name" - is
-now true of all five.
+The operator route is untouched in content and, since the same day, named
+`ai-visibility-seo-operator-...` (Amendment 8, closed). The caption under the
+five buttons - "with the shop and the date in its name" - is now true of all
+five, and of every other download of this app.
 
 **Amendment 10, 5 September 2026: every sentence that points at another
 element is written for the surface it is on.** The screen, the report and the
@@ -658,7 +698,7 @@ storefront password, and the same will be true of most of these.
 | The SEO card renders correctly on an empty shop, a 50-product fixture, a 20,000-product store and a shop where source B never ran | unit on the aggregate, four shapes | - |
 | Every count on the card is asserted on the rendered string, not only on the aggregate | component test; this is the row the per-product QA declined and the reason was right | - |
 | A figure on the print page and the same figure on the screen cannot diverge | component test walking `keyFigures` on all five stores, asserting each value in both renders | - |
-| The report carries no Polaris chrome, no disclosure control, and asks the printer not to split a card | component test on the markup: no `aria-expanded`, no `Polaris`, `break-inside: avoid` and `@page` present | Marius: press the button in the admin and say whether a dialog appears |
+| The report carries no Polaris chrome, no disclosure control, and asks the printer to break between table rows and never through a row or after a heading (row level since 5 September 2026; the card-level rule left five pages half blank) | component test on the markup: no `aria-expanded`, no `Polaris`, `tr { break-inside: avoid }`, `thead { display: table-header-group }`, `break-after: avoid` on headings, `section { break-inside: auto }`, `@page` present | Marius: press the button in the admin and say whether a dialog appears |
 | Every CSV opens in Excel with Romanian text intact | `CSV_BOM` on every response, asserted on the route pattern the two existing exports already use | Marius, one file on a Windows machine |
 | No CSV cell can run as a formula, in the new exports or the two shipped ones | unit on `csvCell`: `=`, `+`, `-`, `@` neutralised, plain numbers and `-3` left alone | - |
 | A check that could not run never exports as a zero | unit on the store whose pages were never read: every page check is a sentence in both count and denominator | - |
@@ -672,7 +712,7 @@ storefront password, and the same will be true of most of these.
 | A shop-wide row states the true shape of its fix | unit: A1 says "one field per product" and never "One setting"; B25 says "One change to the theme" | - |
 | The four-identifier row names which of the four is absent | unit on the counts, and the rendered report | - |
 | A row counted against a different total says so on its own line | unit on a store with 46 pages read of 50 tried: "is counted out of 50, not 46" | - |
-| The report fits on fewer pages without splitting a card | not tested: page count needs a browser | Marius: print it again and say how many pages |
+| The report fits on fewer pages, splitting a card only between rows | not tested: page count needs a browser; estimated 5 September 2026 from the dev store's real rows at 12,476 characters, 34 table rows and 30 paragraphs as about 2.8 pages of content at A4 with 12 mm margins, so 3 pages, possibly 4 | Marius: print it again and say how many pages, and whether any row is cut across two |
 
 ---
 
@@ -937,7 +977,7 @@ step was called done, it found two defects that no unit test could have:
   part of the file Shopify ships as this app knows it") and that is what saved
   it from being a false accusation rather than a wrong number.
 - **`seo-onpage.ts` had its own six-entry entity table.** A dev store title came
-  back as "Aarhus Round Dining Set & 4 Chairs - Nordwood &ndash; MRDigital-dev":
+  back as "Aarhus Round Dining Set & 4 Chairs - Nordwood [ndash entity] MRDigital-dev":
   `ndash` was not in it, so B10 would have printed an entity at a merchant and
   counted it as seven characters instead of one. Entity handling now comes from
   the engine, where every other text this app shows already got it.

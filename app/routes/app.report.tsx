@@ -120,7 +120,7 @@ const EXAMPLE_CHARS = 700;
  * one word, and then the whole thing goes through cleanOutput - the same
  * function every string this app publishes goes through. The hand-written
  * entity list this replaced covered six named entities and no numeric ones, so
- * an imported catalogue's "45 &#8211; 50 cm" was rendered literally, and the
+ * an imported catalogue's "45 [numeric en dash entity] 50 cm" was rendered literally, and the
  * highlight for the value "45 - 50 cm" could then never be found in it. */
 function plainDescription(html: string): string {
   return cleanOutput(
@@ -1309,7 +1309,14 @@ function reconcileSentence(reconcile: ReconcileState): string | null {
       (r.read ?? 0) > 0 && (r.expected ?? 0) === (r.read ?? 0)
         ? `${r.read} products were read and none qualified under the current settings`
         : `Shopify's catalogue download was short (${r.read ?? 0} of ${r.expected ?? 0} products)`;
-    return `${why}, so nothing was withdrawn. It will be tried again on the next pass or the weekly check.`;
+    // Under the none-qualified floor the pages of products no longer in the
+    // catalogue at all are still withdrawn (5 September 2026); the sentence
+    // says how many, so "nothing" is never printed over a non-zero count.
+    const withdrawn =
+      (r.deleted ?? 0) > 0
+        ? `so only the ${r.deleted === 1 ? "page" : `${r.deleted} pages`} of products no longer in the catalogue ${r.deleted === 1 ? "was" : "were"} withdrawn`
+        : "so nothing was withdrawn";
+    return `${why}, ${withdrawn}. It will be tried again on the next pass or the weekly check.`;
   }
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const base = `${plural(r.deleted ?? 0, "page")} withdrawn, ${plural(r.queued ?? 0, "product")} queued for a page, on ${onDay(reconcile.finishedAt)}.`;

@@ -42,6 +42,7 @@ import {
   nProducts,
   readinessMethod,
   readinessOf,
+  groupsOn,
   shopWideCrossReference,
   shopWideItems,
   shopWideMethod,
@@ -184,6 +185,24 @@ describe("the four groups partition the read set", () => {
   it("renders the four groups in the order the screen shows them", () => {
     const readiness = readinessOf(fiftyProducts());
     expect(readiness.groups.map((g) => g.group)).toEqual(GROUP_ORDER);
+  });
+});
+
+describe("a code no product row can carry is never grouped (R2 U6, 5 September 2026)", () => {
+  // A6, A10 and A11 are computed over collections and B30 over blog posts;
+  // no writer of this app puts them on a product row. A row carrying one is
+  // a JSON column holding a hand-made shape, and grouping it would count a
+  // product under a label that names collections.
+  it("ignores A6, A10, A11 and B30 on a product row, and groups everything CHECKS lists", () => {
+    for (const code of ["A6", "A10", "A11", "B30"]) expect(groupsOn(code)).toBe(false);
+    for (const check of CHECKS) {
+      if (check.reports) continue;
+      expect(groupsOn(String(check.code)), String(check.code)).toBe(true);
+    }
+    const readiness = readinessOf([row(1, ["A6", "A10", "A11", "B30"]), row(2, ["A1"])]);
+    const clean = readiness.groups.find((g) => g.group === "clean")!;
+    expect(clean.count).toBe(1);
+    expect(readiness.groups.flatMap((g) => g.rows.map((r) => r.code))).toEqual(["A1"]);
   });
 });
 
@@ -860,7 +879,7 @@ describe("the reasons the page read records reach the merchant in plain words (R
 
   it("translates a recorded reason and never prints the operator's sentence", () => {
     const raw =
-      "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.";
+      "This app adds WebSite/SearchAction on the home page only, and the last scan of the home page did not find it there although the app embed is active.";
     const item = shopWideItems(readiness, facts(raw)).find((i) => i.key === "B6")!;
     expect(item.why).toContain(MERCHANT_REASON[raw]);
     expect(item.why).not.toContain("node");

@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { hasPaidAccess } from "../services/billing.server";
 import { CSV_BOM, familiesCsv, readPass, weakestCsv } from "../services/report-metrics";
+import { exportFilename } from "../services/seo-report";
 
 // The Report screen's CSV export (PRD-REPORT-SCREEN section 8).
 //
@@ -91,10 +92,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // so those two stay string builders that can be asserted on directly. Excel
   // on Windows opens a BOM-less UTF-8 file in the system code page, and both
   // tables carry Romanian family names and product titles.
+  // Named like every other download of this app: the shop, the table and the
+  // date, so two files on one desktop can be told apart (5 September 2026).
   return new Response(`${CSV_BOM}${body}\r\n`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="ai-visibility-${table}.csv"`,
+      "Content-Disposition": `attachment; filename="${exportFilename(session.shop, table, new Date(), "report")}"`,
     },
   });
 };

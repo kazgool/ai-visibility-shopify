@@ -37,6 +37,12 @@ vi.mock("../../db.server", () => ({
       upsert: vi.fn(async () => ({})),
       deleteMany: vi.fn(async () => ({ count: 0 })),
     },
+    // B6's WebSite input is read off the home page's last read, which lives
+    // on the newest theme scan (5 September 2026). Null here: no scan, so the
+    // node is "could not be determined" and never "not found".
+    themeScan: {
+      findFirst: vi.fn(async () => null),
+    },
   },
 }));
 vi.mock("../billing.server", () => ({ isSeoUnlocked: vi.fn() }));
@@ -473,6 +479,7 @@ describe("source A over one product", () => {
 
 const seoScan = (db as any).seoScan;
 const setting = (db as any).setting;
+const themeScan = (db as any).themeScan;
 
 function resetDb(existing: any[] = []) {
   seoScan.findMany.mockReset().mockResolvedValue(existing);
@@ -840,6 +847,113 @@ describe("B6 on the row source A writes", () => {
 
     expect(mockCheckAppEmbed).toHaveBeenCalledTimes(1);
     expect(mockBusinessFor).toHaveBeenCalledTimes(1);
+  });
+
+  /** B6's detail on the first row written or updated, or null. */
+  function b6Written() {
+    const call = seoScan.create.mock.calls[0] ?? seoScan.update.mock.calls[0];
+    const findings = call[0].data.findings as any[];
+    return findings.find((f) => f.code === "B6")?.detail ?? null;
+  }
+
+  /** The `missing` entry for one node type, or null when it is not missing. */
+  function b6Entry(nodeType: string) {
+    return (b6Written()?.missing ?? []).find((m: any) => m.nodeType === nodeType) ?? null;
+  }
+
+  it("reads WebSite off the home page's last read, never off the product page", async () => {
+    // The dev store, 5 September 2026: 50 of 50 product rows said the WebSite
+    // node was not found "on the page", with the embed active, because the
+    // node was looked for on product pages, where this app never adds it.
+    const product = complete({ metafields: [] });
+    resetDb([
+      {
+        id: "row-1",
+        productId: product.id,
+        handle: product.handle,
+        findings: [],
+        offer: null,
+        // A product page read fine, carrying everything but a WebSite node.
+        nodes: [{ types: ["Product"], id: "x#product" }, { types: ["BreadcrumbList"], id: "" }],
+        scannedAt: new Date("2026-09-05T03:46:00Z"),
+        status: "ok",
+      },
+    ]);
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+    themeScan.findFirst.mockResolvedValueOnce({
+      detail: {
+        home: { url: "https://x/", nodes: [{ types: ["WebSite"], id: "" }], passwordProtected: false },
+      },
+    });
+
+    await computeSourceA("shop", noGraphql, { products: [product], complete: true });
+
+    expect(b6Entry("WebSite/SearchAction")).toBeNull();
+    expect(b6Entry("BreadcrumbList")).toBeNull();
+  });
+
+  it("says the home page did not carry WebSite only when the home page was read and lacked it", async () => {
+    const product = complete({ metafields: [] });
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+    themeScan.findFirst.mockResolvedValueOnce({
+      detail: { home: { url: "https://x/", nodes: [{ types: ["Organization"], id: "" }], passwordProtected: false } },
+    });
+
+    await computeSourceA("shop", noGraphql, { products: [product], complete: true });
+
+    const site = b6Entry("WebSite/SearchAction");
+    expect(site.reason).toContain("home page only");
+    expect(site.reason).toContain("although the app embed is active");
+    expect(site.reason).not.toMatch(/check that/i);
+  });
+
+  it("reports WebSite as could not be determined with no home page read on record", async () => {
+    const product = complete({ metafields: [] });
+    resetDb();
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+    // The default mock: no theme scan at all.
+
+    await computeSourceA("shop", noGraphql, { products: [product], complete: true });
+
+    // Undetermined is counted, never listed as missing (b6Detail).
+    expect(b6Entry("WebSite/SearchAction")).toBeNull();
+    expect(b6Written().unknownCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("treats a page that answered 429 with an empty node list as unread, not as lacking the BreadcrumbList", async () => {
+    // Four rows on the dev store on 5 September 2026: status 429, nodes [],
+    // and the not-found reason on each, blaming the embed for a page nobody
+    // had read.
+    const product = complete({ metafields: [] });
+    resetDb([
+      {
+        id: "row-1",
+        productId: product.id,
+        handle: product.handle,
+        findings: [],
+        offer: null,
+        nodes: [],
+        scannedAt: new Date("2026-09-05T03:46:00Z"),
+        status: "429",
+      },
+    ]);
+    vi.mocked(isSeoUnlocked).mockResolvedValue(true);
+    embedOn();
+    mockBusinessFor.mockResolvedValue({});
+
+    await computeSourceA("shop", noGraphql, { products: [product], complete: true });
+
+    expect(b6Entry("BreadcrumbList")).toBeNull();
+    expect(b6Entry("AggregateRating")).toBeNull();
+    // BreadcrumbList, AggregateRating and WebSite (no home read) all unknown.
+    expect(b6Written().unknownCount).toBe(3);
   });
 
   it("computes no B6 rather than guessing when the embed read fails", async () => {

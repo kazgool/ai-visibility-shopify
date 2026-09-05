@@ -9,6 +9,9 @@ import { describe, it, expect } from "vitest";
 import {
   NO_SNAPSHOT_SENTENCE,
   OWNER_WRITTEN_NOT_YET_SENTENCE,
+  OWNER_WRITTEN_LABEL,
+  WRITTEN_KEYS,
+  WRITTEN_LABEL,
   WRITTEN_OMISSION_SENTENCE,
   differenceLabel,
   figure,
@@ -266,9 +269,23 @@ describe("written by this app since then", () => {
     expect(writtenRows(before, null)).toBeNull();
   });
 
-  it("states that alt texts and structured data nodes are not counted", () => {
-    expect(WRITTEN_OMISSION_SENTENCE).toContain("Alt texts and structured data nodes");
+  it("states how alt texts are counted, and that structured data nodes are not", () => {
+    // Since 5 September 2026 alt texts carry a dated record per photo; the
+    // sentence says the count is per photo, that older ones are not in it,
+    // and that nodes still have no record.
+    expect(WRITTEN_OMISSION_SENTENCE).toContain("one per photo");
+    expect(WRITTEN_OMISSION_SENTENCE).toContain("5 September 2026");
+    expect(WRITTEN_OMISSION_SENTENCE).toContain("never here");
+    expect(WRITTEN_OMISSION_SENTENCE).toContain("Structured data nodes are not counted");
     expect(WRITTEN_OMISSION_SENTENCE).toContain("stamps no dated record");
+  });
+
+  it("names every stamped key in plain words, alt text included", () => {
+    for (const key of WRITTEN_KEYS) {
+      expect(OWNER_WRITTEN_LABEL[key]).toBeTruthy();
+      expect(WRITTEN_LABEL[key]).toBeTruthy();
+    }
+    expect(OWNER_WRITTEN_LABEL.alt_text).toBe("Photo descriptions (one per photo)");
   });
 });
 
@@ -318,7 +335,8 @@ describe("the CSVs", () => {
     expect(lines[0]).toContain("2026-09-05T08:00:00.000Z");
     expect(lines[1]).toBe("What this app wrote since then,Count,Earliest,Latest");
     expect(lines[2]).toBe("Meta titles,20,2026-09-06T01:00:00Z,2026-09-19T01:00:00Z");
-    expect(csv).toContain("Alt texts and structured data nodes are not counted here");
+    expect(csv).toContain("Alt texts are counted one per photo");
+    expect(csv).toContain("Structured data nodes are not counted");
   });
 });
 
@@ -400,8 +418,8 @@ describe("the merchant's then-and-now file (R1 2.4, R2-12)", () => {
 
   it("carries the written block and the omission sentence in the merchant's words", () => {
     expect(csv).toContain("What this app wrote since then,Count,Earliest,Latest");
-    expect(csv).toContain("Photo descriptions and the details this app publishes");
-    expect(csv).not.toContain("Alt texts and structured data nodes");
+    expect(csv).toContain("Photo descriptions are counted one per photo");
+    expect(csv).not.toContain("Alt texts");
   });
 
   it("says why the written block is empty rather than writing nothing", () => {

@@ -24,7 +24,7 @@
 
 import { isOurNode } from "./conflicts";
 import { CHECK_LABEL, findingsOf, type Finding, type FindingCode } from "./seo-findings";
-import { formatCount } from "./report-metrics";
+import { formatCount, formatDay } from "./report-metrics";
 
 /**
  * One SeoScan row, as much of it as any aggregate here reads. Declared
@@ -270,6 +270,13 @@ export type FindingsAggregate = {
   couldNotBeRead: number;
   /** Products whose page has never been fetched. */
   neverScanned: number;
+  /**
+   * When the nightly pass last moved on this shop: the latest scannedAt over
+   * every row, whether the page answered or not. ISO string, null when no
+   * page was ever attempted. The pages-read sentence keeps its promise about
+   * the next nights only when this is recent (5 September 2026).
+   */
+  lastPageAttemptAt: string | null;
   /** Ordered for the card: found first by count descending, then not-yet-read. */
   rows: CheckRow[];
   /** Checks that ran and found nothing. Collapsed into one line by the card. */
@@ -326,6 +333,8 @@ export type FindingsCounters = {
   /** Attempted pages that answered with the storefront password form. */
   passwordPages: number;
   couldNot: number;
+  /** Latest scannedAt seen, as ISO; see FindingsAggregate.lastPageAttemptAt. */
+  lastAttemptAt: string | null;
   counts: Map<string, number>;
   /**
    * Per code, the sum of every numeric field in its detail across the rows
@@ -345,6 +354,7 @@ export function createFindingsCounters(): FindingsCounters {
     pagesRead: 0,
     passwordPages: 0,
     couldNot: 0,
+    lastAttemptAt: null,
     counts: new Map<string, number>(),
     sums: new Map<string, Record<string, number>>(),
   };
@@ -361,6 +371,13 @@ export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): v
     if (row.status === "ok") counters.pagesRead += 1;
     else counters.couldNot += 1;
     if (row.status === "password") counters.passwordPages += 1;
+    const at = new Date(row.scannedAt as Date | string);
+    if (!Number.isNaN(at.getTime())) {
+      const iso = at.toISOString();
+      if (counters.lastAttemptAt === null || iso > counters.lastAttemptAt) {
+        counters.lastAttemptAt = iso;
+      }
+    }
   }
   // A product is counted once per code however many findings carry it.
   const seen = new Set<string>();
@@ -486,6 +503,7 @@ export function buildFindingsAggregate(
     pagesRead,
     couldNotBeRead: couldNot,
     neverScanned: products - pagesAttempted,
+    lastPageAttemptAt: counters.lastAttemptAt,
     rows: [...found, ...notYetRead, ...couldNotRun, ...notApplicable, ...counted],
     clean,
   };
@@ -518,6 +536,26 @@ export function cleanSentence(aggregate: FindingsAggregate): string | null {
 }
 
 /**
+ * How recently the nightly pass must have moved for the pages-read sentence
+ * to promise the next nights. 36 hours: one nightly slot plus the slack of a
+ * pass that ran late or a screen opened late, and short of two missed nights.
+ */
+export const NIGHTLY_MOVED_WITHIN_HOURS = 36;
+
+/**
+ * Whether the nightly pass has moved recently on this shop. True when the
+ * latest attempt is within NIGHTLY_MOVED_WITHIN_HOURS of `now`, boundary
+ * included; a timestamp ahead of `now` (a clock difference) counts as moved.
+ * Null - no attempt ever - is never "moved".
+ */
+export function nightlyPassMoved(lastPageAttemptAt: string | null, now: Date): boolean {
+  if (!lastPageAttemptAt) return false;
+  const at = new Date(lastPageAttemptAt).getTime();
+  if (Number.isNaN(at)) return false;
+  return now.getTime() - at <= NIGHTLY_MOVED_WITHIN_HOURS * 3600 * 1000;
+}
+
+/**
  * The pages-read sentence from PRD section 3, at the top of the card.
  * "212 of 355 pages read; the rest by tomorrow night." On a 20,000-product
  * store it reads "500 of 20,000 pages read; the rest over the next 39
@@ -526,6 +564,15 @@ export function cleanSentence(aggregate: FindingsAggregate): string | null {
  *
  * `budget` is this shop's own, so the arithmetic on the screen is the shop's
  * and not a constant repeated in the copy.
+ *
+ * The clause about the next nights is a promise, and since 5 September 2026
+ * it is made only when the nightly pass has moved on this shop within
+ * NIGHTLY_MOVED_WITHIN_HOURS of `now` (`aggregate.lastPageAttemptAt`, the
+ * latest scannedAt on the scan table). Otherwise the sentence states the date
+ * of the last attempt and that nothing has moved since; and a shop whose
+ * pages were never attempted is told the pass has not run for it yet, not
+ * that it starts tonight. The screen used to promise "the rest by tomorrow
+ * night" on a worker that had been down for a week.
  */
 export function pagesReadSentence(
   aggregate: FindingsAggregate,
@@ -538,6 +585,8 @@ export function pagesReadSentence(
    * and no button named from another screen (R2-19, R2-20).
    */
   audience: "operator" | "merchant" = "operator",
+  /** The moment the sentence is written; a test passes a fixed one. */
+  now: Date = new Date(),
 ): string {
   const { products, pagesAttempted, pagesRead, couldNotBeRead } = aggregate;
   const merchant = audience === "merchant";
@@ -573,21 +622,35 @@ export function pagesReadSentence(
   const remaining = products - pagesAttempted;
   const nights = budget > 0 ? Math.ceil(remaining / budget) : 0;
   if (pagesAttempted === 0) {
+    // No attempt on record, so nothing here can say the pass is alive; the
+    // sentence says it has not run for this shop and what it does when it
+    // does, never "starting tonight".
     return (
       `No product pages have been read yet, out of ${n(products)}. ` +
-      `The nightly pass reads up to ${n(budget)} a night` +
-      (nights > 1 ? `, so this catalogue takes ${n(nights)} nights.` : ", starting tonight.")
+      `The nightly pass reads up to ${n(budget)} a night and has not run for this shop yet` +
+      (nights > 1 ? `; this catalogue takes ${n(nights)} nights once it does.` : ".")
     );
   }
   // State two of three: every page that was waiting has been read. State three
-  // is the budget, which the `rest` clause names. Neither is ever printed for a
-  // store that has no rows at all - that took the branch above.
+  // is the budget, which the `rest` clause names - as a promise only while the
+  // pass has moved recently, otherwise as the date it last did. Neither is
+  // ever printed for a store that has no rows at all - that took the branch
+  // above.
+  const moved = nightlyPassMoved(aggregate.lastPageAttemptAt, now);
+  const lastDay = formatDay(aggregate.lastPageAttemptAt);
+  const stalled = merchant
+    ? `; the rest is waiting: the last page was opened on ${lastDay ?? "a date not on record"} ` +
+      "and nothing has moved since"
+    : `; the rest is waiting: last page attempted ${aggregate.lastPageAttemptAt?.slice(0, 10) ?? "on no date on record"}, ` +
+      "nothing has moved since";
   const rest =
     remaining === 0
       ? "; every page is up to date"
-      : nights <= 1
-        ? "; the rest by tomorrow night"
-        : `; the rest over the next ${n(nights)} nights`;
+      : !moved
+        ? stalled
+        : nights <= 1
+          ? "; the rest by tomorrow night"
+          : `; the rest over the next ${n(nights)} nights`;
   // The numerator is pages that answered, not pages attempted. With attempted
   // here, a store whose whole storefront is behind the password read
   // "355 of 355 pages read." directly above "355 of the 355 pages fetched

@@ -46,7 +46,7 @@ import type { DiagnosticsHitRow } from "../services/crawler-hits.server";
 const FIRST_PRODUCT = `#graphql
   query FirstOnlineProduct {
     products(first: 1, query: "published_status:published") {
-      nodes { onlineStoreUrl title }
+      nodes { onlineStoreUrl handle title }
     }
   }
 `;
@@ -184,8 +184,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const res = await admin.graphql(FIRST_PRODUCT);
   const json = await res.json();
+  // Same fallback as the SEO screen's theme scan: on a password-protected
+  // storefront onlineStoreUrl is null, and the shop root is the home page,
+  // not a product page (5 September 2026).
+  const first = json.data?.products?.nodes?.[0];
   const url =
-    json.data?.products?.nodes?.[0]?.onlineStoreUrl ?? `https://${session.shop}`;
+    first?.onlineStoreUrl ??
+    (first?.handle ? `https://${session.shop}/products/${first.handle}` : `https://${session.shop}`);
 
   const password = await db.setting.findUnique({
     where: { shopId_key: { shopId: shop.id, key: "storefront_password" } },
@@ -264,7 +269,7 @@ export default function Diagnostics() {
           <BlockStack gap="300">
             <Text as="p" variant="bodySm" tone="subdued">
               We requested a product page once per crawler, with that
-              crawler&apos;s exact user agent, from outside Shopify. This
+              crawler{"'"}s exact user agent, from outside Shopify. This
               tests whether these bots <b>can</b> read your store - it is not
               a log of who actually did; that is the table further down this
               page.
@@ -520,7 +525,7 @@ export default function Diagnostics() {
             </Text>
             <Text as="p">
               Every product with attributes is also served as plain text at{" "}
-              <code>https://{domain}/apps/ai-visibility/&lt;handle&gt;</code> - a
+              <code>https://{domain}/apps/ai-visibility/{"<handle>"}</code> - a
               version a crawler can read without executing anything.
             </Text>
           </BlockStack>

@@ -94,8 +94,7 @@ const CSS = `
 .avp p { margin: 0 0 6px; }
 .avp .sub { color: #555; }
 .avp .method { color: #555; font-size: 11px; margin: 4px 0 0; }
-.avp section { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 0 0 12px;
-  break-inside: avoid; page-break-inside: avoid; }
+.avp section { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 0 0 12px; }
 .avp table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .avp th, .avp td { border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left;
   vertical-align: top; }
@@ -108,9 +107,12 @@ const CSS = `
 .avp .lead { margin: 0 0 8px; }
 @page { margin: 12mm; }
 @media print {
-  /* Tighter on paper than on screen, and each section its own unsplittable
-     unit. Nothing splits; what changed is that the units are small enough to
-     pack two or three to a page instead of one. */
+  /* Tighter on paper than on screen. The break rule is at row level, not
+     card level (5 September 2026): a card may split between two table rows,
+     and what never splits is a table row, a heading from what follows it,
+     or one of the small text blocks. With the card as the unit, a group
+     table taller than the space left on a page took a fresh page and left
+     the one above it mostly blank: five pages, half of each empty. */
   .avp { max-width: none; padding: 0; font-size: 9.5pt; line-height: 1.3; }
   .avp .noprint { display: none !important; }
   .avp h1 { font-size: 15pt; }
@@ -120,11 +122,18 @@ const CSS = `
   .avp .fig { font-size: 16pt; }
   .avp table { font-size: 8.5pt; }
   .avp th, .avp td { padding: 2px 4px; }
-  .avp section { border: 1px solid #999; padding: 7px; margin: 0 0 7px; }
-  /* A heading may not be the last thing on a page, and a paragraph may not
-     leave one line behind. Neither rule splits a card; both stop a page
-     ending on something that reads as an accident. */
-  .avp h1, .avp h2, .avp h3 { break-after: avoid; page-break-after: avoid; }
+  .avp section { border: 1px solid #999; padding: 7px; margin: 0 0 7px;
+    break-inside: auto; page-break-inside: auto; box-decoration-break: clone; }
+  /* A row is never cut in two, and a table's heading row is printed again
+     at the top of the next page when a table continues there. */
+  .avp tr { break-inside: avoid; page-break-inside: avoid; }
+  .avp thead { display: table-header-group; }
+  .avp thead tr { break-after: avoid; page-break-after: avoid; }
+  /* A heading is never the last thing on a page, and the small text blocks -
+     a tile, a method line, a lead sentence, a summary - are never cut. */
+  .avp h1, .avp h2, .avp h3 { break-after: avoid; page-break-after: avoid;
+    break-inside: avoid; page-break-inside: avoid; }
+  .avp p, .avp .figrow > div { break-inside: avoid; page-break-inside: avoid; }
   .avp p { orphans: 2; widows: 2; }
 }
 `;

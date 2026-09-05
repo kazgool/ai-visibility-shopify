@@ -299,10 +299,18 @@ describe("what a merchant hands to a client or a developer", () => {
     expect(text(paper)).toContain("Every group is open here");
   });
 
-  it("asks the printer not to break a card down the middle", () => {
-    expect(paper).toContain("break-inside: avoid");
-    expect(paper).toContain("page-break-inside: avoid");
+  it("asks the printer to break between table rows, never through one, and never after a heading", () => {
+    // Row level, not card level (5 September 2026): a card may split between
+    // rows, a row and a heading never split, and a heading is never the last
+    // thing on a page.
+    expect(paper).toContain(".avp tr { break-inside: avoid; page-break-inside: avoid; }");
+    expect(paper).toContain(".avp thead { display: table-header-group; }");
+    expect(paper).toMatch(/\.avp h1, \.avp h2, \.avp h3 \{ break-after: avoid; page-break-after: avoid;/);
+    expect(paper).toMatch(/\.avp section \{[^}]*break-inside: auto;/);
     expect(paper).toContain("@page");
+    // The screen-level rule no longer asks for the whole card to be kept
+    // together, which is what left the pages half empty.
+    expect(paper).not.toMatch(/\.avp section \{[^}]*break-inside: avoid/);
   });
 
   it("hides the button and its note when the page is printed", () => {

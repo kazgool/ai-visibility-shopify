@@ -30,6 +30,7 @@ import {
   findingsForProduct,
   pageStateOf,
   pagesReadSentence,
+  nightlyPassMoved,
   themeNodeAggregate,
   themeNodeAdvice,
   themeNodeSentence,
@@ -41,6 +42,10 @@ import type { Finding } from "../seo-scan";
 
 const BULK = new Date("2026-09-03T02:00:00Z");
 const SCAN = new Date("2026-09-03T03:45:00Z");
+/** A screen opened the morning after SCAN: the pass moved 20 hours ago. */
+const NEXT_MORNING = new Date("2026-09-03T23:45:00Z");
+/** A screen opened a week after SCAN: nothing has moved. */
+const A_WEEK_LATER = new Date("2026-09-10T03:45:00Z");
 
 function f(code: string, source: "A" | "B" | "A+B", detail: Record<string, unknown> = {}): Finding {
   return { code, source, detail } as Finding;
@@ -163,9 +168,49 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     );
   });
 
-  it("states the pages-read sentence with the shop's own budget", () => {
-    expect(pagesReadSentence(aggregate, 500)).toBe("20 of 50 pages read; the rest by tomorrow night.");
-    expect(pagesReadSentence(aggregate, 10)).toBe("20 of 50 pages read; the rest over the next 3 nights.");
+  it("states the pages-read sentence with the shop's own budget, while the pass moves", () => {
+    expect(aggregate.lastPageAttemptAt).toBe("2026-09-03T03:45:00.000Z");
+    expect(pagesReadSentence(aggregate, 500, null, "operator", NEXT_MORNING)).toBe(
+      "20 of 50 pages read; the rest by tomorrow night.",
+    );
+    expect(pagesReadSentence(aggregate, 10, null, "operator", NEXT_MORNING)).toBe(
+      "20 of 50 pages read; the rest over the next 3 nights.",
+    );
+  });
+
+  it("stops promising the next nights when nothing has moved for 36 hours", () => {
+    // Option C, 5 September 2026: the promise is kept only while the nightly
+    // pass has moved on this shop recently; otherwise the date and the fact.
+    expect(pagesReadSentence(aggregate, 500, null, "operator", A_WEEK_LATER)).toBe(
+      "20 of 50 pages read; the rest is waiting: last page attempted 2026-09-03, nothing has moved since.",
+    );
+    expect(pagesReadSentence(aggregate, 500, null, "merchant", A_WEEK_LATER)).toBe(
+      "20 of 50 pages read; the rest is waiting: the last page was opened on 3 September 2026 and nothing has moved since.",
+    );
+    expect(pagesReadSentence(aggregate, 500, null, "merchant", A_WEEK_LATER)).not.toContain("tomorrow");
+  });
+
+  it("draws the line at exactly 36 hours, boundary included", () => {
+    const boundary = new Date(SCAN.getTime() + 36 * 3600 * 1000);
+    expect(nightlyPassMoved(aggregate.lastPageAttemptAt, boundary)).toBe(true);
+    expect(pagesReadSentence(aggregate, 500, null, "operator", boundary)).toContain("by tomorrow night");
+    const past = new Date(boundary.getTime() + 1);
+    expect(nightlyPassMoved(aggregate.lastPageAttemptAt, past)).toBe(false);
+    expect(pagesReadSentence(aggregate, 500, null, "operator", past)).toContain("nothing has moved since");
+    // A clock ahead of the scan table is still "moved"; no attempt never is.
+    expect(nightlyPassMoved(aggregate.lastPageAttemptAt, new Date(SCAN.getTime() - 1000))).toBe(true);
+    expect(nightlyPassMoved(null, boundary)).toBe(false);
+  });
+
+  it("counts an attempt that did not answer as movement, and takes the latest", () => {
+    const later = new Date("2026-09-08T03:45:00Z");
+    const mixed = aggregateFindings([
+      row(0, { scannedAt: SCAN, status: "ok" }),
+      row(1, { scannedAt: later, status: "password" }),
+      row(2),
+    ]);
+    expect(mixed.lastPageAttemptAt).toBe("2026-09-08T03:45:00.000Z");
+    expect(nightlyPassMoved(mixed.lastPageAttemptAt, new Date("2026-09-09T00:00:00Z"))).toBe(true);
   });
 });
 
@@ -188,7 +233,7 @@ describe("a 20,000-product store, one night in", () => {
   });
 
   it("says how many nights the rest takes rather than implying it is done", () => {
-    expect(pagesReadSentence(aggregate, 500)).toBe(
+    expect(pagesReadSentence(aggregate, 500, null, "operator", NEXT_MORNING)).toBe(
       "500 of 20000 pages read; the rest over the next 39 nights.",
     );
   });
@@ -266,12 +311,13 @@ describe("a store where source B has never run", () => {
     expect(aggregate.rows.slice(1).every((r) => r.state === "notYetRead")).toBe(true);
   });
 
-  it("says no pages have been read and how long the catalogue will take", () => {
+  it("says no pages have been read and how long the catalogue will take, without promising tonight", () => {
+    expect(aggregate.lastPageAttemptAt).toBeNull();
     expect(pagesReadSentence(aggregate, 500)).toBe(
-      "No product pages have been read yet, out of 50. The nightly pass reads up to 500 a night, starting tonight.",
+      "No product pages have been read yet, out of 50. The nightly pass reads up to 500 a night and has not run for this shop yet.",
     );
     expect(pagesReadSentence(aggregate, 10)).toBe(
-      "No product pages have been read yet, out of 50. The nightly pass reads up to 10 a night, so this catalogue takes 5 nights.",
+      "No product pages have been read yet, out of 50. The nightly pass reads up to 10 a night and has not run for this shop yet; this catalogue takes 5 nights once it does.",
     );
   });
 });
@@ -448,8 +494,10 @@ describe("the pages-read sentence on a shop robots.txt blocks", () => {
     expect(sentence).not.toContain("starting tonight");
   });
 
-  it("promises the night again as soon as robots.txt stops blocking", () => {
-    expect(pagesReadSentence(aggregate, 500, null)).toContain("starting tonight");
+  it("says the pass has not run yet as soon as robots.txt stops blocking, and promises nothing", () => {
+    const sentence = pagesReadSentence(aggregate, 500, null);
+    expect(sentence).toContain("has not run for this shop yet");
+    expect(sentence).not.toContain("tonight");
   });
 });
 

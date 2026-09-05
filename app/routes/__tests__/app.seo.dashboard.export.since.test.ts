@@ -44,7 +44,7 @@ function facts(over: Record<string, unknown> = {}) {
 function source(over: Record<string, unknown> = {}) {
   return {
     domain: "republicabio.ro",
-    findings: { products: 50, bulkRead: 50, pagesAttempted: 50, pagesRead: 50, couldNotBeRead: 0, neverScanned: 0, rows: [], clean: [] },
+    findings: { products: 50, bulkRead: 50, pagesAttempted: 50, pagesRead: 50, couldNotBeRead: 0, neverScanned: 0, lastPageAttemptAt: null, rows: [], clean: [] },
     readiness: { products: 50, catalogueRead: 50, pagesRead: 50, readSet: 50, awaitingPage: 0, clean: 50, merchant: 0, theme: 0, app: 0, notChecked: 0, needSomething: 0, groups: [], shopWideCodes: [], lastPageReadAt: null, lastCatalogueReadAt: null },
     blockedBy: null,
     since: {

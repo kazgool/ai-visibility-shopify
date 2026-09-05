@@ -136,14 +136,172 @@ with contradicting figures; `OWNER_LABEL` and `SHOP_WIDE_LABEL` for B13 and
 B14 now name the places: "on WhatsApp, Facebook and most apps" and "on X,
 formerly Twitter" (M3).
 
-**Known and deferred.** The printed report still runs to five pages with blank
-space; the page count needs a browser. The two operator export routes keep
-their old filenames (Amendment 8). Round 2's six UNVERIFIABLE items stand as
-listed there: the page count and `window.print()` inside the admin frame; a
-real store showing the Google card's brand and barcode counts disagreeing with
-the A1 row; the rolling `today` snapshot lagging the scan table; Excel on
-Windows and the byte order mark; layout at 375 px; whether a scan row can ever
-carry A6, A10, A11 or B30.
+### Every remaining open item on the SEO module, closed (5 September 2026)
+
+The "Known and deferred" list that stood here is gone; each entry ends fixed
+or with the one step at a keyboard that settles it. Server only; nothing in
+an extension changed. No Prisma schema change.
+
+**1. The printed report ran to five pages, half of each blank.** The break rule
+was at card level: `section { break-inside: avoid }`, so a group table taller
+than the space left on a page took a fresh page and left the one above it
+empty. The rule is now at row level (`SeoPrintReport.tsx`): a card may split
+between two table rows; a table row never splits (`tr { break-inside: avoid }`);
+the heading row is printed again where a table continues (`thead {
+display: table-header-group }`); a heading is never the last thing on a page
+(`break-after: avoid` on h1, h2, h3); the small text blocks - tiles, method
+lines, lead sentences - never split. Typography unchanged. The page count
+still needs a printer, so it is estimated rather than claimed: the dev store's
+report rendered from its real rows is 12,476 characters of text, 34 table
+rows, 30 paragraphs and 10 sections, about 2.8 pages of content at A4 with
+12 mm margins, so **3 pages, possibly 4**. Marius prints it and reports the
+count (see the list at the end).
+
+**2. The two operator export routes kept their old filenames.** Amendment 8 is
+closed. Both routes now name their files through `exportFilename`, which took
+a fourth argument, the module, so that no two exports can share a name:
+`/app/report/export/:table` gives `ai-visibility-report-<shop>-<families|weakest>-<date>.csv`
+(the attribute pass is not the SEO module) and the operator's
+`/app/seo/export/:table` gives `ai-visibility-seo-operator-<shop>-<since|written>-<date>.csv`,
+kept apart from the merchant dashboard's `since` file. Every download of this
+app now carries the shop and the date. Construction sites of `exportFilename`
+before the change: 2 routes, 1 test, the definition; the new argument is
+optional and defaults to `seo`, so none broke.
+
+**3. "The rest by tomorrow night" and "starting tonight" were promises the
+screen could not keep.** Option C: `FindingsAggregate` carries
+`lastPageAttemptAt`, the latest `scannedAt` on the scan table whether the page
+answered or not, folded in `foldFindingsRow`; `nightlyPassMoved(at, now)` is
+true within 36 hours, boundary included, and `pagesReadSentence` takes `now`
+as a fifth argument. The promise is made only while the pass has moved; else
+the sentence reads "the rest is waiting: last page attempted 2026-09-03,
+nothing has moved since" (merchant: "the last page was opened on 3 September
+2026 and nothing has moved since"). A shop with no attempt on record is told
+the pass "has not run for this shop yet", never "starting tonight". Both
+callers read it off the aggregate, so `/app/seo` needed nothing more in its
+loader than what `readSeoAggregates` already returned. Tests cover both
+branches, the boundary at exactly 36 hours on both sides, a clock ahead of
+the scan table, and a 429 counting as movement. Sites constructing
+`FindingsAggregate` as a literal: 1 test, updated; every other site builds it
+through `aggregateFindings`.
+
+**4. The 401 mirror rows on the dev store: diagnosed from the database and
+fixed.** Read-only queries on 5 September 2026: 401 `MirrorCache` rows for
+`mrdigital-dev.myshopify.com`, all 401 with a NULL `productId`; 350 dated 3
+August and 2 dated 4 August (the 355-product catalogue), 49 dated 31 August;
+49 match a handle in the current 50 `SeoScan` rows, 352 match nothing. The
+reconciliation was running - the last five `bulk_extract` reports all carry
+`reconciled: {read: 50, expected: 50, skipped: true, deleted: 0}` - and
+returning at the eligible-set floor, because `onlineStoreUrl` is null on
+every product of a password-protected storefront (confirmed with one Admin
+read: five ACTIVE, published products, `onlineStoreUrl: null`), so
+`eligibility` said "not-on-online-store" for all 50 and the floor refused to
+delete anything. So it is (a): stale rows from the earlier catalogue behind
+the floor, and the same shape would hold on a live shop after a catalogue
+swap plus any lapse that empties the eligible set. The fix
+(`mirror-reconcile.server.ts`): under the floor, and only there, rows whose
+product is in the complete read by neither id nor handle are withdrawn
+(`withdrawNotInCatalogue`); the floor itself is untouched, and the new step
+refuses to act when any product read carries no handle, so a field that
+stopped arriving still deletes nothing. The Report screen's sentence for a
+skipped run now says how many such pages were withdrawn instead of "nothing
+was withdrawn". Test: a 50-product read with every `onlineStoreUrl` null
+against 401 rows leaves 49 and deletes 352; a rename under the floor is kept;
+a read with one handle missing deletes nothing. No operator action on the
+database: after the deploy, the next reconciliation deletes the 352 - Monday
+03:30 UTC by the sweep, or at once by pressing Fill catalogue on the dev
+store - and `SELECT count(*) FROM "MirrorCache"` for the shop then reads 49.
+
+**5. The B6 reason blamed the app embed after the same read had found it
+active - and the premise of the item was wrong.** BreadcrumbList is emitted by
+this app, not by the theme: `ai-visibility.liquid` lines 328 to 352, under
+`template.name == 'product'` and `av_seo_unlocked`. So no "the theme did not
+publish it" sentence was written; it would have been false. What was actually
+wrong, read off the dev store: 50 of 50 product rows carried "WebSite/
+SearchAction not found - check that the app embed is active" because
+`b6For` looked for the WebSite node on each product's page, where this app
+never adds it (home page only, `template.name == 'index'`); 4 rows carried the
+same sentence for BreadcrumbList because those pages answered 429 and stored
+`nodes: []`, which `nodeSeen` read as "absent"; and the theme scan's "product
+page" was the shop root, because `onlineStoreUrl` is null on a password store
+and the fallback was `https://<shop>`, so it read the home page and reported
+the Product node and the BreadcrumbList missing. Fixed: `nodeSeen` and
+`ratingSeen` return null unless the row's status is "ok"; `hasWebSiteNode` is
+read once per pass off the home page of the newest theme scan
+(`homeWebSiteSeen`), null when there is none; the product URL falls back to
+`/products/<handle>` on both the SEO screen and Diagnostics; and the not-found
+reason is per node, naming the page this app adds it on and stating the embed
+is active (`NOT_FOUND_ON_HOME_PAGE`, `NOT_FOUND_ON_PRODUCT_PAGE`), with
+merchant sentences in `MERCHANT_REASON`. Rows still carrying the retired
+sentence until their next pass read through `LEGACY_MERCHANT_REASON`, which
+the test holds to sentences the scan no longer writes. `ExistingRow` gained
+`status`; `NodeExpectation` gained `hasWebSiteNode`; both are module-private.
+
+**6. Alt text now carries a dated record, and the since card counts it.**
+`writeAltText` stamps `alt_text` on the product's `state` metafield after a
+media write that changed something: `source: "auto"`, `at`, and `media`, one
+ISO timestamp per media id written; earlier photos keep their dates, photos no
+longer on the product are dropped, and nothing is written on a pass that
+wrote nothing, so the unchanged rule holds. `writtenSince` counts alt text one
+per photo, only photos stamped after the snapshot. Alt texts written before 5
+September 2026 have no entry: they are in the totals the pass reports and
+never in the since figure, and both omission sentences say exactly that;
+structured data nodes remain uncounted. `FieldState` gained an optional
+`media` (3 construction sites in code, none broken: `facts.server.ts`,
+`seo.server.ts`'s own shape, `collections.server.ts`'s own shape).
+`WRITTEN_KEYS` moved to `seo-since.ts` and `OwnerWrittenKey` is its type, so
+R1 U4's two hand-maintained lists are one and a key without a plain label
+fails typecheck. Tests: the stamp, its order after the media write, no write on
+an unchanged pass, preservation and pruning, and the counter on a mix of
+dated, undated and pre-snapshot photos.
+
+**7. The unverifiable items, settled from code where they could be.**
+R1 U3: Republica BIO is not a shop in this database (four shops: the review
+store, picturax, gilded-lily-jewelry, mrdigital-dev), so no reason has been
+recorded for it; the only recorded reasons are the dev store's, listed under
+item 5, and every one now has a merchant sentence. R1 U4: settled, item 6.
+R2 U2: yes, a real store can show the Google card's brand and barcode counts
+disagreeing with the A1 row, in exactly one window: source A writes its rows
+on a short catalogue read while `recordCurrentFacts` refuses to write the
+`today` row on one, and the same when the snapshot write throws; both are
+logged, and each surface names the pass its figures came from. R2 U3: real,
+and fixed. The `today` row was rewritten only by a catalogue pass (the nightly
+scan is not one; source A runs in the Monday sweep, Fill catalogue, Preview,
+alt text and a toggle change), so on a shop unlocked on a Tuesday the since
+card's Now column said pages were "not read" until Monday while the header
+beside it said every product was checked. `refreshCurrentPageFacts` now
+updates the page half of the `today` row after every nightly scan, from the
+scan table alone, leaving the catalogue half and `takenAt` as the last
+catalogue pass wrote them, writing nothing when there is no `today` row and
+nothing when the values are unchanged; both method lines say the two halves
+have two dates. R2 U6: no writer of this app puts A6, A10, A11 or B30 on a
+product row (the first three come from the collections report, B30 from the
+blog read, both per shop), so `groupsOn` now also requires the code to be in
+`CHECKS`, and the fixture shape that printed "5 of 12: collections with little
+or no description" as a product count can no longer render.
+
+**Needs a hand at the keyboard.** Three things only a browser and a Windows
+desktop can answer. Five minutes, in the admin of the dev store:
+
+1. Open Apps, AI Visibility, the SEO dashboard, and press "Open the printable
+   report". In the report press "Print this report, or save it as a PDF".
+   Look for: does a print dialog open at all (Chrome, then Firefox)? If
+   nothing happens, right-click the report and choose "Print frame", and say
+   which of the two worked.
+2. In that dialog choose A4, default margins, "Save as PDF". Look for: the
+   page count in the dialog's preview (estimate: 3), whether any table row is
+   cut across two pages, and whether any page ends on a heading with nothing
+   under it.
+3. On the dashboard press "Spreadsheet: what we looked for" and open the file
+   by double-clicking it in Windows Explorer, so Excel opens it directly.
+   Look for: Romanian letters in product titles reading as written (a, i, s,
+   t with their marks) and not as two odd characters each; the first cell
+   reading the report heading and not three stray characters before it.
+4. Still in the admin, make the browser window 375 pixels wide (Chrome:
+   F12, then the phone icon, then choose iPhone SE). Look for: every group on
+   the dashboard opening and closing from its heading by mouse and by Tab
+   plus Enter, no figure cut off at the right edge, and the print button still
+   visible.
 
 ### The printed report, read on paper (5 September 2026)
 
@@ -821,7 +979,7 @@ every check against real pages.
   knows it", never as "you edited this", because the list is a snapshot of a
   generated file.
 - `seo-onpage.ts` had its own six-entry entity table, and a dev store title came
-  back as "... Nordwood &ndash; MRDigital-dev": `ndash` was unknown to it, so the
+  back as "... Nordwood [ndash entity] MRDigital-dev": `ndash` was unknown to it, so the
   row would have shown a merchant an entity and counted it as seven characters
   instead of one. Entity decoding and output hygiene now come from the engine
   (`decodeEntities` for attribute values, which must stay byte-exact addresses;
@@ -3335,7 +3493,7 @@ panel.
   is rewritten. It had been protected as if a merchant had typed it.
 - **HTML entities in generated text.** Product titles are cleaned before
   entering summaries and buyer questions, so a question no longer reads
-  "What is Set Masa &amp; 6 Scaune made of?".
+  "What is Set Masa [amp entity] 6 Scaune made of?".
 - **Multiplication sign** in dimensions is normalised to a plain "x".
 - **Composite attribute values** are split before being listed in collection
   prose, so "textil, burete" and "burete" no longer read as a duplicate.

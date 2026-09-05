@@ -50,7 +50,7 @@ function render(before: FactsRow | null, today: FactsRow | null): string {
       <SeoSinceCard before={before} today={today} />
     </AppProvider>,
   );
-  // React escapes an apostrophe in text as &#x27;, which is correct HTML and
+  // React escapes an apostrophe in text as a hex numeric entity, which is correct HTML and
   // reaches the reader as "'". Decoding here keeps the assertions written the
   // way the sentence is written in the source.
   return html
@@ -112,7 +112,8 @@ describe("the card with a snapshot and a catalogue that grew", () => {
   });
 
   it("names the date today's column came from", () => {
-    expect(text).toContain("Today's figures are from the catalogue pass of 20 September 2026");
+    expect(text).toContain("Today's catalogue figures are from the catalogue pass of 20 September 2026");
+    expect(text).toContain("page figures are refreshed after every nightly page scan");
   });
 });
 
@@ -173,7 +174,8 @@ describe("written by this app since then", () => {
 
   it("always states that alt texts and structured data nodes are not counted", () => {
     const text = render(facts(), facts({ takenAt: "2026-09-20T03:45:00.000Z" }));
-    expect(text).toContain("Alt texts and structured data nodes are not counted here");
+    expect(text).toContain("Alt texts are counted one per photo");
+    expect(text).toContain("Structured data nodes are not counted");
   });
 });
 

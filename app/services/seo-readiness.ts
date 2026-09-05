@@ -152,9 +152,19 @@ const REPORTS_ONLY: ReadonlySet<string> = new Set(
   CHECKS.filter((c) => c.reports).map((c) => String(c.code)),
 );
 
+/**
+ * The codes a product row can carry: every check in CHECKS. A6, A10 and A11
+ * are computed over collections and B30 over blog posts, none of them by a
+ * writer that touches a product row, so a row carrying one is a JSON column
+ * holding what no code of this app wrote (R2 U6, settled 5 September 2026).
+ * Such a code is not grouped: it would be counted as a product under a
+ * label that names collections.
+ */
+const ROW_CODES: ReadonlySet<string> = new Set(CHECKS.map((c) => String(c.code)));
+
 /** A code this grouping knows how to place. Anything else is ignored, never guessed at. */
 export function groupsOn(code: string): code is FindingCode {
-  return code in FINDING_OWNER && !REPORTS_ONLY.has(code);
+  return code in FINDING_OWNER && !REPORTS_ONLY.has(code) && ROW_CODES.has(code);
 }
 
 function present(value: Date | string | null | undefined): boolean {
@@ -804,8 +814,10 @@ export const MERCHANT_REASON: Record<string, string> = {
     "This detail is part of the SEO work, which is not switched on for this shop yet.",
   "Could not be determined - the last scan could not read this page.":
     "The last read could not open this page, so we do not know.",
-  "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.":
-    "The SEO work is switched on, but the last read did not find this detail on the page; the usual cause is that this app's block is not active in the theme you currently publish.",
+  "This app adds WebSite/SearchAction on the home page only, and the last scan of the home page did not find it there although the app embed is active.":
+    "This app publishes this detail on your home page only. This app's block is active in your theme, but the last read of your home page did not find the detail there.",
+  "This app adds BreadcrumbList on product pages, and the last scan of this product's page did not find it there although the app embed is active.":
+    "This app publishes this detail on product pages. This app's block is active in your theme, but the last read of this product's page did not find the detail there.",
   "The last scan found no rating on this product's page - no review app has written rating metafields for it yet.":
     "The last read found no star rating on this product's page; no review app has recorded one for it yet.",
   "The return window is empty on the Business screen.":
@@ -823,9 +835,24 @@ export const UNEXPLAINED_REASON =
   "We recorded a reason we cannot yet explain in plain words; the Diagnostics screen in this app " +
   "shows it as recorded.";
 
+/**
+ * Sentences the scan no longer writes but a stored row may still carry until
+ * its next pass recomputes it: source A rewrites B6 on every catalogue read
+ * and the theme scan rewrites its reasons weekly, so each entry here is live
+ * for at most that long. Kept apart from MERCHANT_REASON so the test that
+ * holds that record to what the function writes today stays exact.
+ */
+export const LEGACY_MERCHANT_REASON: Record<string, string> = {
+  // Replaced 5 September 2026 by the two per-node sentences above. It told
+  // the merchant to check the block on a read that had already found it
+  // active, so the translation no longer says that.
+  "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.":
+    "The last read did not find this detail on the page. This reason was recorded before 5 September 2026 and is restated at the next read.",
+};
+
 /** The merchant sentence for one recorded reason, never the raw string. */
 export function merchantReason(reason: string): string {
-  return MERCHANT_REASON[reason] ?? UNEXPLAINED_REASON;
+  return MERCHANT_REASON[reason] ?? LEGACY_MERCHANT_REASON[reason] ?? UNEXPLAINED_REASON;
 }
 
 /** "Found on all 46 products whose page we read." or "...all 50 products in your catalogue." */

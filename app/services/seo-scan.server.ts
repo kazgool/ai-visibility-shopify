@@ -383,14 +383,17 @@ type ExistingRow = {
   findings: unknown;
   offer: unknown;
   /**
-   * Read for B6. Three of deriveMissingReasons' inputs are things only a page
-   * read can establish - whether the page carried a WebSite node, a
-   * BreadcrumbList, a rating - and source B stored them here on its last pass.
-   * Null when the page has never been read, which B6 reports as "could not be
-   * determined" and never as "missing".
+   * Read for B6. Two of deriveMissingReasons' inputs are things only a read
+   * of this page can establish - whether it carried a BreadcrumbList, a
+   * rating - and source B stored them here on its last pass. Null when the
+   * page has never been read, or answered with anything but 200 (status is
+   * not "ok"), which B6 reports as "could not be determined" and never as
+   * "missing". The WebSite node is not read here at all: this app adds it on
+   * the home page only, so a product row can never establish it.
    */
   nodes: unknown;
   scannedAt: Date | null;
+  status: string | null;
 };
 
 /** What one product's row holds after source A. */
@@ -413,6 +416,8 @@ type NodeExpectation = {
   hasReturnDays: boolean;
   hasDeliveryTime: boolean;
   hasSocialProfiles: boolean;
+  /** Off the home page's last read; see homeWebSiteSeen. One value per pass. */
+  hasWebSiteNode: boolean | null;
 };
 
 /**
@@ -432,7 +437,9 @@ async function readNodeExpectation(
       return new Response(JSON.stringify({ data }));
     });
     const business = await businessFor(shopId);
+    const hasWebSiteNode = await homeWebSiteSeen(shopId);
     return {
+      hasWebSiteNode,
       embedActive: Boolean(embed.active),
       mode: embed.mode,
       context: {
@@ -452,20 +459,53 @@ async function readNodeExpectation(
   }
 }
 
-/** Did the stored page nodes carry this type? Null when no page was ever read. */
+/**
+ * The stored node list of a page that answered as a crawler would see it, or
+ * null. A page that answered with anything else stores an empty list - the
+ * dev store had four rows at 429 with `nodes: []` on 5 September 2026 - and
+ * reading that list as "the node is absent" put the not-found reason on a page
+ * nobody had read. Same rule as wasRead in seo-aggregate.ts.
+ */
+function readNodes(row: ExistingRow | undefined): any[] | null {
+  if (!row || !row.scannedAt || row.status !== "ok") return null;
+  return Array.isArray(row.nodes) ? (row.nodes as any[]) : null;
+}
+
+/** Did the stored page nodes carry this type? Null when the page was not read. */
 function nodeSeen(row: ExistingRow | undefined, type: string): boolean | null {
-  if (!row || !row.scannedAt) return null;
-  const list = Array.isArray(row.nodes) ? (row.nodes as any[]) : null;
+  const list = readNodes(row);
   if (!list) return null;
   return list.some((n) => Array.isArray(n?.types) && n.types.map(String).includes(type));
 }
 
 /** Did the stored Product node carry a nested aggregateRating? Null if unread. */
 function ratingSeen(row: ExistingRow | undefined): boolean | null {
-  if (!row || !row.scannedAt) return null;
-  const list = Array.isArray(row.nodes) ? (row.nodes as any[]) : null;
+  const list = readNodes(row);
   if (!list) return null;
   return list.some((n) => n?.hasAggregateRating === true);
+}
+
+/**
+ * Whether the home page carried a WebSite node on its last read, off the
+ * newest theme scan for the shop: that scan reads the home page, and it is
+ * the only read of this app that does. Null when there is no scan, the home
+ * page was not part of it, or it answered with the password form. Until 5
+ * September 2026 this was read off each product's own page, where the node
+ * is never emitted, so every product row of every shop carried a false
+ * "not found" for it.
+ */
+async function homeWebSiteSeen(shopId: string): Promise<boolean | null> {
+  const scan = await db.themeScan.findFirst({
+    where: { shopId },
+    orderBy: { scannedAt: "desc" },
+    select: { detail: true },
+  });
+  const home = (scan?.detail as { home?: { nodes?: unknown; passwordProtected?: boolean } } | null)
+    ?.home;
+  if (!home || home.passwordProtected || !Array.isArray(home.nodes)) return null;
+  return (home.nodes as any[]).some(
+    (n) => Array.isArray(n?.types) && n.types.map(String).includes("WebSite"),
+  );
 }
 
 /** B6 for one product, or null when there is nothing missing that we can fix. */
@@ -491,7 +531,8 @@ function b6For(
     // Page-derived, off this product's own last page read. Null until source B
     // has read it, which reads as "could not be determined".
     hasRating: ratingSeen(row),
-    hasWebSiteNode: nodeSeen(row, "WebSite"),
+    // Shop-level, off the home page: the one page this app adds it on.
+    hasWebSiteNode: expectation.hasWebSiteNode,
     hasBreadcrumbNode: nodeSeen(row, "BreadcrumbList"),
     hasCollectionQuestions: null,
     hasSocialProfiles: expectation.hasSocialProfiles,
@@ -562,6 +603,7 @@ async function sourceAPass(
       offer: true,
       nodes: true,
       scannedAt: true,
+      status: true,
     },
   });
   const byProductId = new Map(existing.map((row) => [row.productId, row]));
