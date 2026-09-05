@@ -444,8 +444,17 @@
     than guess.</p>
   <div class="actions">
     <a class="btn" href="#">Open the printable report</a>
-    <a class="btn sec" href="#">Download as a spreadsheet</a>
+    <a class="btn sec" href="#">Spreadsheet: what we looked for</a>
+    <a class="btn sec" href="#">Spreadsheet: which products</a>
+    <a class="btn sec" href="#">Spreadsheet: the shop-wide fixes</a>
+    <a class="btn sec" href="#">Spreadsheet: what Google asks for</a>
+    <a class="btn sec" href="#">Spreadsheet: then and now</a>
   </div>
+  <p class="foot">Every file carries the figures on this screen, from the same reads, with the
+    shop and the date in its name. A check that could not run is a sentence in the file too,
+    never a zero. The printable report opens inside the app rather than in a new tab: a page
+    under /app reached without the admin's own parameters lands on a login screen, and a report
+    that looks like it failed is worse than one more click.</p>
 </div>
 
 <!-- FINDINGS -->
@@ -783,6 +792,26 @@
       except the hero dial's max-width.</li>
     <li>Must read correctly on all five stores: a 50-product fixture, this 189-product shop, a
       20,000-product store, an empty store, and a store where the live page read never ran.</li>
+    <li><b>The report and the spreadsheets, build step 6, 5 September 2026.</b> Three things in
+      this mockup were changed by building them:
+      <ol>
+        <li>"Download as a spreadsheet" is five buttons, not one. The screen shows four tables with
+          four different denominators, and the comparison is a fifth that already exports from the
+          operator route; one file holding all of them would either merge four shapes into one
+          sheet or ship a zip, both harder to open than five named files. The comparison button
+          appears only when a before snapshot exists, because its route answers a request without
+          one with a 409.</li>
+        <li>The printable report opens inside the app, not in a new tab. A page under /app reached
+          without the admin's own query parameters lands on a login screen, so a report opened that
+          way would look as though it had failed. It prints with window.print() from inside the
+          frame, and because a sandboxed frame can refuse that call silently, the page itself is
+          the report and a line under the button names the browser's own "Print frame" path.</li>
+        <li>Filenames carry the shop and the date, so three of these on a desktop can be told
+          apart. Every file is UTF-8 with a byte order mark, and no cell can begin with =, + or @
+          and run as a formula when it is opened - which was a defect in the two exports already
+          shipped, not only a rule for the new ones.</li>
+      </ol>
+    </li>
     <li>The figures above are illustrative, drawn to resemble a real client catalogue. Nothing here
       is a measurement.</li>
   </ul>

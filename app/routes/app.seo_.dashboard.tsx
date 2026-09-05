@@ -30,24 +30,11 @@ import { useLoaderData } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { isSeoUnlocked } from "../services/billing.server";
-import { named } from "../services/graphql-errors";
-import { readSeoDashboard } from "../services/seo-aggregate.server";
-import { dailyBudget, robotsBlock, blogPostReport } from "../services/seo-page.server";
-import { readCurrentFacts, readSeoSnapshot, serialiseFacts } from "../services/seo-snapshot.server";
-import { businessFor } from "../services/business.server";
-import { isQueueUsable } from "../services/seo-queue-metrics";
-import type { CollectionSeoQueue } from "../services/seo-collections.server";
-import type { FactsRow } from "../services/seo-since";
+import { readSeoDashboardSource } from "../services/seo-dashboard.server";
 import {
   SeoDashboardScreen,
   type SeoDashboardData,
 } from "../components/SeoDashboardScreen";
-
-const PRIMARY_DOMAIN = `#graphql
-  query PrimaryDomainSeoDashboard {
-    shop { primaryDomain { host } }
-  }
-`;
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -59,89 +46,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // ENTITLEMENT: the loader itself refuses without seo_unlocked, not only the
   // navigation link - a URL can be typed directly, and this screen is the one
-  // the SEO module is paid for. There is no action and no resource route on
-  // this file, so this is the only path to this data; the exports the mockup
-  // shows are build step 6 and will carry the same gate.
+  // the SEO module is paid for. The printable report and the four exports are
+  // separate routes and each repeats this gate in its own loader; the
+  // enumeration is in PRD-SEO-FULL-ONPAGE section 4.4.
   const unlocked = shop ? await isSeoUnlocked(shop.id) : false;
   if (!unlocked || !shop) {
     return { unlocked: false as const };
   }
 
-  const [dashboard, budget, blockedBy, beforeRow, currentRow, business, blogPosts, collectionJob] =
-    await Promise.all([
-      readSeoDashboard(shop.id),
-      dailyBudget(shop.id),
-      robotsBlock(shop.id),
-      readSeoSnapshot(shop.id),
-      readCurrentFacts(shop.id),
-      businessFor(shop.id),
-      blogPostReport(shop.id),
-      db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: "seo_collection_queue" },
-        orderBy: { createdAt: "desc" },
-      }),
-    ]);
-
-  // The last scan of the published theme, for "what your pages publish about
-  // each product". One page, and the card says so: this read is a sample and
-  // has never claimed to be the catalogue.
-  const themeScan = await db.themeScan.findFirst({
-    where: { shopId: shop.id },
-    orderBy: { scannedAt: "desc" },
-  });
-
-  // The name the merchant knows their shop by, rather than the myshopify one.
-  // One Admin call, and a failure falls back rather than breaking the screen.
-  let domain = session.shop;
-  try {
-    const res = await named("PrimaryDomainSeoDashboard", () => admin.graphql(PRIMARY_DOMAIN));
-    const json = await res.json();
-    domain = json.data?.shop?.primaryDomain?.host ?? session.shop;
-  } catch {
-    domain = session.shop;
-  }
-
-  const collectionView = collectionJob
-    ? {
-        status: collectionJob.status,
-        finishedAt: collectionJob.finishedAt?.toISOString() ?? null,
-        report: collectionJob.report,
-      }
-    : null;
-
-  const detail = (themeScan?.detail ?? null) as {
-    missingReasons?: { nodeType: string; emitted: boolean; reason: string | null }[];
-  } | null;
-
-  return {
-    unlocked: true as const,
-    domain,
-    findings: dashboard.findings,
-    themeNodes: dashboard.themeNodes,
-    readiness: dashboard.readiness,
-    budget,
-    blockedBy,
-    since: {
-      before: beforeRow ? (serialiseFacts(beforeRow) as FactsRow) : null,
-      today: currentRow ? (serialiseFacts(currentRow) as FactsRow) : null,
-    },
-    business: business
-      ? {
-          deliveryStated: Boolean(
-            (business.deliveryTime ?? "").trim() || (business.deliveryCost ?? "").trim(),
-          ),
-          returnsStated: typeof business.returnDays === "number" && business.returnDays > 0,
-        }
-      : null,
-    blogPosts,
-    collections: isQueueUsable(collectionView)
-      ? ((collectionJob!.report ?? null) as CollectionSeoQueue | null)
-      : null,
-    published: {
-      at: themeScan?.scannedAt?.toISOString() ?? null,
-      reasons: Array.isArray(detail?.missingReasons) ? detail!.missingReasons! : [],
-    },
-  };
+  // One read, shared with the report and the exports, so no two of the four
+  // routes can assemble the same figures differently.
+  const source = await readSeoDashboardSource(shop.id, session.shop, admin.graphql);
+  return { unlocked: true as const, ...source };
 };
 
 

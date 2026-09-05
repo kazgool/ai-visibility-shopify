@@ -234,3 +234,21 @@ export async function scanRowFor(
   });
   return (row as ScanRowLike | null) ?? null;
 }
+
+/**
+ * Every scan row for a shop, handle and findings only, for the per-product
+ * export. It goes through the same batched cursor as every other
+ * full-catalogue read here rather than one findMany, so the memory cost is a
+ * batch and not a catalogue - and the CSV the caller builds from it is then
+ * the largest thing in the request, which is unavoidable and bounded by
+ * PRODUCT_ROW_CAP.
+ */
+export async function allScanRows(
+  shopId: string,
+): Promise<{ handle: string | null; findings: unknown }[]> {
+  const out: { handle: string | null; findings: unknown }[] = [];
+  await forEachRow(shopId, false, (row) => {
+    out.push({ handle: row.handle ?? null, findings: row.findings });
+  });
+  return out;
+}

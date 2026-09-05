@@ -41,6 +41,7 @@ import {
 } from "../services/seo-aggregate";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
 import { dialArc } from "../services/report-metrics";
+import { LISTING_UNMEASURED_SENTENCE, dashboardDerived } from "../services/seo-report";
 import {
   FINDING_OWNER,
   OWNER_LABEL,
@@ -53,9 +54,7 @@ import {
   columnAccount,
   groupWordFor,
   listingMethod,
-  listingReadiness,
   shopWideCrossReference,
-  shopWideItems,
   shopWideMethod,
   type GroupView,
   type ListingProperty,
@@ -571,30 +570,11 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
 
   const before = since.before;
   const today = since.today;
-  const listing = listingReadiness(
-    today
-      ? {
-          products: today.products,
-          withVendor: today.withVendor,
-          withImage: today.withImage,
-          withBarcode: today.withBarcode,
-        }
-      : null,
-    business,
-    // One source for "has the catalogue been read": the rows this screen
-    // counts everything else from. The card used to answer it from whether a
-    // snapshot row existed, so a shop with 50 rows read and no snapshot yet
-    // was told in one card that its catalogue had been read and in the next
-    // that it had not.
-    findings.bulkRead,
-  );
-  const wide = shopWideItems(readiness, {
-    deliveryStated: business ? business.deliveryStated : null,
-    returnsStated: business ? business.returnsStated : null,
-    barcode: today ? { have: today.withBarcode, of: today.products } : null,
-    catalogue: today ? today.products : findings.bulkRead > 0 ? findings.bulkRead : null,
-    publishedReasons: published.reasons.length > 0 ? published.reasons : null,
-  });
+  // The two derived values, from the module the printable report and the four
+  // exports also call. Nothing on this screen derives a figure of its own any
+  // more; that is what makes "the report and the screen cannot disagree" a
+  // property of the code rather than a promise in a changelog.
+  const { listing, wide } = dashboardDerived(data);
 
   const dayNumber =
     before && before.takenAt
@@ -887,8 +867,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
               // same "not read yet" line eleven times: once as a blanket line
               // and once under each of the ten rows.
               <Text as="p" tone="subdued">
-                Your products have not been read yet, so none of these has been counted. The first
-                read fills this card in.
+                {LISTING_UNMEASURED_SENTENCE}
               </Text>
             ) : (
               <>
@@ -913,6 +892,8 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
 
         {/* Counted, with no verdict */}
         <CountedCard rows={counted} />
+
+        <TakeItAway hasSnapshot={before !== null} />
       </BlockStack>
     </Page>
   );
@@ -1449,6 +1430,68 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
           We do not tell you what these numbers should be, because nobody credible states a
           target. They are here so you can see when they change.
         </Method>
+      </BlockStack>
+    </Card>
+  );
+}
+
+/**
+ * The two things the mockup puts at the foot of the since card: the printable
+ * report and the spreadsheet.
+ *
+ * The spreadsheet is four buttons rather than one, and that is a deliberate
+ * departure from the mockup's single "Download as a spreadsheet". The screen
+ * shows four different tables with four different denominators, and one file
+ * holding all of them would either merge four shapes into one sheet or ship a
+ * zip - both of which are harder to open than four named files. The mockup was
+ * updated to match rather than left disagreeing.
+ *
+ * The comparison file is the fifth, and it is the existing route: the
+ * then-and-now figures already export from /app/seo/export/since, read from
+ * the same two snapshot rows. It is offered here only when there is a snapshot
+ * to compare against, because that route answers a request with no snapshot
+ * with a 409 and a sentence, and a button that can only fail is not a button.
+ *
+ * target="_blank" is load-bearing on all of them: Polaris renders `url` as a
+ * Remix Link, which would otherwise intercept the click and ask the router for
+ * the route instead of letting the browser fetch the file. The printable
+ * report is the one link that is meant to be a route, so it has no `download`
+ * and no `target`, and stays inside the frame it is authenticated in.
+ */
+function TakeItAway({ hasSnapshot }: { hasSnapshot: boolean }) {
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <Text as="h2" variant="headingMd">
+          Take this away
+        </Text>
+        <InlineStack gap="200" wrap>
+          <Button url="/app/seo/dashboard/print" variant="primary">
+            Open the printable report
+          </Button>
+          <Button url="/app/seo/dashboard/export/findings" target="_blank" download>
+            Spreadsheet: what we looked for
+          </Button>
+          <Button url="/app/seo/dashboard/export/products" target="_blank" download>
+            Spreadsheet: which products
+          </Button>
+          <Button url="/app/seo/dashboard/export/shopwide" target="_blank" download>
+            Spreadsheet: the shop-wide fixes
+          </Button>
+          <Button url="/app/seo/dashboard/export/listing" target="_blank" download>
+            Spreadsheet: what Google asks for
+          </Button>
+          {hasSnapshot ? (
+            <Button url="/app/seo/export/since" target="_blank" download>
+              Spreadsheet: then and now
+            </Button>
+          ) : null}
+        </InlineStack>
+        <Text as="p" variant="bodySm" tone="subdued">
+          Every file carries the figures on this screen, from the same reads, with the shop and
+          the date in its name. A check that could not run is a sentence in the file too, never a
+          zero.
+        </Text>
       </BlockStack>
     </Card>
   );

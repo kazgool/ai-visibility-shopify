@@ -450,6 +450,124 @@ Two outputs, both from the same figures as the screen, both dated:
 - **CSV.** One file per table on the screen, as the Report screen already
   does, through the existing export route pattern.
 
+#### Amendments to 4.3, approved by Marius 5 September 2026
+
+**Amendment 6: the printable report is an embedded route, not a new tab.** The
+mockup's two buttons implied a document that opens on its own. It does not, and
+the reason is in the code rather than in a preference: `app.tsx`'s loader keeps
+the query string on its own redirect because "embedded requests carry
+shop/host/embedded there, and dropping them sends the next request to the login
+page". A `/app` route reached in a fresh top-level tab carries none of them. A
+CSV survives that badly but visibly; a report would render a login screen and
+look as though the report had failed. `/app/seo/dashboard/print` is therefore a
+child of `app.tsx`, reached by an ordinary in-app link, on the same
+authenticated path the dashboard itself uses, and printed with `window.print()`
+from inside the frame.
+
+That call is a convenience and never the mechanism. Inside the admin the app is
+a cross-origin iframe, and two things are true that cannot be checked without a
+browser: `window.print()` in a frame prints that frame's document in Chrome,
+Edge and Firefox, which is what the browsers' own "Print frame" item does; and
+a sandboxed frame needs `allow-modals` or Chrome ignores the call and logs
+"Ignored call to 'print()'". Shopify's sandbox attribute is not ours and is not
+readable from inside the frame. So the page itself is the report - print-styled,
+every group already open, no control that only makes sense on a screen - and a
+line under the button names the browser's own path for the case where nothing
+happens. No sentence in the app claims a print behaviour that was not observed.
+
+**Amendment 7: four spreadsheets, not one.** "Download as a spreadsheet" is four
+buttons. The screen shows four tables with four different denominators, and one
+file holding all of them would either merge four shapes into one sheet or ship a
+zip, both harder to open than four named files:
+`findings` (every check, with its count and its denominator), `products` (one
+row per product per finding), `shopwide` (the fixes that are one decision) and
+`listing` (what Google asks for). The then-and-now comparison is the fifth and
+is **not** a new route: it already exports from `/app/seo/export/since`, from
+the same two snapshot rows, behind the same gate. The button appears only when a
+before snapshot exists, because that route answers a request without one with a
+409, and a button that can only fail is not a button. The mockup was updated to
+match rather than left disagreeing.
+
+**Amendment 8: filenames carry the shop and the date.** `exportFilename` gives
+`ai-visibility-seo-<shop>-<table>-<YYYY-MM-DD>.csv`. The two older export routes
+keep their existing names; renaming files people already have is not worth the
+consistency, and this paragraph is the record that the difference is deliberate.
+
+**Consequence: one read behind four routes.** `readSeoDashboardSource` in
+`app/services/seo-dashboard.server.ts` is the dashboard loader's old body, moved
+so the screen, the report and the exports cannot assemble the same figures
+differently. `dashboardDerived` and `keyFigures` in `app/services/seo-report.ts`
+are the only derived values on either page, and the acceptance test walks
+`keyFigures` on all five stores asserting each string appears in both renders.
+The rule is structural: neither page computes a figure.
+
+**Consequence: a fabricated zero was caught on paper, not on the screen.** That
+render test found the report printing "0 of 10 details Google asks for" on a
+shop nothing had read, where the screen shows a sentence. `keyFigures` now omits
+the Google figure when the card is unmeasured, and both pages print
+`LISTING_UNMEASURED_SENTENCE` from one constant.
+
+**Consequence: a defect in shipped code.** Neither `app.report.export.$table` nor
+`app.seo.export.$table` neutralised a cell beginning `=`, `+`, `-` or `@`, so a
+product title a merchant typed could run as a formula when they opened the file.
+`csvCell` in `report-metrics.ts` now guards it for every export in the app, and
+`seo-since.ts` imports that copy instead of keeping its own. Plain numbers are
+exempt, because `differenceLabel` emits "-3" and "+3" and neutralising those
+would turn every fall in every comparison file into text.
+
+#### What each file holds on the five fixture stores
+
+Run, not described: `findingsCsv`, `shopWideCsv`, `listingCsv` and
+`productFindingsCsv` over the five shapes of 4.2, counting data rows. An empty
+table with only its headings is a correct answer; a fabricated zero row is not.
+
+| Store | Report heading | findings | shopwide | listing | products |
+|---|---|---|---|---|---|
+| 50 products, every page read | `50 of 50 products fully checked` | 40 rows | 0 rows, "Nothing affects every product the same way" | 10 rows | 32 rows |
+| 189 products | `189 of 189 products fully checked` | 40 rows | 2 rows, each with its own scope | 10 rows | 275 rows |
+| 20,000 products | `500 of 20000 products fully checked` | 40 rows | 0 rows | 10 rows | 19,620 rows |
+| Empty store | `0 products in the catalogue` | 40 rows, every one "Not checked yet" with a sentence for its denominator | 0 rows | 10 rows, every figure a sentence | 0 rows, "No product carries a finding, so this file has no rows. That is the answer, not a failure." |
+| Pages never read | `120 products in the catalogue` | 40 rows: the 13 catalogue checks counted, the 31 page checks each "Not checked yet / No product page has been read yet" | 0 rows | 10 rows | 120 rows |
+
+Three things this table is the evidence for. The empty store's `findings` file
+is 40 sentences and not 40 zeros. The pages-never-read store's page checks are
+sentences on both the count and the denominator, so nobody sorts the file and
+concludes the pages are clean. And `findings` is 40 rows against a vocabulary of
+44, so the file appends the screen's own column accounting under "Where every
+check went" - A6, A10 and A11 count collections and B30 counts blog posts, each
+with its own denominator, and none of the four is a row with the products
+denominator over it.
+
+The headline figures on the same five, from `keyFigures`, are what both the
+screen and the report print: 50 products `clean=26, needSomething=24,
+shopWide=0, listing=4 of 10`; 189 products `126, 63, 2, 5 of 10`; 20,000
+`380, 120, 0, 4 of 10`; empty store, no headline figure at all beyond the four
+group counts, all zero; pages never read, `listing=4 of 10` and four zero group
+counts, with the report heading saying the catalogue size rather than a share
+of it.
+
+#### Every route that reaches this data, and its gate
+
+Step 5 enumerated these in prose. As a table, so a route added later has a row
+to be missing from:
+
+| Route | Kind | Gate, in its own loader |
+|---|---|---|
+| `/app/seo/dashboard` | screen | `isSeoUnlocked`, plus `app.tsx`'s subscription gate |
+| `/app/seo/dashboard/print` | screen | `isSeoUnlocked`, plus `app.tsx`'s subscription gate |
+| `/app/seo/dashboard/export/findings` | resource | `isSeoUnlocked`, 402 otherwise |
+| `/app/seo/dashboard/export/products` | resource | `isSeoUnlocked`, 402 otherwise |
+| `/app/seo/dashboard/export/shopwide` | resource | `isSeoUnlocked`, 402 otherwise |
+| `/app/seo/dashboard/export/listing` | resource | `isSeoUnlocked`, 402 otherwise |
+| `/app/seo/export/since`, `/written` | resource | `isSeoUnlocked`, 402 otherwise (unchanged) |
+| `/app/seo` | screen | `isSeoUnlocked` (unchanged) |
+
+A resource route repeats the gate rather than inheriting it: Remix runs such a
+route's loader alone, so `app.tsx` does not run on that request and a gate
+enforced only by a parent is not enforced at all on that path.
+
+---
+
 ### 4.4 Where each part renders
 
 - **SEO screen**, in this order: the "since this engagement began" card;
@@ -500,6 +618,14 @@ storefront password, and the same will be true of most of these.
 | No new string on any screen contains "rank", "score", "keyword", "boost", "optimise" or a rich-result promise | grep | - |
 | The SEO card renders correctly on an empty shop, a 50-product fixture, a 20,000-product store and a shop where source B never ran | unit on the aggregate, four shapes | - |
 | Every count on the card is asserted on the rendered string, not only on the aggregate | component test; this is the row the per-product QA declined and the reason was right | - |
+| A figure on the print page and the same figure on the screen cannot diverge | component test walking `keyFigures` on all five stores, asserting each value in both renders | - |
+| The report carries no Polaris chrome, no disclosure control, and asks the printer not to split a card | component test on the markup: no `aria-expanded`, no `Polaris`, `break-inside: avoid` and `@page` present | Marius: press the button in the admin and say whether a dialog appears |
+| Every CSV opens in Excel with Romanian text intact | `CSV_BOM` on every response, asserted on the route pattern the two existing exports already use | Marius, one file on a Windows machine |
+| No CSV cell can run as a formula, in the new exports or the two shipped ones | unit on `csvCell`: `=`, `+`, `-`, `@` neutralised, plain numbers and `-3` left alone | - |
+| A check that could not run never exports as a zero | unit on the store whose pages were never read: every page check is a sentence in both count and denominator | - |
+| An empty store exports headings and a sentence, never a fabricated row | unit on the empty store and the no-findings store, per file | - |
+| Filenames carry the shop and the date and cannot break the header they sit in | unit on `exportFilename`, including a domain containing a quote | - |
+| Every new route carries `isSeoUnlocked` in its own loader | the table in 4.3, and the gate is read in each route file | Marius: type a print URL on a shop without the key |
 
 ---
 

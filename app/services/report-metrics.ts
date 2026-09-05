@@ -686,9 +686,32 @@ export function nothingToActOn(checked: boolean, passDone: boolean, sampled: num
 // ---------------------------------------------------------------------------
 // CSV (PRD-REPORT-SCREEN §8). Two tables, the same two the screen shows.
 
-function csvCell(value: string | number): string {
-  const s = String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+/**
+ * A cell that begins with =, +, -, @, a tab or a carriage return is a formula
+ * to Excel, LibreOffice and Google Sheets: "=1+1" computes, and the DDE forms
+ * of the same trick can ask the spreadsheet to run a command. Every string in
+ * these files comes from a merchant's own catalogue - product titles, family
+ * names, handles - so the content is not ours to trust, and a title that
+ * begins with a dash is ordinary in a furniture catalogue.
+ *
+ * The mitigation is the documented one: prefix the value with an apostrophe,
+ * which every spreadsheet reads as "this cell is text". The apostrophe is
+ * visible in Excel, and that is the price of the fix, paid on the handful of
+ * titles that trigger it.
+ *
+ * Numbers are exempt, and the exemption is load-bearing rather than a
+ * shortcut. differenceLabel in seo-since.ts emits "-3" and "+3" for a figure
+ * that moved, and neutralising those would turn every fall in every comparison
+ * file into text that will not add up. A cell whose whole content is a signed
+ * decimal number is not a formula in any spreadsheet, so it is let through.
+ */
+const PLAIN_NUMBER = /^[+-]?\d+(\.\d+)?$/;
+
+export function csvCell(value: string | number): string {
+  const raw = String(value);
+  const s =
+    raw !== "" && !PLAIN_NUMBER.test(raw) && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function csvRows(rows: (string | number)[][]): string {

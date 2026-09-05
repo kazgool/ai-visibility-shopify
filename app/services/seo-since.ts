@@ -17,6 +17,7 @@
 
 import { CHECK_LABEL, type FindingCode } from "./seo-findings";
 import { CHECKS } from "./seo-aggregate";
+import { csvRows } from "./report-metrics";
 
 /** A stored SeoSnapshot row, as a loader hands it to the browser. */
 export type FactsRow = {
@@ -429,14 +430,12 @@ export const WRITTEN_NOT_YET_SENTENCE =
 
 // --- CSV (section 1.3) -----------------------------------------------------
 
-function csvCell(value: string | number): string {
-  const s = String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function csvRows(rows: (string | number)[][]): string {
-  return rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
-}
+// The cell writer and the row writer are shared with the Report export rather
+// than copied. This file used to carry its own two-line copy of both, and a
+// defect fixed in one copy is a defect still shipping in the other - which is
+// exactly what happened with the formula-injection guard. See csvCell in
+// report-metrics.ts for why the guard exempts plain numbers: differenceLabel
+// below is the caller that needs the exemption.
 
 /** Both dates on the first line, so the file is self-describing on an invoice. */
 function datesLine(before: FactsRow, today: FactsRow | null): (string | number)[] {

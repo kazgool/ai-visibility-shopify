@@ -16,6 +16,106 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The printable report and the spreadsheets (5 September 2026)
+
+`PRD-SEO-FULL-ONPAGE.md` section 4.3, build step 5's two deliberately omitted
+buttons. Server only; nothing in an extension changed.
+
+**A printable report at `/app/seo/dashboard/print`**, in
+`app.seo_.dashboard_.print.tsx`. The second trailing underscore is the same
+flat-routes escape as the first: without it the page would be a child of the
+dashboard screen, which renders no `<Outlet />`, and would show nothing. It is
+a child of `app.tsx`, which is deliberate rather than incidental - that is what
+puts it on the authenticated embedded path the dashboard itself uses.
+
+**It is not a new tab, and the reason is in the code.** `app.tsx`'s loader keeps
+the query string on its own redirect because "embedded requests carry
+shop/host/embedded there, and dropping them sends the next request to the login
+page". A `/app` route reached in a fresh top-level tab carries none of them. A
+CSV survives that badly but visibly; a report would render a login screen and
+look as though the report had failed.
+
+**Printing from inside the admin iframe is handled rather than assumed.** Two
+things are true and neither can be checked without a browser: `window.print()`
+in a frame prints that frame's document in Chrome, Edge and Firefox, which is
+what those browsers' own "Print frame" item does; and a sandboxed frame needs
+`allow-modals` or Chrome ignores the call and logs "Ignored call to 'print()'".
+Shopify's sandbox attribute is not ours and is not readable from inside the
+frame. So the button is a convenience and never the mechanism: the page itself
+is the report, print-styled, every group already open, no control that only
+makes sense on a screen, `break-inside: avoid` on every card and `@page` margins
+- and a line under the button names the browser's own path for the case where
+nothing happens. No sentence claims a print behaviour that was not observed.
+Whether the dialog opens in Shopify's admin is the one by-hand check this step
+leaves open, and it is written into the acceptance table as such.
+
+**One read behind four routes.** `readSeoDashboardSource` in
+`seo-dashboard.server.ts` is the dashboard loader's old body, moved so the
+screen, the report and the exports cannot assemble the same figures differently.
+`dashboardDerived` and `keyFigures` in the new pure `seo-report.ts` are the only
+derived values on either page. The acceptance test walks `keyFigures` on all
+five fixture stores and asserts every string appears in both renders; the
+promise is structural rather than intended, because neither page computes a
+figure.
+
+**That test found a fabricated zero on paper.** The report printed "0 of 10
+details Google asks for" on a shop nothing had read, where the screen shows a
+sentence. `keyFigures` now omits the Google figure when the card is unmeasured,
+and both pages print `LISTING_UNMEASURED_SENTENCE` from one constant. The screen
+had been right and the report wrong, which is exactly the divergence the
+criterion was written for, caught by the criterion on its first run.
+
+**Four spreadsheets at `/app/seo/dashboard/export/:table`**, not one:
+`findings` (every check with its count and denominator), `products` (one row per
+product per finding), `shopwide` and `listing`. One file holding all four would
+either merge four shapes into one sheet or ship a zip, both harder to open than
+four named files. The then-and-now comparison is the fifth and is **not** a new
+route - it already exports from `/app/seo/export/since`, from the same two
+snapshot rows, behind the same gate. Its button appears only when a before
+snapshot exists, because that route answers a request without one with a 409 and
+a button that can only fail is not a button.
+
+**A check that could not run is a sentence in the file too.** Every count column
+is a string for that reason: a numeric column cannot hold "not checked yet", and
+a spreadsheet full of zeros for checks that never ran is the "0 of 50" failure in
+a form a merchant can sort by. On the store whose pages were never read, all 31
+page checks export "Not checked yet" against "No product page has been read
+yet". On the empty store, `findings` is 40 sentences, `shopwide` is its headings
+and one line saying why it is empty, and `products` says "No product carries a
+finding, so this file has no rows. That is the answer, not a failure."
+
+**The findings file says where every check went.** It has 40 rows against a
+vocabulary of 44, so it appends the screen's own `columnAccount` lines under
+"Where every check went" rather than leaving a reader to notice the gap: A6, A10
+and A11 count collections and B30 counts blog posts, each with its own
+denominator.
+
+**A defect in shipped code, fixed in all three exports rather than only the new
+ones.** Neither `app.report.export.$table` nor `app.seo.export.$table`
+neutralised a cell beginning `=`, `+`, `-` or `@`, so a product title a merchant
+typed could run as a formula when they opened the file, and the DDE forms of the
+same trick can ask a spreadsheet to run a command. `csvCell` in
+`report-metrics.ts` now guards it and `seo-since.ts` imports that copy instead of
+keeping its own two-line duplicate - the duplicate is why one fix would otherwise
+have shipped as two half-fixes. Plain numbers are exempt, and that exemption is
+load-bearing: `differenceLabel` emits "-3" and "+3" for a figure that moved, and
+neutralising those would turn every fall in every comparison file into text that
+will not add up.
+
+**Filenames carry the shop and the date**:
+`ai-visibility-seo-<shop>-<table>-<date>.csv`, so three of these on a desktop can
+be told apart. The two older export routes keep their existing names; renaming
+files people already have is not worth the consistency, and the PRD records that
+the difference is deliberate. The domain is reduced to filename-safe characters,
+which also means it can never carry a quote out of the header it sits in.
+
+**Entitlement, enumerated rather than assumed.** Five new routes, five gates,
+each `isSeoUnlocked` in the route's own loader and not behind a hidden button.
+The four exports are resource routes, so `app.tsx` does not run on their
+requests and a gate enforced only by a parent would not be enforced at all.
+PRD section 4.3 now carries the table of every route that reaches this data,
+which step 5 had only in prose.
+
 ### The merchant SEO dashboard, second pass (4 September 2026)
 
 Eleven fixes, from reading the built screen on the dev store (50 products, 12
