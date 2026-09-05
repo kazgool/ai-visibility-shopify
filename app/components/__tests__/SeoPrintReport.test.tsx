@@ -17,9 +17,11 @@ import { AppProvider } from "@shopify/polaris";
 import { SeoDashboardScreen, type SeoDashboardData } from "../SeoDashboardScreen";
 import { SeoPrintReport, type SeoPrintData } from "../SeoPrintReport";
 import { readinessOf } from "../../services/seo-readiness";
-import { FINDING_OWNER } from "../../services/seo-findings";
+import { FINDING_OWNER, OWNER_LABEL } from "../../services/seo-findings";
+import { MERCHANT_REASON } from "../../services/seo-readiness";
 import { dashboardDerived, keyFigures } from "../../services/seo-report";
 import { aggregateFindings, themeNodeAggregate, type ScanRowLike } from "../../services/seo-aggregate";
+import type { CollectionSeoQueue } from "../../services/seo-collections.server";
 import type { FactsRow } from "../../services/seo-since";
 
 const DAY = "2026-09-04T03:45:00.000Z";
@@ -181,11 +183,49 @@ function printFrom(
     domain: value.domain,
     findings: value.findings,
     readiness: value.readiness,
+    blockedBy: value.blockedBy,
     since: value.since,
     business: value.business,
     published: value.published,
     producedAt: PRODUCED,
   };
+}
+
+/**
+ * A token with digit boundaries on both sides, so "5" cannot pass on "50 of
+ * 50" and "500 of 20" cannot pass on "500 of 20,000". A comma is a boundary
+ * only when a digit follows it, so "of 50, so" still matches.
+ */
+function bounded(token: string): RegExp {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<!\\d|\\d,)${escaped}(?!\\d|,\\d)`);
+}
+
+/** The text between two headings, so a figure is asserted in its own region and not anywhere on the page. */
+function between(markup: string, from: string, to: string | null): string {
+  const start = markup.indexOf(from);
+  expect(start, `region "${from}" missing`).toBeGreaterThanOrEqual(0);
+  const end = to === null ? -1 : markup.indexOf(to, start + from.length);
+  return end === -1 ? markup.slice(start) : markup.slice(start, end);
+}
+
+/**
+ * Where each figure lives on each surface. The strip tiles are asserted
+ * inside the strip and the group counts inside the groups: a mutated tile
+ * printing "5" was passed by the group heading two sections down carrying
+ * the true "26 of 50", which is the same figure from the same object and not
+ * the tile at all.
+ */
+function region(surface: "screen" | "paper", markup: string, key: string): string {
+  const strip = key !== "listing" && !key.startsWith("group-");
+  if (surface === "paper") {
+    if (strip) return between(markup, "Where this shop stands today", "What to do, and who does it");
+    if (key.startsWith("group-")) return between(markup, "What to do, and who does it", "What Google asks for on a product listing");
+    return between(markup, "What Google asks for on a product listing", "Every check, and what it found");
+  }
+  if (strip) return between(markup, "Where this shop stands today", "How ready your shop is");
+  if (key.startsWith("group-")) return between(markup, "How ready your shop is", "ixes that cover the whole shop");
+  return between(markup, "Ready for Google's free product listings", "What search engines and AI read");
 }
 
 // ---------------------------------------------------------------------------
@@ -197,24 +237,41 @@ describe("the report and the screen cannot show different figures", () => {
       const paper = text(renderPrint(printFrom(value)));
       const figures = keyFigures(printFrom(value), dashboardDerived(printFrom(value)));
 
-      expect(figures.length).toBeGreaterThan(0);
+      // An empty store and a store with no page read carry no figure at all;
+      // both surfaces print a sentence instead, asserted below.
+      if (value.readiness.readSet > 0) expect(figures.length).toBeGreaterThan(0);
       for (const figure of figures) {
         // The figure the report prints is the figure the screen prints. Not a
         // recomputation that happens to agree today: the same string, from the
-        // same call, asserted present in both renders.
-        expect(paper, `${name}: ${figure.key} missing from the report`).toContain(figure.value);
-        expect(screen, `${name}: ${figure.key} missing from the screen`).toContain(figure.value);
-        if (figure.of !== null) {
-          expect(paper, `${name}: ${figure.key} denominator missing on paper`).toContain(figure.of);
-        }
+        // same call, asserted present in both renders - as the exact "N of M"
+        // token with word boundaries, on both, because a bare `toContain` of
+        // the value let "5" pass on any page containing "50" (R1 4.3, R2-15).
+        expect(
+          region("paper", paper, figure.key),
+          `${name}: ${figure.key} "${figure.token}" missing from its region of the report`,
+        ).toMatch(bounded(figure.token));
+        expect(
+          region("screen", screen, figure.key),
+          `${name}: ${figure.key} "${figure.token}" missing from its region of the screen`,
+        ).toMatch(bounded(figure.token));
       }
     });
 
-    it(`gives every group its own count and denominator on ${name}`, () => {
+    it(`gives every group its own count and denominator on ${name}, or one sentence`, () => {
       const paper = text(renderPrint(printFrom(value)));
+      const screen = renderScreen(value);
+      if (value.readiness.readSet === 0) {
+        // No tiles of "0 of 0" and no empty groups: the same sentence as the
+        // screen (R2-09, R2-10).
+        expect(paper).toContain("No product has been fully checked yet, so there is nothing to group");
+        expect(screen).toContain("No product has been fully checked yet, so there is nothing to group");
+        expect(paper).not.toMatch(/\b0 of 0\b/);
+        expect(paper).not.toContain("Nothing to fix -");
+        return;
+      }
       for (const group of value.readiness.groups) {
-        expect(paper, `${name}: ${group.group}`).toContain(
-          `${group.title} - ${group.count} of ${group.denominator}`,
+        expect(paper, `${name}: ${group.group}`).toMatch(
+          bounded(`${group.title} - ${group.count.toLocaleString("en-US")} of ${group.denominator.toLocaleString("en-US")}`),
         );
       }
     });
@@ -270,9 +327,11 @@ describe("what a merchant hands to a client or a developer", () => {
         ],
       },
     });
-    expect(text(renderPrint(printFrom(value)))).toContain(
-      "The app embed is not active in the theme.",
-    );
+    // In the merchant's words: the recorded reason is the operator's sentence
+    // and is translated, never printed raw (R1 2.3).
+    const paper = text(renderPrint(printFrom(value)));
+    expect(paper).toContain(MERCHANT_REASON["The app embed is not active in the theme."]);
+    expect(paper).not.toContain("The app embed is not active in the theme.");
   });
 });
 
@@ -323,6 +382,13 @@ const FORBIDDEN: { name: string; pattern: RegExp }[] = [
   { name: "H1", pattern: /\bh1\b/i },
   { name: "meta title", pattern: /\bmeta\b/i },
   { name: "tag absent", pattern: /\btags? absent\b/i },
+  { name: "metafield", pattern: /\bmetafields?\b/i },
+  { name: "snapshot", pattern: /\bsnapshots?\b/i },
+  { name: "operator", pattern: /\boperators?\b/i },
+  { name: "setup code", pattern: /\bsetup code\b/i },
+  { name: "robots.txt", pattern: /\brobots\b/i },
+  { name: "liquid", pattern: /\bliquid\b/i },
+  { name: "Fill catalogue", pattern: /\bfill catalogue\b/i },
   { name: "a check code", pattern: /\b[AB]\d{1,2}\b/ },
 ];
 
@@ -343,23 +409,101 @@ function everyCode(): ScanRowLike[] {
   return rows;
 }
 
-describe("the vocabulary rule, asserted on what is rendered", () => {
-  const withEveryCode = data(everyCode(), {
-    business: { deliveryStated: false, returnsStated: false },
-    since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current" }) },
-    published: {
-      at: DAY,
-      reasons: [
-        { nodeType: "Product", emitted: false, reason: "The app embed is not active in the theme." },
-      ],
-    },
-  });
-  const all: [string, Extract<SeoDashboardData, { unlocked: true }>][] = [
-    ...STORES,
-    ["every code at once", withEveryCode],
-  ];
+/** 46 pages that answered and 4 that did not, so B5's denominator is 50. */
+function fourPagesUnread(): ScanRowLike[] {
+  const rows: ScanRowLike[] = [];
+  for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B17"] : []));
+  for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
+  return rows;
+}
 
-  for (const [name, value] of all) {
+function collectionsQueue(): CollectionSeoQueue {
+  return {
+    checked: 12,
+    withFinding: 5,
+    missingTitle: 3,
+    missingDescription: 4,
+    outsideApp: 0,
+    editedByYou: 0,
+    writtenByApp: 0,
+    rows: [],
+    protectedRows: [],
+    findings: [],
+    thinDescription: [],
+    thinMembership: [],
+  };
+}
+
+/**
+ * The twelve stores QA round 2 rendered: the five fixtures, the every-code
+ * store, and the six forced paths - four pages that did not answer, B6 on
+ * every page with no recorded reason, a store whose settings turn a crawler
+ * away, a one-product store with a formula for a handle, a store with
+ * collections and blog posts and both snapshots, and a mixed-case domain.
+ */
+const TWELVE: [string, Extract<SeoDashboardData, { unlocked: true }>][] = [
+  ...STORES,
+  [
+    "every code at once",
+    data(everyCode(), {
+      business: { deliveryStated: false, returnsStated: false },
+      since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current" }) },
+      published: {
+        at: DAY,
+        reasons: [
+          { nodeType: "Product", emitted: false, reason: "The app embed is not active in the theme." },
+        ],
+      },
+    }),
+  ],
+  [
+    "four pages that did not answer",
+    data(fourPagesUnread(), {
+      since: { before: null, today: facts({ takenAt: DAY, takenBy: "current", products: 50 }) },
+    }),
+  ],
+  [
+    "B6 on every page, no reason recorded",
+    data(
+      (() => {
+        const rows: ScanRowLike[] = [];
+        for (let i = 0; i < 12; i += 1) rows.push(row(i, ["B6"]));
+        return rows;
+      })(),
+    ),
+  ],
+  ["a crawler turned away", data(pageReadNeverRan(), { blockedBy: "GPTBot" })],
+  [
+    "one product",
+    data([{ ...row(1, ["A15", "B25"]), handle: "=cmd|' /C calc'!A0" }], {
+      since: { before: null, today: facts({ takenAt: DAY, takenBy: "current", products: 1, withVendor: 1, withSku: 1, withImage: 1 }) },
+    }),
+  ],
+  [
+    "collections, blog posts and both snapshots",
+    data(fiftyProducts(), {
+      collections: collectionsQueue(),
+      blogPosts: { read: 9, withoutLinks: 2 },
+      business: { deliveryStated: true, returnsStated: true },
+      since: {
+        before: facts({ products: 50, findingsByCode: { B17: 12 } }),
+        today: facts({
+          takenAt: DAY,
+          takenBy: "current",
+          products: 50,
+          metaTitleOurs: 7,
+          findingsByCode: { B17: 12 },
+          writtenSinceAt: "2026-08-15T08:00:00.000Z",
+          writtenSince: { seo_title: { count: 7, earliest: DAY, latest: DAY } },
+        }),
+      },
+    }),
+  ],
+  ["a mixed-case domain", data(oneEightyNine(), { domain: "Republica-BIO.myshopify.com" })],
+];
+
+describe("the vocabulary rule, asserted on what is rendered", () => {
+  for (const [name, value] of TWELVE) {
     it(`keeps the printed report free of it on ${name}`, () => {
       const paper = text(renderPrint(printFrom(value)));
       for (const word of FORBIDDEN) {
@@ -376,19 +520,157 @@ describe("the vocabulary rule, asserted on what is rendered", () => {
       }
     });
   }
+
+  it("reads the group steps on the screen, because they are in the server markup", () => {
+    // <details>/<summary>, not Collapsible: the steps are on the page with
+    // no script, so this guard can actually see them (R2-14, R2-26).
+    const value = TWELVE[5][1];
+    const html = renderToStaticMarkup(
+      <AppProvider i18n={{}}>
+        <SeoDashboardScreen data={value} />
+      </AppProvider>,
+    );
+    const screen = text(html);
+    const steps = value.readiness.groups.flatMap((g) => g.rows);
+    expect(steps.length).toBeGreaterThan(30);
+    for (const step of steps) {
+      expect(screen, step.code).toContain(step.what);
+      expect(screen, step.code).toContain(`${step.label}: ${step.count} of ${step.denominator}.`);
+    }
+    expect(html).toContain("<details");
+    expect(html).toContain("<summary");
+    expect(html).not.toContain("aria-expanded");
+    // Proper nouns keep their case (R2-21).
+    expect(screen).not.toContain("for google");
+    expect(screen).not.toContain("on x,");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sentences that point at another element point only at one that is there
+// (root cause A, 5 September 2026).
+
+/**
+ * Each referent phrase, and the test that its referent is on the same
+ * surface in the same state. A phrase not listed here is not allowed to
+ * point at all; the last two patterns catch any pointer this list does not
+ * know.
+ */
+const REFERENTS: { phrase: RegExp; present: (markup: string, value: Extract<SeoDashboardData, { unlocked: true }>) => boolean; name: string }[] = [
+  {
+    name: "the shop-wide card",
+    phrase: /\bshop-wide card (above|below)\b/,
+    present: (m) => /\bfix(es)? that covers? the whole shop\b/i.test(m),
+  },
+  {
+    name: "the groups",
+    phrase: /\b(in|of) the (four )?groups (above|below)\b/,
+    present: (m) => m.includes("Nothing to fix") && m.includes("You can fix these yourself"),
+  },
+  {
+    name: "the four groups",
+    phrase: /\bcounted in none of the four groups (above|below)\b/,
+    present: (m) => m.includes("Nothing to fix") && m.includes("You can fix these yourself"),
+  },
+  {
+    name: "the counted card",
+    phrase: /\bfoot of this (screen|report)\b/,
+    present: (m) => m.includes("Counted, with no verdict"),
+  },
+  {
+    name: "the collections total",
+    phrase: /count your collections rather than your products, so (it carries its|they carry their) own total above/,
+    present: (m) => !m.includes("Your collections have not been checked yet"),
+  },
+  {
+    name: "the blog posts total",
+    phrase: /count your blog posts rather than your product pages, so (it carries its|they carry their) own total above/,
+    present: (m) => !m.includes("Your blog posts have not been checked yet"),
+  },
+  {
+    name: "the Google tile",
+    phrase: /\bcounted in the \d+ of \d+ above\b/,
+    present: (m) => m.includes("details Google asks for, in place"),
+  },
+  {
+    name: "the dial",
+    phrase: /\bThe dial is drawn\b/,
+    present: (m) => m.includes("Each product is counted once, under whoever has to move first."),
+  },
+  {
+    name: "the read line",
+    phrase: /\bthe line above counts as could not be read\b/,
+    present: (m) => /\bcould not be read\b.*\bthe line above\b/.test(m),
+  },
+  {
+    name: "the found bars",
+    phrase: /\b\d+ shown above\b/,
+    present: (m, value) => {
+      const wide = new Set(value.readiness.shopWideCodes);
+      return value.findings.rows
+        .filter((r) => r.state === "found" && !wide.has(r.code))
+        .every((r) => m.includes(OWNER_LABEL[r.code]));
+    },
+  },
+  {
+    name: "this card",
+    phrase: /\bthis card\b/i,
+    // Only the screen has cards; on paper the sentence says "this report".
+    present: (m) => m.includes("How ready your shop is") || m.includes("Take this away"),
+  },
+];
+
+/** Any "above" or "below" not covered by a listed referent is a pointer nobody checked. */
+const KNOWN_POINTERS = [
+  /\bshop-wide card (above|below)\b/g,
+  /\b(in|of) the (four )?groups (above|below)\b/g,
+  /own total above\b/g,
+  /\bcounted in the \d+ of \d+ above\b/g,
+  /\bthe line above\b/g,
+  /\b\d+ shown above\b/g,
+  /\bshop-wide one (above|below)\b/g,
+  // Inside a group: the group's own count is in the same panel as the sentence.
+  /\bThe [\d,]+ above is products\b/g,
+  /\bcounted once above\b/g,
+  /\beach line above names the change\b/g,
+  // The report's first line: everything is below it.
+  /\bEvery figure below carries the denominator\b/g,
+  // The read warning on the screen: the four groups are below it.
+  /\bcounted in none of the four groups (above|below)\b/g,
+];
+
+describe("every pointer on a surface points at something rendered on it", () => {
+  for (const [name, value] of TWELVE) {
+    for (const [surface, render] of [
+      ["screen", () => renderScreen(value)],
+      ["paper", () => text(renderPrint(printFrom(value)))],
+    ] as const) {
+      it(`on the ${surface}, ${name}`, () => {
+        const markup = render();
+        for (const referent of REFERENTS) {
+          if (!referent.phrase.test(markup)) continue;
+          expect(
+            referent.present(markup, value),
+            `${surface}, ${name}: says "${markup.match(referent.phrase)?.[0]}" and ${referent.name} is not there`,
+          ).toBe(true);
+        }
+        // Paper has no screen and no card.
+        if (surface === "paper") {
+          expect(markup).not.toMatch(/\bthis (screen|card)\b/i);
+        }
+        // Every remaining "above" or "below" is unaccounted for.
+        let rest = markup;
+        for (const known of KNOWN_POINTERS) rest = rest.replace(known, " ");
+        const stray = rest.match(/[^.]*\b(above|below)\b[^.]*/);
+        expect(stray, `${surface}, ${name}: unlisted pointer: "${stray?.[0]}"`).toBeNull();
+      });
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
 // The defects read off the printed page, 5 September 2026. Each of these fails
 // if the thing that was on paper comes back.
-
-/** 46 pages that answered and 4 that did not, so B5's denominator is 50. */
-function fourPagesUnread(): ScanRowLike[] {
-  const rows: ScanRowLike[] = [];
-  for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B17"] : []));
-  for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
-  return rows;
-}
 
 describe("the printed page, read on paper", () => {
   const shopWide = () => {
@@ -442,8 +724,8 @@ describe("the printed page, read on paper", () => {
       const derived = dashboardDerived(printFrom(value));
       const kpi = keyFigures(printFrom(value), derived).find((f) => f.key === "clean");
       if (kpi) {
-        expect(kpi.of, name).toBe(`of ${clean.denominator} in your catalogue`);
-        expect(kpi.value, name).toBe(String(clean.count));
+        expect(kpi.of, name).toBe(`of ${clean.denominator.toLocaleString("en-US")} in your catalogue`);
+        expect(kpi.value, name).toBe(clean.count.toLocaleString("en-US"));
       }
     }
   });
@@ -482,6 +764,45 @@ describe("the printed page, read on paper", () => {
     expect(value.findings.pagesRead).toBe(46);
     const paper = text(renderPrint(printFrom(value)));
     expect(paper).toContain("is counted out of 50, not 46");
+    // And on the screen, which the CHANGELOG had claimed and the screen had
+    // not (R2-17).
+    expect(renderScreen(value)).toContain("is counted out of 50, not 46");
+  });
+
+  it("states the unchecked products as a number on paper, with the reason (R2-11, M2)", () => {
+    const paper = text(renderPrint(printFrom(STORES[2][1])));
+    expect(paper).toContain("19,500");
+    expect(paper).toContain("products not checked yet");
+    expect(paper).toContain("of 20,000 in your catalogue");
+    expect(paper).toContain("19,500 of 20,000 products have been read from your catalogue but their live page has not been opened yet");
+    const b5 = text(renderPrint(printFrom(data(fourPagesUnread()))));
+    expect(b5).toMatch(bounded("4 of 50"));
+    expect(b5).toContain("products not checked yet");
+    expect(b5).toContain("4 of 50 products have been read from your catalogue, and their page was opened but could not be read");
+  });
+
+  it("carries the since card's unchanged line and written block on paper (R2-29)", () => {
+    const value = TWELVE[10][1];
+    const paper = text(renderPrint(printFrom(value)));
+    const screen = renderScreen(value);
+    expect(paper).toContain("figures are unchanged.");
+    expect(paper).toContain("Written by this app since then");
+    expect(paper).toContain("Titles for Google 7");
+    expect(screen).toContain("figures are unchanged.");
+    // The same count on both.
+    const line = screen.match(/\d+ figures are unchanged\./)![0];
+    expect(paper).toContain(line);
+  });
+
+  it("names the cause on paper when the shop's own settings turn a crawler away (R2-19)", () => {
+    const paper = text(renderPrint(printFrom(TWELVE[8][1])));
+    expect(paper).toContain("Your shop's own settings turn GPTBot away");
+    expect(paper).not.toMatch(/\brobots\b/i);
+  });
+
+  it("tells the two shared-link checks apart by where the preview is missing (M3)", () => {
+    expect(OWNER_LABEL.B13).toContain("WhatsApp, Facebook and most apps");
+    expect(OWNER_LABEL.B14).toContain("X, formerly Twitter");
   });
 
   it("reads as English (9)", () => {

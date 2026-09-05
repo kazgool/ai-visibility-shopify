@@ -493,6 +493,35 @@ match rather than left disagreeing.
 keep their existing names; renaming files people already have is not worth the
 consistency, and this paragraph is the record that the difference is deliberate.
 
+**Amendment 9, 5 September 2026: the then-and-now spreadsheet is a merchant
+route after all.** Amendment 7 reused `/app/seo/export/since` on the grounds of
+the gate and the two snapshot rows, and never addressed its vocabulary. That
+file is the operator's: `FIGURES` labels, one row per check code with the code
+as its prefix, ISO dates, "by unlock". A merchant pressing "Spreadsheet: then
+and now" received all of it (QA round 1, 2.4; round 2, R2-12). The button now
+points at `/app/seo/dashboard/export/since`, a resource route of its own with
+the same gate, which writes `ownerSinceCsv`: the report heading on line one,
+`OWNER_FIGURE_LABEL` and `OWNER_WRITTEN_LABEL`, dates through `formatDay`, the
+per-code rows dropped as the screen drops them, and `exportFilename` naming.
+The operator route is untouched and keeps its name under Amendment 8. The
+caption under the five buttons - "with the shop and the date in its name" - is
+now true of all five.
+
+**Amendment 10, 5 September 2026: every sentence that points at another
+element is written for the surface it is on.** The screen, the report and the
+five files are three layouts; a sentence saying "above", "at the foot of this
+screen" or "the 4 of 10 above" was written once in the screen's layout and
+copied to the other two. Every such sentence is now produced by a function
+taking a `SurfaceContext` (surface, and what it renders in that state); a
+referent is named only when it is rendered there, and a spreadsheet names
+none. The acceptance test renders twelve stores on both surfaces and asserts
+every pointer present has its referent in the same markup. The group steps are
+a native disclosure element, in the server markup, as the mockup asked and the
+first build did not do. The shop-wide threshold is 100 percent of the total the
+check is measured over - the catalogue for a catalogue-basis check, the read
+set for a page-basis one - and the strip on paper obeys the screen's rule: no
+tile without a read set.
+
 **Consequence: one read behind four routes.** `readSeoDashboardSource` in
 `app/services/seo-dashboard.server.ts` is the dashboard loader's old body, moved
 so the screen, the report and the exports cannot assemble the same figures
@@ -525,9 +554,9 @@ table with only its headings is a correct answer; a fabricated zero row is not.
 |---|---|---|---|---|---|---|
 | 50 products, every page read | `50 of 50 products fully checked` | 26, 12, 8, 4, each of 50 | 40 rows + accounting | 0 rows, "Nothing affects every product the same way" | 10 rows | 32 rows |
 | 189 products | `189 of 189 products fully checked` | 126, 38, 14, 11, each of 189 | 40 rows + accounting | 2 rows, each with its own scope and its own fix shape | 10 rows | 275 rows |
-| 20,000 products | `500 of 20000 products fully checked` | 380, 120, 0, 0, each of 20000 | 40 rows + accounting | 0 rows | 10 rows | 19,620 rows |
-| Empty store | `0 products in the catalogue` | 0, 0, 0, 0, each of 0 | 40 rows, every one "Not checked yet" with a sentence for its denominator | 0 rows | 10 rows, every figure a sentence | 0 rows, "No product carries a finding, so this file has no rows. That is the answer, not a failure." |
-| Pages never read | `120 products in the catalogue` | 0, 0, 0, 0, each of 120 | 40 rows: the 13 catalogue checks counted, the 31 page checks each "Not checked yet / No product page has been read yet" | 0 rows | 10 rows | 120 rows |
+| 20,000 products | `500 of 20,000 products fully checked` | 380, 120, 0, 0, each of 20,000 | 40 rows + accounting | 0 rows | 10 rows | 19,620 rows |
+| Empty store | `0 products in the catalogue` | no groups; one sentence | 40 rows, every one "Not checked yet" with a sentence for its denominator | 0 rows | 10 rows, every figure a sentence | 0 rows, "No product carries a finding, so this file has no rows. That is the answer, not a failure." |
+| Pages never read | `120 products in the catalogue` | no groups; one sentence | 40 rows: the 10 admin-side rows counted, the 30 page-side rows each "Not checked yet / No product page has been read yet" (this table said 13 and 31, which are the two columns' code counts; A6, A10, A11 and B30 count collections and blog posts and are not rows of this file - run, not read, and corrected 5 September 2026, R2-28) | 0 rows | 10 rows | 120 rows |
 
 Every group heading is now stated against the catalogue, the same denominator
 the headline KPI prints beside the same number. It used to be the read set, so
@@ -546,10 +575,14 @@ denominator over it.
 The headline figures on the same five, from `keyFigures`, are what both the
 screen and the report print: 50 products `clean=26 of 50, needSomething=24 of
 50, shopWide=0, listing=4 of 10`; 189 products `126 of 189, 63 of 189, 2, 5 of
-10`; 20,000 `380 of 20000, 120 of 20000, 0, 4 of 10`; empty store, no headline
-figure at all beyond the four group counts, all zero of zero; pages never read,
-`listing=4 of 10` and four zero group counts of 120, with the report heading
-saying the catalogue size rather than a share of it.
+10`; 20,000 `380 of 20,000, 120 of 20,000, notChecked=19,500 of 20,000, 0, 4
+of 10`; empty store, no headline figure at all and one sentence in place of
+the strip and the groups; pages never read, the same sentence, with the Google
+figure `4 of 10` inside the Google section's own method line and the report
+heading saying the catalogue size rather than a share of it. (Amended 5
+September 2026: the strip used to print four tiles of "0 of 0" on the empty
+store and three of the four groups on the never-read store, and the unchecked
+products appeared on paper only inside the heading.)
 
 #### Every route that reaches this data, and its gate
 
@@ -564,7 +597,8 @@ to be missing from:
 | `/app/seo/dashboard/export/products` | resource | `isSeoUnlocked`, 402 otherwise |
 | `/app/seo/dashboard/export/shopwide` | resource | `isSeoUnlocked`, 402 otherwise |
 | `/app/seo/dashboard/export/listing` | resource | `isSeoUnlocked`, 402 otherwise |
-| `/app/seo/export/since`, `/written` | resource | `isSeoUnlocked`, 402 otherwise (unchanged) |
+| `/app/seo/dashboard/export/since` | resource | `isSeoUnlocked`, 402 otherwise; 409 with no starting point (added 5 September 2026) |
+| `/app/seo/export/since`, `/written` | resource | `isSeoUnlocked`, 402 otherwise (unchanged, operator vocabulary) |
 | `/app/seo` | screen | `isSeoUnlocked` (unchanged) |
 
 A resource route repeats the gate rather than inheriting it: Remix runs such a

@@ -8,10 +8,18 @@ import { describe, it, expect } from "vitest";
 
 import {
   NO_SNAPSHOT_SENTENCE,
+  OWNER_WRITTEN_NOT_YET_SENTENCE,
   WRITTEN_OMISSION_SENTENCE,
   differenceLabel,
   figure,
   FIGURES,
+  ownerFigure,
+  ownerNoSnapshotSentence,
+  ownerSinceCsv,
+  ownerSinceMethodLine,
+  ownerSinceRows,
+  ownerUnchangedLine,
+  ownerUnchangedRows,
   sinceCsv,
   sinceHeading,
   sinceMethodLine,
@@ -311,5 +319,112 @@ describe("the CSVs", () => {
     expect(lines[1]).toBe("What this app wrote since then,Count,Earliest,Latest");
     expect(lines[2]).toBe("Meta titles,20,2026-09-06T01:00:00Z,2026-09-19T01:00:00Z");
     expect(csv).toContain("Alt texts and structured data nodes are not counted here");
+  });
+});
+
+// --- the merchant surfaces, 5 September 2026 --------------------------------
+
+describe("the unchanged line the merchant reads counts only the rows the merchant sees (R1 1.2)", () => {
+  // A snapshot recording 21 finding codes, one fixed figure moved.
+  const codes: Record<string, number> = {};
+  for (let i = 1; i <= 21; i += 1) codes[`B${i}`] = 3;
+  const before = facts({ pagesRead: 50, productNodeTheme: 48, productNodeNone: 2, findingsByCode: codes });
+  const today = facts({ ...before, takenAt: "2026-09-20T03:45:00.000Z", metaTitleOurs: 7 });
+  const table = sinceTable(before, today);
+
+  it("counts eleven, not thirty-two", () => {
+    expect(table.unchangedLine).toBe("32 figures are unchanged.");
+    expect(ownerUnchangedRows(table).length).toBe(11);
+    expect(ownerUnchangedLine(table)).toBe("11 figures are unchanged.");
+    expect(ownerSinceRows(table).map((r) => r.ownerLabel)).toEqual([
+      "Titles for Google written by this app",
+    ]);
+  });
+
+  it("is null when nothing the merchant sees is unchanged", () => {
+    const everything = facts({
+      takenAt: "2026-09-20T03:45:00.000Z",
+      products: 60,
+      metaTitleSet: 45,
+      metaTitleOurs: 5,
+      metaDescriptionSet: 40,
+      metaDescriptionOurs: 4,
+      withBarcode: 3,
+      withVendor: 59,
+      withSku: 58,
+      withImage: 2,
+      pagesRead: 1,
+      productNodeTheme: 1,
+      productNodeNone: 0,
+    });
+    const moved = sinceTable(
+      facts({ pagesRead: 0, productNodeTheme: null, productNodeNone: null }),
+      everything,
+    );
+    expect(ownerUnchangedLine(moved)).toBeNull();
+  });
+});
+
+describe("the merchant's then-and-now file (R1 2.4, R2-12)", () => {
+  const before = facts({ findingsByCode: { A1: 50, B17: 12 }, pagesRead: 12, productNodeTheme: 10 });
+  const today = facts({
+    takenAt: "2026-09-20T03:45:00.000Z",
+    takenBy: "current",
+    metaTitleOurs: 9,
+    findingsByCode: { A1: 50, B17: 8 },
+    pagesRead: 12,
+    productNodeTheme: 10,
+    writtenSinceAt: before.takenAt,
+    writtenSince: { seo_title: { count: 9, earliest: "2026-09-06T01:00:00Z", latest: "2026-09-19T01:00:00Z" } },
+  });
+  const heading = "republicabio.ro - 50 of 50 products fully checked - report produced 2026-09-20";
+  const csv = ownerSinceCsv(heading, before, today);
+
+  it("starts with the report heading and the card's own heading", () => {
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(heading);
+    expect(lines[1]).toContain("Since this engagement began, 5 September 2026");
+    expect(lines[2]).toContain("catalogue pass of 20 September 2026");
+  });
+
+  it("writes the merchant's labels, never the operator's, and no check code", () => {
+    expect(csv).toContain("Titles for Google written by this app,0,50,9,50,+9");
+    expect(csv).toContain("Products with a barcode,0,50,0,50,No change");
+    expect(csv).toContain("Titles for Google,9,6 September 2026,19 September 2026");
+    expect(csv).not.toMatch(/\b[AB]\d{1,2}\b/);
+    for (const pattern of [/\bmeta\b/i, /\bgtin\b/i, /\bnodes?\b/i, /\bsnapshot\b/i, /by unlock/, /\d{4}-\d{2}-\d{2}T/]) {
+      const hit = csv.match(pattern);
+      expect(hit === null, `the then-and-now file says "${hit?.[0]}"`).toBe(true);
+    }
+  });
+
+  it("carries the written block and the omission sentence in the merchant's words", () => {
+    expect(csv).toContain("What this app wrote since then,Count,Earliest,Latest");
+    expect(csv).toContain("Photo descriptions and the details this app publishes");
+    expect(csv).not.toContain("Alt texts and structured data nodes");
+  });
+
+  it("says why the written block is empty rather than writing nothing", () => {
+    const stale = facts({ ...today, writtenSinceAt: "2026-09-01T00:00:00.000Z" });
+    expect(ownerSinceCsv(heading, before, stale)).toContain(OWNER_WRITTEN_NOT_YET_SENTENCE);
+    expect(ownerSinceCsv(heading, before, null)).toContain("no today column yet");
+  });
+});
+
+describe("the merchant sentences carry none of the operator's words (R2-18)", () => {
+  it("names the surface it is on and no snapshot, setup code or operator", () => {
+    for (const surface of ["screen", "paper"] as const) {
+      const sentence = ownerNoSnapshotSentence(surface);
+      expect(sentence).not.toMatch(/\b(snapshot|setup code|operator)\b/i);
+      expect(sentence).toContain(surface === "paper" ? "this report" : "this card");
+    }
+    expect(ownerSinceMethodLine(facts({ takenBy: "manual" }), null)).not.toMatch(/\b(snapshot|setup code)\b/i);
+    expect(ownerSinceMethodLine(facts({ takenBy: "manual" }), null)).toContain("since-this-date");
+  });
+
+  it("separates thousands on the merchant figure", () => {
+    expect(ownerFigure(19500, 20000)).toBe("19,500 of 20,000");
+    expect(ownerFigure(null, 20000)).toBe("not read at the time");
+    expect(figure(19500, 20000)).toBe("19500 of 20000");
   });
 });

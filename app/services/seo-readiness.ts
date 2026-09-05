@@ -36,7 +36,14 @@
 // as `awaitingPage`, and the screen says so in a sentence rather than folding
 // them into a group.
 
-import { CHECKS, wasRead, type CheckRow, type CheckSource, type ScanRowLike } from "./seo-aggregate";
+import {
+  CHECKS,
+  wasRead,
+  type CheckBasis,
+  type CheckRow,
+  type CheckSource,
+  type ScanRowLike,
+} from "./seo-aggregate";
 import {
   FINDING_OWNER,
   FIX_SHAPE,
@@ -48,6 +55,78 @@ import {
   type FindingOwner,
   type FixShape,
 } from "./seo-findings";
+import { formatCount } from "./report-metrics";
+
+// --- the surface a sentence is written for ----------------------------------
+
+/**
+ * Where a sentence is going to be read.
+ *
+ * Every sentence in this file that points at another element - "above", "at
+ * the foot of this screen", "the dial", "the N of M above" - used to be written
+ * once, in the screen's own layout, and then printed verbatim on paper and
+ * copied into a spreadsheet, where the thing it pointed at was elsewhere or
+ * nowhere (QA rounds 1 and 2, 5 September 2026). A referent is now emitted
+ * only when the caller says it is rendered on that surface in that state; on
+ * a spreadsheet no sentence points anywhere at all.
+ */
+export type Surface = "screen" | "paper" | "csv";
+
+/**
+ * What the surface actually renders in this state, so a sentence can point at
+ * a thing only when the thing is there. Every field is "not rendered" unless
+ * the caller says otherwise, which is the safe default: a sentence that omits
+ * a pointer is merely less convenient, a sentence that points at nothing is
+ * wrong.
+ */
+export type SurfaceContext = {
+  surface: Surface;
+  /** Where the four readiness groups sit relative to the sentence, or null when they are not rendered. */
+  groups?: "above" | "below" | null;
+  /** Where the shop-wide card sits relative to the sentence, or null when it is not rendered. */
+  shopWide?: "above" | "below" | null;
+  /** True when the card of counts with no verdict is rendered on this surface. */
+  counted?: boolean;
+  /** True when the collection checks are rendered above the line with their own total. */
+  collectionsTotal?: boolean;
+  /** True when the blog post check is rendered above the line with its own total. */
+  blogTotal?: boolean;
+  /** True when the "N of M in place" headline tile for the Google card is rendered above it. */
+  listingKpi?: boolean;
+  /** True when the dial and the segment bar are rendered. */
+  dial?: boolean;
+  /** True when the pages-read line is printed directly above the sentence. */
+  readLine?: boolean;
+};
+
+/** The spreadsheet context: nothing is pointed at, ever. */
+export const CSV_CONTEXT: SurfaceContext = { surface: "csv" };
+
+/** Whether a referent may be named at all on this surface. */
+function mayPoint(ctx: SurfaceContext): boolean {
+  return ctx.surface !== "csv";
+}
+
+// --- counts in words ---------------------------------------------------------
+
+/** "1 product", "12 products", "20,000 products". */
+export function nProducts(n: number, noun = "product"): string {
+  return `${formatCount(n)} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * "all 46 products whose page we read", or "the one product whose page we
+ * read": "all 1 of the products" is not English, and a one-product store is a
+ * real shape (QA round 2, R2-24).
+ */
+export function allOf(n: number, tail: string, noun = "product"): string {
+  return n === 1 ? `the one ${noun} ${tail}` : `all ${formatCount(n)} ${noun}s ${tail}`;
+}
+
+/** "all 120 of your products", or "your one product". */
+export function yourProducts(n: number): string {
+  return n === 1 ? "your one product" : `all ${formatCount(n)} of your products`;
+}
 
 /** The fourth group is "nothing to fix"; the other three are the owners. */
 export type ReadinessGroup = "clean" | FindingOwner;
@@ -106,6 +185,15 @@ export type ReadinessCounters = {
   awaitingPage: number;
   /** Products in the read set carrying each code. */
   codeCounts: Map<string, number>;
+  /**
+   * Products with a catalogue row carrying each code, whether or not their
+   * page has been read. This is the count a catalogue-basis check is measured
+   * over, and the shop-wide threshold for such a check is taken against it: a
+   * check asked of every catalogue row and found on every catalogue row is
+   * shop-wide because of those 50, not because 46 of them also had a page
+   * read (M1, 5 September 2026).
+   */
+  catalogueCodeCounts: Map<string, number>;
   /** Sorted code list, comma-joined, to the number of products carrying exactly it. */
   codeSets: Map<string, number>;
   /** The most recent page read and catalogue read, as ISO strings. Null when never. */
@@ -121,10 +209,45 @@ export function createReadinessCounters(): ReadinessCounters {
     readSet: 0,
     awaitingPage: 0,
     codeCounts: new Map<string, number>(),
+    catalogueCodeCounts: new Map<string, number>(),
     codeSets: new Map<string, number>(),
     lastPageReadAt: null,
     lastCatalogueReadAt: null,
   };
+}
+
+/** What a check is measured over, from the CHECKS table. Off-table codes are never grouped. */
+const CHECK_BASIS = new Map<string, CheckBasis>(CHECKS.map((c) => [String(c.code), c.basis]));
+
+/**
+ * The total a shop-wide check was found on all of.
+ *
+ * A catalogue-basis check (A1, A5, B6, B28 and the rest of the admin side) is
+ * asked of every product source A has computed, so "on every product" means
+ * every one of those. A page-basis check is asked only of pages that answered,
+ * so "on every product" means every product whose page we read. The screen
+ * used to say "found on all 46 products whose page we have read" of a check
+ * whose own row said 50 of 50 (M1, 5 September 2026).
+ */
+export function shopWideScope(
+  code: string,
+  readiness: Pick<Readiness, "catalogueRead" | "readSet">,
+): { over: "catalogue" | "readSet"; of: number } {
+  const basis = CHECK_BASIS.get(code);
+  return basis === "catalogue"
+    ? { over: "catalogue", of: readiness.catalogueRead }
+    : { over: "readSet", of: readiness.readSet };
+}
+
+/** "all 50 products in your catalogue" or "all 46 products whose page we read". */
+export function shopWideScopePhrase(
+  code: string,
+  readiness: Pick<Readiness, "catalogueRead" | "readSet">,
+): string {
+  const scope = shopWideScope(code, readiness);
+  return scope.over === "catalogue"
+    ? allOf(scope.of, "in your catalogue")
+    : allOf(scope.of, "whose page we read");
 }
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -150,6 +273,19 @@ export function foldReadinessRow(counters: ReadinessCounters, row: ScanRowLike):
   if (read) {
     counters.pagesRead += 1;
     counters.lastPageReadAt = later(counters.lastPageReadAt, iso(row.scannedAt));
+  }
+  if (bulk) {
+    // Every catalogue row, read or not, for the catalogue-basis checks. Only
+    // codes with a catalogue basis are counted here; a page-basis code on a
+    // row whose page was never read is not a measurement of anything.
+    const catalogueCodes = new Set(
+      findingsOf(row.findings)
+        .map((f) => String(f.code))
+        .filter((code) => groupsOn(code) && CHECK_BASIS.get(code) === "catalogue"),
+    );
+    for (const code of catalogueCodes) {
+      counters.catalogueCodeCounts.set(code, (counters.catalogueCodeCounts.get(code) ?? 0) + 1);
+    }
   }
   if (!bulk || !read) {
     if (bulk) counters.awaitingPage += 1;
@@ -271,11 +407,12 @@ function kinds(n: number): string {
  */
 function scopeNote(count: number, products: number, readSet: number): string {
   return (
-    `The ${count} above is products, counted once each out of your ${products}, under whoever ` +
-    `has to move first. The figures in the rows are different: each one counts every product ` +
-    `that check found something on, out of the ${readSet} we have fully checked, whether or not ` +
-    `this group is the one that product is counted in. That is why a group of ${count} can hold ` +
-    `a row with a larger figure.`
+    `The ${formatCount(count)} above is products, counted once each out of your ` +
+    `${formatCount(products)}, under whoever has to move first. The figures in the rows are ` +
+    `different: each one counts every product that check found something on, out of the ` +
+    `${formatCount(readSet)} we have fully checked, whether or not this group is the one that ` +
+    `product is counted in. That is why a group of ${formatCount(count)} can hold a row with a ` +
+    `larger figure.`
   );
 }
 
@@ -307,11 +444,22 @@ function summaryFor(group: ReadinessGroup, count: number, rowCount: number): str
 export function buildReadiness(counters: ReadinessCounters): Readiness {
   const readSet = counters.readSet;
 
-  // Amendment 1. Exactly 100 percent of the read set, so it is a fact: a code
-  // on 188 of 189 products stays a per-product finding, and one on 189 of 189
-  // becomes a single decision.
+  // Amendment 1. Exactly 100 percent, so it is a fact: a code on 188 of 189
+  // products stays a per-product finding, and one on 189 of 189 becomes a
+  // single decision. The 100 percent is of the total the check is measured
+  // over: the catalogue for a catalogue-basis check, the read set for a
+  // page-basis one (M1, 5 September 2026). A code on all 46 read pages but on
+  // only 46 of the 50 catalogue rows is not on every product and stays
+  // per-product. The read set still has to exist: shop-wide is defined as
+  // "taken out of the grouping", and there is no grouping until a product has
+  // been fully checked, so a store whose pages were never read names no
+  // shop-wide code whatever its catalogue rows carry.
   const shopWideCodes = [...counters.codeCounts.entries()]
-    .filter(([, count]) => readSet > 0 && count === readSet)
+    .filter(([code, count]) => {
+      if (readSet === 0 || count !== readSet) return false;
+      if (CHECK_BASIS.get(code) !== "catalogue") return true;
+      return (counters.catalogueCodeCounts.get(code) ?? 0) === counters.catalogueRead;
+    })
     .map(([code]) => code as FindingCode)
     .sort();
   const shopWide = new Set<string>(shopWideCodes);
@@ -391,6 +539,97 @@ export function buildReadiness(counters: ReadinessCounters): Readiness {
     lastPageReadAt: counters.lastPageReadAt,
     lastCatalogueReadAt: counters.lastCatalogueReadAt,
   };
+}
+
+/**
+ * What stands where the four groups would be when no product has been fully
+ * checked. The screen and the report say the same thing, from one place; the
+ * report used to print four tiles of "0 of 0" and four empty groups instead
+ * (R2-09, R2-10).
+ */
+export function nothingGroupedSentence(surface: Surface): string {
+  const fills =
+    surface === "paper"
+      ? "This section fills in as the nightly read works through the catalogue."
+      : "This card fills in as the nightly read works through your catalogue.";
+  return `No product has been fully checked yet, so there is nothing to group. ${fills}`;
+}
+
+/**
+ * The method line under the readiness card, written for the surface it is on.
+ *
+ * The dial is named only where it is drawn; the shop-wide card only where it
+ * is rendered, and in the direction it actually sits (R2-08).
+ */
+export function readinessMethod(
+  readiness: Readiness,
+  wide: ShopWideItem[],
+  ctx: SurfaceContext,
+): string {
+  const head =
+    "A product with several gaps is counted once, in the group of whoever has to move first: " +
+    "you, then us, then your theme. This is not a grade and nothing is weighted.";
+  const shopWide =
+    readiness.shopWideCodes.length > 0
+      ? ` Problems that affect every product equally are not counted here at all, because those ` +
+        `are one decision each and not ${formatCount(readiness.readSet)}.` +
+        (mayPoint(ctx) ? ` ${shopWideCrossReference(readiness, wide, ctx.shopWide ?? null)}` : "")
+      : mayPoint(ctx) && ctx.shopWide
+        ? ` A problem that affected every product equally would be moved out of this card and into the shop-wide one ${ctx.shopWide}; today there is none.`
+        : " A problem that affected every product equally would be listed once, among the fixes that cover the whole shop; today there is none.";
+  const dial =
+    mayPoint(ctx) && ctx.dial
+      ? " The dial is drawn against your whole catalogue, and a product joins one of the four groups only once its catalogue row and its live page have both been read."
+      : " Every figure here is stated against your whole catalogue, and a product joins one of the four groups only once its catalogue row and its live page have both been read.";
+  return `${head}${shopWide}${dial}`;
+}
+
+/**
+ * The products with a catalogue row that are in none of the four groups, told
+ * apart by why: their page was never opened, or it was opened and could not
+ * be read the way a search engine reads it.
+ *
+ * One sentence about both, and it says they are the same pages the read line
+ * counts as "could not be read", because the screen used to say "4 more could
+ * not be read" in one line and "4 have not been opened yet" in the next, about
+ * the same four (R2-16). `couldNotBeRead` comes from the findings aggregate,
+ * which counts every attempted page that did not answer as a crawler sees it.
+ */
+export function unreadSentence(
+  readiness: Readiness,
+  couldNotBeRead: number,
+  ctx: SurfaceContext,
+): string | null {
+  if (readiness.awaitingPage === 0 || readiness.products === 0) return null;
+  const failed = Math.min(couldNotBeRead, readiness.awaitingPage);
+  const unopened = readiness.awaitingPage - failed;
+  const groups =
+    mayPoint(ctx) && ctx.groups ? `none of the four groups ${ctx.groups}` : "none of the four groups";
+  // The read line names the same pages as "could not be read"; say so only
+  // where that line is actually printed above this one.
+  const same =
+    mayPoint(ctx) && ctx.readLine
+      ? ` (the same ${formatCount(failed)} the line above counts as could not be read)`
+      : "";
+  const parts: string[] = [];
+  if (unopened > 0) {
+    parts.push(
+      `${formatCount(unopened)} ${unopened === 1 ? "has" : "have"} not had ${unopened === 1 ? "its" : "their"} page opened yet`,
+    );
+  }
+  if (failed > 0) {
+    parts.push(
+      `${formatCount(failed)} ${failed === 1 ? "was" : "were"} opened but could not be read the way a search engine reads a page${same}`,
+    );
+  }
+  const total = readiness.awaitingPage;
+  const lead =
+    parts.length === 2
+      ? `${formatCount(total)} of ${nProducts(readiness.products)} have a catalogue row but are not fully checked yet: ${parts.join(", and ")}.`
+      : unopened > 0
+        ? `${formatCount(total)} of ${nProducts(readiness.products)} ${total === 1 ? "has" : "have"} been read from your catalogue but ${total === 1 ? "its" : "their"} live page has not been opened yet.`
+        : `${formatCount(total)} of ${nProducts(readiness.products)} ${total === 1 ? "has" : "have"} been read from your catalogue, and ${total === 1 ? "its" : "their"} page was opened but could not be read the way a search engine reads a page${same}.`;
+  return `${lead} ${total === 1 ? "It is" : "They are"} counted in ${groups}, and ${failed > 0 ? "not counted as clean" : "nothing is claimed about a page nobody has read"}.`;
 }
 
 /**
@@ -532,7 +771,7 @@ function whyNothingIsArriving(
   if (!reasons || reasons.length === 0) return null;
   const missing = reasons.filter((r) => !r.emitted && (r.reason ?? "").trim() !== "");
   if (missing.length === 0) return null;
-  const distinct = [...new Set(missing.map((r) => r.reason!.trim()))];
+  const distinct = [...new Set(missing.map((r) => merchantReason(r.reason!.trim())))];
   const named = missing
     .map((r) => PUBLISHED_LABEL[r.nodeType])
     .filter((label): label is string => Boolean(label));
@@ -543,9 +782,55 @@ function whyNothingIsArriving(
   return `${which}${distinct.length === 1 ? "The reason we recorded" : "The reasons we recorded"}: ${distinct.join(" ")}`;
 }
 
-/** "Found on all 46 products whose page we have read." */
-function everyRead(readSet: number): string {
-  return `Found on all ${readSet} products whose page we have read.`;
+/**
+ * The reasons the page read records, in the merchant's words.
+ *
+ * `deriveMissingReasons` in theme-scan.server.ts writes its reasons for the
+ * operator, and they say "node", "metafields" and "SEO module". Those strings
+ * reached the merchant dashboard, the printed report and the shop-wide
+ * spreadsheet unchanged (QA round 1, 2.3). This record is keyed by the exact
+ * operator sentence, so a reworded reason there stops matching here and falls
+ * to `UNEXPLAINED_REASON` rather than leaking; theme-scan.server.test.ts
+ * asserts that every reason that function can produce has an entry.
+ */
+export const MERCHANT_REASON: Record<string, string> = {
+  "The app embed is not active in the theme.":
+    "This app's block is not switched on in your theme, so nothing it publishes reaches the page.",
+  "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.":
+    "Nothing has been prepared for this product yet, so there is nothing to add to what your theme already publishes.",
+  "No store social profile URLs are filled in on the Business screen.":
+    "No social profile addresses are filled in on the Business screen in this app.",
+  "This property is part of the operator-configured SEO module, not yet enabled for this shop.":
+    "This detail is part of the SEO work, which is not switched on for this shop yet.",
+  "Could not be determined - the last scan could not read this page.":
+    "The last read could not open this page, so we do not know.",
+  "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.":
+    "The SEO work is switched on, but the last read did not find this detail on the page; the usual cause is that this app's block is not active in the theme you currently publish.",
+  "The last scan found no rating on this product's page - no review app has written rating metafields for it yet.":
+    "The last read found no star rating on this product's page; no review app has recorded one for it yet.",
+  "The return window is empty on the Business screen.":
+    "The return window is empty on the Business screen in this app.",
+  "Delivery time is empty, or marked as varying, on the Business screen.":
+    "The delivery time is empty, or marked as varying, on the Business screen in this app.",
+  "This collection has no generated summary yet - it is written when collections are processed.":
+    "This collection has no summary yet; one is written when collections are processed.",
+  "This collection has no generated questions yet.":
+    "This collection has no questions block yet.",
+};
+
+/** What the merchant reads for a reason this release cannot yet put in plain words. */
+export const UNEXPLAINED_REASON =
+  "We recorded a reason we cannot yet explain in plain words; the Diagnostics screen in this app " +
+  "shows it as recorded.";
+
+/** The merchant sentence for one recorded reason, never the raw string. */
+export function merchantReason(reason: string): string {
+  return MERCHANT_REASON[reason] ?? UNEXPLAINED_REASON;
+}
+
+/** "Found on all 46 products whose page we read." or "...all 50 products in your catalogue." */
+function everyRead(code: string, readiness: Readiness): string {
+  return `Found on ${shopWideScopePhrase(code, readiness)}.`;
 }
 
 /**
@@ -554,15 +839,19 @@ function everyRead(readSet: number): string {
  * owner: two merchant-owned findings can need one switch and four hundred
  * fields respectively.
  */
-function fixSentence(owner: FindingOwner, shape: FixShape, readSet: number): string {
+function fixSentence(owner: FindingOwner, shape: FixShape, of: number): string {
   if (owner === "theme") {
     return "One change to the theme, and it applies to every product page.";
   }
   if (owner === "app") {
-    return `One thing for us to put right, not ${readSet}.`;
+    return of === 1
+      ? "One thing for us to put right."
+      : `One thing for us to put right, not ${formatCount(of)}.`;
   }
   return shape === "perProduct"
-    ? `The fix itself is one field per product, so it is ${readSet} of them, not one.`
+    ? of === 1
+      ? "The fix itself is one field on that product."
+      : `The fix itself is one field per product, so it is ${formatCount(of)} of them, not one.`
     : "One setting, and it applies to every product page.";
 }
 
@@ -591,7 +880,9 @@ function identifierCounts(facts: ShopWideFacts): string | null {
   if (missing.length > 0) {
     parts.push(
       "Missing on some products: " +
-        missing.map(([name, v]) => `${name}, on ${v.of - v.have} of ${v.of}`).join("; ") + ".",
+        missing
+          .map(([name, v]) => `${name}, on ${formatCount(v.of - v.have)} of ${formatCount(v.of)}`)
+          .join("; ") + ".",
     );
   }
   if (complete.length > 0) {
@@ -610,7 +901,7 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
   const catalogue = facts.catalogue;
   const everyProduct =
     catalogue !== null && catalogue > 0
-      ? `all ${catalogue} products in your catalogue`
+      ? allOf(catalogue, "in your catalogue")
       : "every product in your catalogue";
 
   if (facts.deliveryStated === false || facts.returnsStated === false) {
@@ -647,7 +938,9 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
         "at somebody else's product.",
       where: "Shopify, Products, open one, the variant row.",
       appliesTo:
-        `Not one of your ${facts.barcode.of} products carries one, which is why it is here ` +
+        (facts.barcode.of === 1
+          ? "Your one product does not carry one, which is why it is here "
+          : `Not one of your ${formatCount(facts.barcode.of)} products carries one, which is why it is here `) +
         "rather than against individual products. The fix itself is one field per product.",
       owner: "merchant",
       ownerNote: "You, Shopify, per product",
@@ -689,7 +982,7 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
       // one field per product - and the card used to say "One setting, and it
       // applies to every product page" on rows whose own instruction column
       // told the merchant to open each product.
-      appliesTo: `${everyRead(readiness.readSet)} ${fixSentence(owner, FIX_SHAPE[code], readiness.readSet)}`,
+      appliesTo: `${everyRead(code, readiness)} ${fixSentence(owner, FIX_SHAPE[code], shopWideScope(code, readiness).of)}`,
       owner,
       ownerNote:
         owner === "theme"
@@ -705,19 +998,47 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
   return items.sort((a, b) => OWNER_RANK[a.owner] - OWNER_RANK[b.owner]);
 }
 
-/** The method line under the shop-wide card, with this shop's own arithmetic. */
-export function shopWideMethod(readiness: Readiness, items: ShopWideItem[]): string {
+/**
+ * "flagged all 46 products whose page we read", or, when the shop-wide checks
+ * were measured over two different totals, both of them named.
+ */
+function shopWideTotalsPhrase(readiness: Readiness): string {
+  const scopes = new Map<string, string>();
+  for (const code of readiness.shopWideCodes) {
+    const scope = shopWideScope(code, readiness);
+    scopes.set(scope.over, shopWideScopePhrase(code, readiness));
+  }
+  const phrases = [...scopes.values()];
+  return phrases.length <= 1 ? phrases[0] ?? "" : phrases.join(", or ");
+}
+
+/**
+ * The method line under the shop-wide card, with this shop's own arithmetic.
+ *
+ * `ctx.groups` says where the four readiness groups are relative to this
+ * sentence, or that they are not rendered: on the screen they are above the
+ * card, on paper the figure strip comes before them, and on a store with no
+ * read set they are nowhere.
+ */
+export function shopWideMethod(
+  readiness: Readiness,
+  items: ShopWideItem[],
+  ctx: SurfaceContext,
+): string {
   if (items.length === 0) {
+    const where =
+      mayPoint(ctx) && ctx.groups
+        ? ` Anything found is against the products it was found on, in the groups ${ctx.groups}.`
+        : " Anything found is counted against the products it was found on.";
     return (
-      "Nothing affects every product the same way, so there is nothing to do once here. " +
-      "Anything found is against the products it was found on, above."
+      "Nothing affects every product the same way, so there is nothing to do once here." + where
     );
   }
   const fromChecks = readiness.shopWideCodes.length;
   const rest = items.length - fromChecks;
   const threshold =
     fromChecks > 0
-      ? ` ${fromChecks} of the ${items.length} came from a check that flagged all ${readiness.readSet} of the products whose page we read, which is exactly 100 percent and therefore a fact rather than a judgement.`
+      ? ` ${fromChecks} of the ${items.length} came from a check that flagged ${shopWideTotalsPhrase(readiness)}, which is exactly 100 percent and therefore a fact rather than a judgement.`
       : "";
   const others =
     rest > 0
@@ -738,21 +1059,28 @@ export function shopWideMethod(readiness: Readiness, items: ShopWideItem[]): str
  * listed 3, because one of the rows comes from the Business screen and is not
  * a check at all. Two numbers, both true, contradicting each other on one
  * screen.
+ *
+ * `where` is where that card is on the surface this sentence is printed on;
+ * null means it is not rendered there, and then the card is named without a
+ * direction. Never printed on a spreadsheet.
  */
 export function shopWideCrossReference(
   readiness: Readiness,
   items: ShopWideItem[],
-  where: "above" | "below",
+  where: "above" | "below" | null,
 ): string {
   if (items.length === 0) return "";
   const fromChecks = readiness.shopWideCodes.length;
-  const card = `The shop-wide card ${where} carries ${items.length} ${items.length === 1 ? "fix" : "fixes"}`;
+  const fixes = `${items.length} ${items.length === 1 ? "fix" : "fixes"}`;
+  const card = where
+    ? `The shop-wide card ${where} carries ${fixes}`
+    : `There ${items.length === 1 ? "is" : "are"} ${fixes} that cover the whole shop`;
   if (fromChecks === 0) {
     return `${card}, and no check flagged every product, so nothing was moved out of the counts here.`;
   }
   return (
     `${card}, ${fromChecks} of ${fromChecks === 1 ? "them from a check that flagged" : "them from checks that each flagged"} ` +
-    `all ${readiness.readSet} products whose page we read. ${fromChecks === 1 ? "That one is" : "Those are"} not counted again here.`
+    `${shopWideTotalsPhrase(readiness)}. ${fromChecks === 1 ? "That one is" : "Those are"} not counted again here.`
   );
 }
 
@@ -968,7 +1296,7 @@ export function listingReadiness(
  * printed on one screen. Whatever the true number is, it is now arithmetic
  * from the rows.
  */
-export function listingMethod(listing: ListingReadiness): string {
+export function listingMethod(listing: ListingReadiness, ctx: SurfaceContext): string {
   const byConstruction = listing.properties.filter((p) => p.basis === "byConstruction");
   const inPlaceByConstruction = byConstruction.filter(
     (p) => p.have !== null && p.of !== null && p.of > 0 && p.have === p.of,
@@ -987,11 +1315,19 @@ export function listingMethod(listing: ListingReadiness): string {
     phrases.length <= 1
       ? phrases.join("")
       : `${phrases.slice(0, -1).join(", ")} and ${phrases[phrases.length - 1]}`;
+  // The headline tile is named only where it is rendered: the screen shows
+  // it only once a page has been read, and the report only in the same state.
+  // Elsewhere the same figure is stated in the sentence itself, so it is on
+  // every surface without pointing at anything (R1 1.3, R2-07).
+  const counted =
+    mayPoint(ctx) && ctx.listingKpi
+      ? `counted in the ${listing.inPlace} of ${listing.total} above`
+      : `count toward the ${listing.inPlace} of ${listing.total} in place`;
   const construction =
     inPlaceByConstruction.length > 0
       ? `Shopify supplies ${listed} on every product it holds, so those ` +
-        `${inPlaceByConstruction.length} are in place on all ${inPlaceByConstruction[0].of} of ` +
-        `your products and are counted in the ${listing.inPlace} of ${listing.total} above. `
+        `${inPlaceByConstruction.length} are in place on ` +
+        `${yourProducts(inPlaceByConstruction[0].of ?? 0)} and ${counted}. `
       : listing.unmeasured
         ? "Your products have not been read yet, so nothing here has been counted and none of the " +
           "ten is claimed either way. "
@@ -1084,8 +1420,10 @@ export function columnAccount(input: {
   rows: CheckRow[];
   clean: CheckRow[];
   shopWideCodes: FindingCode[];
+  /** The surface these lines go on, and what it renders. See SurfaceContext. */
+  ctx: SurfaceContext;
 }): ColumnAccount {
-  const { source, shopWideCodes } = input;
+  const { source, shopWideCodes, ctx } = input;
   const wide = new Set<string>(shopWideCodes);
   const mine = input.rows.filter((r) => r.source === source);
   const mineClean = input.clean.filter((r) => r.source === source);
@@ -1104,19 +1442,37 @@ export function columnAccount(input: {
   ).length;
 
   const thing = source === "A" ? "product" : "page";
-  // "more" only makes sense when something was shown above it.
+  // "more" only makes sense when something was shown above it, and on a
+  // spreadsheet the found rows are in the same table, so it holds there too.
   const more = bars > 0 ? "more " : "";
+  const point = mayPoint(ctx);
   const lines: string[] = [];
 
   if (mineClean.length > 0) {
-    const of = mineClean[0].denominator;
-    lines.push(
-      `${mineClean.length} ${more}${mineClean.length === 1 ? "check" : "checks"} found nothing at all on ${of} ${thing}${of === 1 ? "" : "s"}, so there is nothing to show.`,
-    );
+    // Grouped by denominator, the way cleanSentence in seo-aggregate.ts
+    // already does: the page column has two denominators by design (B5 is
+    // counted over every page that answered anything, the rest over the pages
+    // that answered as a crawler sees them), and one sentence quoting the
+    // first row's total for all of them was false about the other (R1 1.1).
+    const byDenominator = new Map<number, number>();
+    for (const row of mineClean) {
+      byDenominator.set(row.denominator, (byDenominator.get(row.denominator) ?? 0) + 1);
+    }
+    const parts = [...byDenominator.entries()]
+      .sort((a, b) => b[1] - a[1] || b[0] - a[0])
+      .map(
+        ([of, checks]) =>
+          `${checks} ${more}${checks === 1 ? "check" : "checks"} found nothing at all on ${nProducts(of, thing)}`,
+      );
+    lines.push(`${parts.join("; ")}, so there is nothing to show.`);
   }
   if (shopWide > 0) {
+    const where =
+      point && ctx.shopWide
+        ? `in the shop-wide card ${ctx.shopWide}`
+        : "listed among the fixes that cover the whole shop";
     lines.push(
-      `${shopWide} ${shopWide === 1 ? "check flagged" : "checks flagged"} every product we read, so ${shopWide === 1 ? "it is" : "they are"} in the shop-wide card above rather than counted here.`,
+      `${shopWide} ${shopWide === 1 ? "check flagged" : "checks flagged"} every product ${shopWide === 1 ? "it" : "they"} could be asked of, so ${shopWide === 1 ? "it is" : "they are"} ${where} rather than counted here.`,
     );
   }
   if (notYetRead > 0) {
@@ -1135,22 +1491,48 @@ export function columnAccount(input: {
     );
   }
   if (counted > 0) {
+    const where =
+      point && ctx.counted
+        ? `${counted === 1 ? "it is" : "they are"} at the foot of this ${ctx.surface === "paper" ? "report" : "screen"} instead`
+        : `${counted === 1 ? "it is" : "they are"} not drawn as a bar`;
     lines.push(
-      `${counted} ${counted === 1 ? "check counts" : "checks count"} something and state no verdict, so ${counted === 1 ? "it is" : "they are"} at the foot of this screen instead.`,
+      `${counted} ${counted === 1 ? "check counts" : "checks count"} something and state no verdict, so ${where}.`,
     );
   }
   if (offTable > 0) {
-    lines.push(
-      source === "A"
-        ? `${offTable} ${offTable === 1 ? "check counts your collections" : "checks count your collections"} rather than your products, so ${offTable === 1 ? "it carries its" : "they carry their"} own total above.`
-        : `${offTable} ${offTable === 1 ? "check counts your blog posts" : "checks count your blog posts"} rather than your product pages, so ${offTable === 1 ? "it carries its" : "they carry their"} own total above.`,
-    );
+    const one = offTable === 1;
+    if (source === "A") {
+      const where =
+        point && ctx.collectionsTotal
+          ? `${one ? "it carries its" : "they carry their"} own total above`
+          : `${one ? "it is" : "they are"} counted against your collections, with a total of ${one ? "its" : "their"} own, and not here`;
+      lines.push(
+        `${offTable} ${one ? "check counts your collections" : "checks count your collections"} rather than your products, so ${where}.`,
+      );
+    } else {
+      const where =
+        point && ctx.blogTotal
+          ? `${one ? "it carries its" : "they carry their"} own total above`
+          : `${one ? "it is" : "they are"} counted against your blog posts, with a total of ${one ? "its" : "their"} own, and not here`;
+      lines.push(
+        `${offTable} ${one ? "check counts your blog posts" : "checks count your blog posts"} rather than your product pages, so ${where}.`,
+      );
+    }
   }
 
   const accounted =
     bars + shopWide + mineClean.length + notYetRead + couldNotRun + notApplicable + counted + offTable;
+  // The found rows are above these lines on the screen and on paper, and are
+  // the rows of the same table in the spreadsheet; when there are none there
+  // is nothing to point at, so nothing is.
+  const shown =
+    bars === 0
+      ? "none with something found"
+      : point
+        ? `${bars} shown above`
+        : `${bars} with something found`;
   lines.push(
-    `That is all ${total} checks on this side: ${bars} shown above, ${total - bars} in the ${lines.length === 1 ? "line" : "lines"} here.`,
+    `That is all ${total} checks on this side: ${shown}, ${total - bars} in the ${lines.length === 1 ? "line" : "lines"} here.`,
   );
 
   return {

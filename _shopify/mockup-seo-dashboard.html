@@ -297,8 +297,10 @@
               <span class="where">Shopify, <b>Online Store</b>, <b>Navigation</b>,
                 <b>URL Redirects</b>.</span></li>
           </ol>
-          <p class="foot">The printable report lists every affected product by name, so you can work
-            through it without coming back to this screen.</p>
+          <p class="foot">The spreadsheet of affected products lists each one by its address, so you
+            can work through it without coming back to this screen. (Amended 5 September 2026: this
+            line said the printable report names each product; the report names no product, the
+            spreadsheet does, by handle.)</p>
         </div>
       </details>
 
@@ -320,12 +322,19 @@
             <li><b>12 products tell Google the wrong main address.</b> The page names a longer
               address as its own, so Google splits attention between two versions of the same
               product.
-              <span class="where">Same file, same visit. The report names the exact line.</span></li>
+              <span class="where">Your theme decides which address a page names as its own. A developer
+                changes it in one place and it applies to every page; the spreadsheet of affected
+                products lists each one by its address. (Amended 5 September 2026: "Same file, same
+                visit. The report names the exact line" assumed this step followed the one above,
+                which sorting by count does not guarantee, and no report names a line.)</span></li>
           </ol>
-          <p class="foot">If you work with a developer, send them the printable report: it names the
-            change for each one, so no further briefing is needed. If you do not, ask whoever built
-            or installed your theme - it is under an hour of work for someone who knows the theme.
-            We do not edit your theme ourselves and we never add code to your storefront.</p>
+          <p class="foot">If you work with a developer, each line above names the change and where it
+            is made, so no further briefing is needed; the spreadsheet of affected products lists
+            each one by its address. If you do not, ask whoever built or installed your theme - it is
+            under an hour of work for someone who knows the theme. We do not edit your theme ourselves
+            and we never add code to your storefront. (Amended 5 September 2026: "send them the
+            printable report: it names the change for each one" claimed a per-product list the report
+            does not carry.)</p>
         </div>
       </details>
 
@@ -718,15 +727,23 @@
       screen from naming a problem and leaving the merchant with nowhere to go.</li>
     <li>Plain labels and steps never say: canonical, structured data, schema, node, hreflang, GTIN,
       alt text, lazy load, Open Graph, H1, meta. Check codes never appear on this screen; they stay
-      in the CSV and the operator view.</li>
+      in the operator's CSV and the operator view. <b>Amended 5 September 2026:</b> the same rule
+      binds the printed report and the five merchant spreadsheets, and the list gained metafield,
+      snapshot, operator, setup code, robots.txt, liquid and Fill catalogue. The then-and-now
+      spreadsheet the dashboard offers is a merchant file at /app/seo/dashboard/export/since; the
+      operator's /app/seo/export/since keeps its vocabulary and is no longer linked from here.</li>
     <li><b>Group assignment must be a total function.</b> Each finding code declares one owner: the
       merchant, this app, or the theme. A product goes in the group of its most immediate owner, in
       that order, so the four groups partition the read set exactly and the four numbers add to the
       denominator. Assert that sum in a test on all five fixture stores.</li>
-    <li>The expandable steps use a native disclosure element, not JavaScript state, so the screen
-      still works if hydration fails. In Polaris this is Collapsible with a button; the closed state
-      must already carry the count and a one-line summary, because a merchant who never opens it
-      still has to know what the group is.</li>
+    <li>The expandable steps use a native disclosure element (details and summary), not JavaScript
+      state, so the screen still works if hydration fails and the steps are in the server markup
+      for any test that reads it. The closed state must already carry the count, what it is out of,
+      and a one-line summary, because a merchant who never opens it still has to know what the
+      group is. <b>Amended 5 September 2026:</b> this note used to continue "In Polaris this is
+      Collapsible with a button", which contradicts its own first clause, and the first build
+      followed the second clause: Collapsible renders no children when closed, so without a script
+      the steps did not exist. Built as a native element now.</li>
     <li>Route <code>/app/seo/dashboard</code>. The operator workspace at <code>/app/seo</code> is
       untouched.</li>
     <li>Charts are hand-drawn SVG or Polaris Viz. No chart library from a CDN: this app ships no
@@ -809,9 +826,21 @@
         <li>Filenames carry the shop and the date, so three of these on a desktop can be told
           apart. Every file is UTF-8 with a byte order mark, and no cell can begin with =, + or @
           and run as a formula when it is opened - which was a defect in the two exports already
-          shipped, not only a rule for the new ones.</li>
+          shipped, not only a rule for the new ones. (Amended 5 September 2026: true of all five
+          files since the then-and-now file became a merchant route; until then the fifth carried
+          no shop and no date.)</li>
       </ol>
     </li>
+    <li><b>Sentences that point at another element, 5 September 2026.</b> Every sentence saying
+      "above", "below", "at the foot of this screen", "the dial" or "the N of M above" is produced
+      by a function that takes the surface (screen, paper, spreadsheet) and what it renders in
+      that state. The referent is named only when it is there; a spreadsheet names none. Every
+      count on the screen, on paper and in the sentence cells of the files carries a thousands
+      separator; the numeric cells stay plain so they sort. The strip on paper follows the screen:
+      no tile without a read set, one sentence instead. The products in no group are a tile of
+      their own on both surfaces, with the reason. The shop-wide threshold is 100 percent of the
+      total the check is measured over: the catalogue for a catalogue check, the pages read for a
+      page check.</li>
     <li>The figures above are illustrative, drawn to resemble a real client catalogue. Nothing here
       is a measurement.</li>
   </ul>

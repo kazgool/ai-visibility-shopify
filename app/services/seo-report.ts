@@ -19,7 +19,7 @@
 // zeros for checks that never ran is the "0 of 50" failure in CLAUDE.md in a
 // form the merchant can sort by.
 
-import { csvRows } from "./report-metrics";
+import { csvRows, formatCount } from "./report-metrics";
 import {
   FINDING_OWNER,
   OWNER_LABEL,
@@ -28,17 +28,22 @@ import {
   type FindingCode,
 } from "./seo-findings";
 import {
+  CSV_CONTEXT,
   GROUP_WORD,
   columnAccount,
   groupWordFor,
   listingMethod,
   listingReadiness,
+  nothingGroupedSentence,
   shopWideItems,
   shopWideMethod,
+  shopWideScope,
+  unreadSentence,
   type ListingBasis,
   type ListingReadiness,
   type Readiness,
   type ShopWideItem,
+  type SurfaceContext,
 } from "./seo-readiness";
 import type { CheckRow, CheckState, FindingsAggregate, ScanRowLike } from "./seo-aggregate";
 import type { FactsRow } from "./seo-since";
@@ -56,6 +61,13 @@ export type DashboardSource = {
   domain: string;
   findings: FindingsAggregate;
   readiness: Readiness;
+  /**
+   * The crawler the shop's own settings turn away, or null. On the report so
+   * the document a merchant hands to a developer carries the one fact the
+   * developer needs (R2-19); it used to say only "no product page has been
+   * read yet".
+   */
+  blockedBy: string | null;
   since: { before: FactsRow | null; today: FactsRow | null };
   business: { deliveryStated: boolean; returnsStated: boolean } | null;
   published: {
@@ -119,6 +131,13 @@ export const LISTING_UNMEASURED_SENTENCE =
   "Your products have not been read yet, so none of these has been counted. The first read " +
   "fills this card in.";
 
+/** The same, naming the surface it is on: paper has no card. */
+export function listingUnmeasuredSentence(surface: "screen" | "paper"): string {
+  return surface === "paper"
+    ? "Your products have not been read yet, so none of these has been counted. The first read fills this section in."
+    : LISTING_UNMEASURED_SENTENCE;
+}
+
 export type KeyFigure = {
   key: string;
   value: string;
@@ -126,7 +145,72 @@ export type KeyFigure = {
   /** The denominator sentence. Null only where there is honestly none. */
   of: string | null;
   method: string;
+  /**
+   * True for the figures in the headline strip. The four group counts are
+   * figures too, but they are printed inside their groups, and the strip on
+   * paper used to fill itself with whichever came next when the read set was
+   * empty (R2-09, R2-10).
+   */
+  strip: boolean;
+  /**
+   * The exact string both surfaces must print for this figure, with its
+   * denominator where it has one: "26 of 50", "4 of 10", "2 fixes that cover
+   * the whole shop". The cross-render test asserts this token with word
+   * boundaries on both renderings, because asserting the bare value let "5"
+   * pass on any page that contained "50" (R1 4.3, R2-15).
+   */
+  token: string;
 };
+
+/**
+ * What the printed report renders, for the sentences that point at things.
+ * The strip comes before the groups and the shop-wide table, the dial is not
+ * drawn, the counts with no verdict are not printed, and the Google tile is
+ * in the strip only once a page has been read.
+ */
+export function paperContext(data: DashboardSource, derived: DashboardDerived): SurfaceContext {
+  const r = data.readiness;
+  return {
+    surface: "paper",
+    groups: r.readSet > 0 ? "below" : null,
+    shopWide: derived.wide.length > 0 ? "below" : null,
+    counted: false,
+    collectionsTotal: false,
+    blogTotal: false,
+    listingKpi: r.readSet > 0 && !derived.listing.unmeasured,
+    dial: false,
+    readLine: false,
+  };
+}
+
+/** "products with nothing of their own to fix", or the singular. */
+export function cleanLabel(n: number): string {
+  return n === 1 ? "product with nothing of its own to fix" : "products with nothing of their own to fix";
+}
+
+export function needSomethingLabel(n: number): string {
+  return n === 1 ? "product needing something specific" : "products needing something specific";
+}
+
+export function notCheckedLabel(n: number): string {
+  return n === 1 ? "product not checked yet" : "products not checked yet";
+}
+
+export function shopWideHeading(n: number): string {
+  return n === 0
+    ? "Fixes that cover the whole shop"
+    : `${n} ${n === 1 ? "fix that covers" : "fixes that cover"} the whole shop`;
+}
+
+/** The label under the shop-wide count, on both tiles: "fixes that cover the whole shop". */
+export function shopWideLabel(n: number): string {
+  return `${n === 1 ? "fix that covers" : "fixes that cover"} the whole shop, listed once and not per product`;
+}
+
+/** "of 50 in your catalogue" */
+export function ofCatalogue(products: number): string {
+  return `of ${formatCount(products)} in your catalogue`;
+}
 
 /**
  * Every headline figure on the dashboard, as the strings both pages print.
@@ -139,31 +223,61 @@ export type KeyFigure = {
  */
 export function keyFigures(data: DashboardSource, derived: DashboardDerived): KeyFigure[] {
   const r = data.readiness;
+  const ctx = paperContext(data, derived);
   const figures: KeyFigure[] = [];
 
+  // The strip exists only once a product has been fully checked. Below that
+  // the screen prints one sentence and no tile, and the report does the same
+  // (nothingGroupedSentence): four tiles of "0 of 0" on an empty store is the
+  // "zero instead of a sentence" failure on paper (R2-09).
   if (r.readSet > 0) {
     figures.push({
       key: "clean",
-      value: String(r.clean),
-      label: "products with nothing of their own to fix",
-      of: `of ${r.products} in your catalogue`,
+      value: formatCount(r.clean),
+      label: cleanLabel(r.clean),
+      of: ofCatalogue(r.products),
       method:
         "Counted over every product in the catalogue, so a product whose page has not been " +
         "read yet is not counted as clean.",
+      strip: true,
+      token: `${formatCount(r.clean)} of ${formatCount(r.products)}`,
     });
     figures.push({
       key: "needSomething",
-      value: String(r.needSomething),
-      label: "products needing something specific",
-      of: `of ${r.products} in your catalogue`,
+      value: formatCount(r.needSomething),
+      label: needSomethingLabel(r.needSomething),
+      of: ofCatalogue(r.products),
       method: "One product is counted once, under the owner of its most immediate problem.",
+      strip: true,
+      token: `${formatCount(r.needSomething)} of ${formatCount(r.products)}`,
     });
+    // The products in no group, as a number with its reason. The screen has
+    // them as the fifth band of the bar and a sentence; the report had neither,
+    // so 300 + 200 of 20,000 left 19,500 that appeared nowhere on the page as
+    // a number (R2-11, M2).
+    if (r.notChecked > 0) {
+      figures.push({
+        key: "notChecked",
+        value: formatCount(r.notChecked),
+        label: notCheckedLabel(r.notChecked),
+        of: ofCatalogue(r.products),
+        method:
+          unreadSentence(r, data.findings.couldNotBeRead, ctx) ??
+          "These products are in none of the four groups until both their catalogue row and " +
+            "their live page have been read.",
+        strip: true,
+        token: `${formatCount(r.notChecked)} of ${formatCount(r.products)}`,
+      });
+    }
     figures.push({
       key: "shopWide",
       value: String(derived.wide.length),
-      label: "fixes that cover the whole shop",
+      label: shopWideLabel(derived.wide.length),
       of: null,
-      method: shopWideMethod(r, derived.wide),
+      method: shopWideMethod(r, derived.wide, ctx),
+      strip: true,
+      // The count and its label, as both tiles print them side by side.
+      token: `${derived.wide.length} ${derived.wide.length === 1 ? "fix that covers" : "fixes that cover"} the whole shop`,
     });
   }
 
@@ -173,27 +287,40 @@ export function keyFigures(data: DashboardSource, derived: DashboardDerived): Ke
   // read is a fabricated zero, and on paper it is a fabricated zero that gets
   // handed to somebody. The render test across the five stores is what caught
   // this - the figure list emitted it unconditionally and the screen did not.
+  // It is in the strip only when the strip exists; below that the figure is
+  // still on both surfaces, inside the Google card's own method line.
   if (!derived.listing.unmeasured) {
     figures.push({
       key: "listing",
       value: `${derived.listing.inPlace} of ${derived.listing.total}`,
       label: "details Google asks for, in place",
       of: null,
-      method: listingMethod(derived.listing),
+      method: listingMethod(derived.listing, ctx),
+      strip: r.readSet > 0,
+      token: `${derived.listing.inPlace} of ${derived.listing.total}`,
     });
   }
 
-  for (const group of r.groups) {
-    figures.push({
-      key: `group-${group.group}`,
-      value: String(group.count),
-      label: group.title,
-      of: `of ${group.denominator}`,
-      method: group.summary,
-    });
+  if (r.readSet > 0) {
+    for (const group of r.groups) {
+      figures.push({
+        key: `group-${group.group}`,
+        value: formatCount(group.count),
+        label: group.title,
+        of: `of ${formatCount(group.denominator)}`,
+        method: group.summary,
+        strip: false,
+        token: `${formatCount(group.count)} of ${formatCount(group.denominator)}`,
+      });
+    }
   }
 
   return figures;
+}
+
+/** The sentence the strip prints instead of tiles when there are none. */
+export function stripSentence(data: DashboardSource): string | null {
+  return data.readiness.readSet > 0 ? null : nothingGroupedSentence("paper");
 }
 
 /**
@@ -205,8 +332,8 @@ export function reportHeading(data: DashboardSource, today: Date): string {
   const r = data.readiness;
   const scope =
     r.readSet > 0
-      ? `${r.readSet} of ${r.products} products fully checked`
-      : `${r.products} products in the catalogue`;
+      ? `${formatCount(r.readSet)} of ${formatCount(r.products)} products fully checked`
+      : `${formatCount(r.products)} products in the catalogue`;
   return `${data.domain} - ${scope} - report produced ${isoDay(today)}`;
 }
 
@@ -331,8 +458,15 @@ export function findingsCsv(data: DashboardSource, now: Date): string {
       sideWord(row),
       countCell(row),
       denominatorCell(row),
+      // One state, not two: "Found on some products - on every product" was
+      // "some" and "every" in one cell (R2-23). The total it was found on all
+      // of is the check's own, from shopWideScope.
       shopWide.has(row.code)
-        ? `${STATE_WORD[row.state]} - on every product we read, so it is one fix for the whole shop`
+        ? `Found on every product ${
+            shopWideScope(row.code, data.readiness).over === "catalogue"
+              ? "in the catalogue"
+              : "whose page we read"
+          }, so it is one fix for the whole shop`
         : STATE_WORD[row.state],
       steps ? steps.what : "",
       steps ? steps.where : "",
@@ -348,6 +482,8 @@ export function findingsCsv(data: DashboardSource, now: Date): string {
       rows: data.findings.rows,
       clean: data.findings.clean,
       shopWideCodes: data.readiness.shopWideCodes,
+      // A spreadsheet has no "above" and no "foot of this screen".
+      ctx: CSV_CONTEXT,
     }).lines.map((line) => [line] as (string | number)[]),
   );
 
@@ -381,7 +517,7 @@ const SHOP_WIDE_HEADER = [
 export function shopWideCsv(data: DashboardSource, derived: DashboardDerived, now: Date): string {
   return csvRows([
     [reportHeading(data, now)],
-    [shopWideMethod(data.readiness, derived.wide)],
+    [shopWideMethod(data.readiness, derived.wide, CSV_CONTEXT)],
     [],
     SHOP_WIDE_HEADER,
     ...derived.wide.map(
@@ -434,7 +570,7 @@ export function listingCsv(data: DashboardSource, derived: DashboardDerived, now
   });
   return csvRows([
     [reportHeading(data, now)],
-    [listingMethod(listing)],
+    [listingMethod(listing, CSV_CONTEXT)],
     [],
     LISTING_HEADER,
     ...body,
@@ -458,7 +594,7 @@ export function listingCsv(data: DashboardSource, derived: DashboardDerived, now
 export function rowScopeNote(row: CheckRow, columnDenominator: number): string | null {
   if (row.denominator === columnDenominator || row.denominator === 0) return null;
   return (
-    `${OWNER_LABEL[row.code]} is counted out of ${row.denominator}, not ${columnDenominator}: ` +
+    `${OWNER_LABEL[row.code]} is counted out of ${formatCount(row.denominator)}, not ${formatCount(columnDenominator)}: ` +
     "it is the check about pages that did not answer, so the pages that did answer are not the " +
     "right total to measure it against."
   );
@@ -538,7 +674,7 @@ export function productFindingsCsv(
     [
       body.length === 0
         ? "No product carries a finding, so this file has no rows. That is the answer, not a failure."
-        : `${body.length} rows: one product, one finding.`,
+        : `${formatCount(body.length)} rows: one product, one finding.`,
     ],
     [],
     PRODUCTS_HEADER,
@@ -546,7 +682,7 @@ export function productFindingsCsv(
   ];
   if (truncated) {
     table.push([
-      `This file stopped at ${cap} rows. There are more, and the counts on the screen are whole.`,
+      `This file stopped at ${formatCount(cap)} rows. There are more; the counts in the findings file are whole.`,
     ]);
   }
   return csvRows(table);

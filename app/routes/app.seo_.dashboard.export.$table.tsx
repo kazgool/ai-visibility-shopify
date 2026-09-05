@@ -20,10 +20,13 @@
 // change files people already have scripts and habits around, and this note is
 // the record that the difference is deliberate rather than a drift.
 //
-// The then-and-now comparison is deliberately NOT a fifth table here. It
-// already exists at /app/seo/export/since and /app/seo/export/written, reads
-// the same two snapshot rows, and carries the same gate. A second route
-// writing the same figures is the copy this app keeps not making.
+// The then-and-now comparison is not a fifth name in this route's table,
+// because it reads different rows: the two snapshot rows, not the scan
+// aggregates. It is its own resource route beside this one,
+// app.seo_.dashboard.export.since.tsx, with the same gate and the same
+// filename shape. It used to be the operator's /app/seo/export/since, which
+// writes the operator's vocabulary; see that file for why it moved
+// (5 September 2026).
 
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";

@@ -39,28 +39,39 @@
 import {
   columnAccount,
   groupWordFor,
+  nothingGroupedSentence,
   type Readiness,
 } from "../services/seo-readiness";
 import {
   BASIS_WORD,
   dashboardDerived,
   keyFigures,
+  listingUnmeasuredSentence,
+  paperContext,
   reportHeading,
   rowScopeNote,
-  LISTING_UNMEASURED_SENTENCE,
+  shopWideHeading,
+  stripSentence,
   type DashboardSource,
 } from "../services/seo-report";
-import type { CheckRow } from "../services/seo-aggregate";
+import { pagesReadSentence, type CheckRow } from "../services/seo-aggregate";
 import { OWNER_LABEL } from "../services/seo-findings";
+import { formatCount } from "../services/report-metrics";
 import {
   differenceLabel,
-  figure,
   formatDay,
+  ownerFigure,
+  ownerNoSnapshotSentence,
+  ownerSinceMethodLine,
   ownerSinceRows,
+  ownerUnchangedLine,
+  ownerWrittenLabel,
   sinceHeading,
-  sinceMethodLine,
   sinceTable,
-  NO_SNAPSHOT_SENTENCE,
+  writtenRows,
+  OWNER_WRITTEN_NOT_YET_SENTENCE,
+  OWNER_WRITTEN_OMISSION_SENTENCE,
+  WRITTEN_EMPTY_SENTENCE,
   type FactsRow,
 } from "../services/seo-since";
 
@@ -135,18 +146,38 @@ function PrintControls() {
   );
 }
 
+/**
+ * The headline strip. The same rule as the screen: tiles only once a product
+ * has been fully checked, one sentence otherwise. It used to print
+ * `figures.slice(0, 4)`, which on an empty store was four tiles of "0 of 0"
+ * and on a store with no page read was three of the four groups (R2-09,
+ * R2-10).
+ */
 function Figures({ data }: { data: DashboardSource }) {
   const derived = dashboardDerived(data);
-  const figures = keyFigures(data, derived);
+  const figures = keyFigures(data, derived).filter((f) => f.strip);
+  const sentence = stripSentence(data);
+  if (sentence !== null || figures.length === 0) {
+    return (
+      <section>
+        <h2>Where this shop stands today</h2>
+        <p className="sub">{sentence ?? nothingGroupedSentence("paper")}</p>
+      </section>
+    );
+  }
   return (
     <section>
       <h2>Where this shop stands today</h2>
       <div className="figrow">
-        {figures.slice(0, 4).map((f) => (
+        {figures.map((f) => (
           <div key={f.key}>
-            <div className="fig">{f.value}</div>
+            {/* The count and what it is out of on one line, as the screen's
+                tile prints them, so "24 of 50" is a token on both surfaces. */}
+            <div>
+              <span className="fig">{f.value}</span>
+              {f.of === null ? null : <span className="sub"> {f.of}</span>}
+            </div>
             <div>{f.label}</div>
-            {f.of === null ? null : <div className="sub">{f.of}</div>}
             <p className="method">{f.method}</p>
           </div>
         ))}
@@ -156,6 +187,16 @@ function Figures({ data }: { data: DashboardSource }) {
 }
 
 function Groups({ readiness }: { readiness: Readiness }) {
+  // No read set, no groups: the screen prints one sentence in this state and
+  // the report used to print four empty groups headed "0 of 0" (R2-09).
+  if (readiness.readSet === 0) {
+    return (
+      <section>
+        <h2>What to do, and who does it</h2>
+        <p className="sub">{nothingGroupedSentence("paper")}</p>
+      </section>
+    );
+  }
   return (
     <>
       <p className="lead">
@@ -170,7 +211,7 @@ function Groups({ readiness }: { readiness: Readiness }) {
         // whatever was above it half empty. Smaller unsplittable units pack.
         <section key={group.group}>
           <h3>
-            {group.title} - {group.count} of {group.denominator}
+            {group.title} - {formatCount(group.count)} of {formatCount(group.denominator)}
           </h3>
           <p className="sub">{group.summary}</p>
           {group.rows.length === 0 ? null : (
@@ -188,7 +229,7 @@ function Groups({ readiness }: { readiness: Readiness }) {
                   <tr key={row.code}>
                     <td>{row.label}</td>
                     <td className="num">
-                      {row.count} of {row.denominator}
+                      {formatCount(row.count)} of {formatCount(row.denominator)}
                     </td>
                     <td>{groupWordFor(row.code)}</td>
                     <td>
@@ -212,7 +253,7 @@ function ShopWide({ data }: { data: DashboardSource }) {
   if (derived.wide.length === 0) return null;
   return (
     <section>
-      <h2>Fixes that cover the whole shop</h2>
+      <h2>{shopWideHeading(derived.wide.length)}</h2>
       <table>
         <thead>
           <tr>
@@ -251,7 +292,7 @@ function Listing({ data }: { data: DashboardSource }) {
     return (
       <section>
         <h2>What Google asks for on a product listing</h2>
-        <p className="sub">{LISTING_UNMEASURED_SENTENCE}</p>
+        <p className="sub">{listingUnmeasuredSentence("paper")}</p>
       </section>
     );
   }
@@ -275,7 +316,7 @@ function Listing({ data }: { data: DashboardSource }) {
               <td className="num">
                 {p.have === null
                   ? (p.note ?? "Not counted yet")
-                  : `${p.have}${p.of === null ? "" : ` of ${p.of}`}`}
+                  : `${formatCount(p.have)}${p.of === null ? "" : ` of ${formatCount(p.of)}`}`}
               </td>
               {/* BASIS_WORD is a Record over the basis union, so a value it
                   does not cover fails typecheck. This cell printed
@@ -296,15 +337,24 @@ function Since({ before, today }: { before: FactsRow | null; today: FactsRow | n
     return (
       <section>
         <h2>What has changed since we started</h2>
-        <p className="sub">{NO_SNAPSHOT_SENTENCE}</p>
+        <p className="sub">{ownerNoSnapshotSentence("paper")}</p>
       </section>
     );
   }
-  const rows = ownerSinceRows(sinceTable(before, today));
+  const table = sinceTable(before, today);
+  const rows = ownerSinceRows(table);
+  const unchanged = ownerUnchangedLine(table);
+  const written = writtenRows(before, today);
+  const namedWritten =
+    written === null
+      ? null
+      : written
+          .map((row) => ({ row, label: ownerWrittenLabel(row) }))
+          .filter((r): r is { row: (typeof written)[number]; label: string } => r.label !== null);
   return (
     <section>
       <h2>{sinceHeading(before)}</h2>
-      <p className="method">{sinceMethodLine(before, today)}</p>
+      <p className="method">{ownerSinceMethodLine(before, today)}</p>
       {rows.length === 0 ? (
         <p className="sub">Nothing has moved yet.</p>
       ) : (
@@ -321,9 +371,9 @@ function Since({ before, today }: { before: FactsRow | null; today: FactsRow | n
             {rows.map((row) => (
               <tr key={row.key}>
                 <td>{row.ownerLabel}</td>
-                <td className="num">{figure(row.before, row.beforeDenominator)}</td>
+                <td className="num">{ownerFigure(row.before, row.beforeDenominator)}</td>
                 <td className="num">
-                  {row.today === null ? "not read" : figure(row.today, row.todayDenominator)}
+                  {row.today === null ? "not read" : ownerFigure(row.today, row.todayDenominator)}
                 </td>
                 <td className="num">{differenceLabel(row)}</td>
               </tr>
@@ -331,6 +381,35 @@ function Since({ before, today }: { before: FactsRow | null; today: FactsRow | n
           </tbody>
         </table>
       )}
+      {/* The screen says how many figures did not move and what this app
+          wrote since the start; the report printed the moved rows and nothing
+          else, so a reader could not tell whether a lone row was the only
+          figure or the only one that moved (R2-29). */}
+      {unchanged ? <p className="sub">{unchanged}</p> : null}
+      <h3>Written by this app since then</h3>
+      {namedWritten === null ? (
+        <p className="sub">{OWNER_WRITTEN_NOT_YET_SENTENCE}</p>
+      ) : namedWritten.length === 0 ? (
+        <p className="sub">{WRITTEN_EMPTY_SENTENCE}</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>What this app wrote</th>
+              <th className="num">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {namedWritten.map(({ row, label }) => (
+              <tr key={row.key}>
+                <td>{label}</td>
+                <td className="num">{formatCount(row.count)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="method">{OWNER_WRITTEN_OMISSION_SENTENCE}</p>
     </section>
   );
 }
@@ -362,6 +441,7 @@ function Checks({ data }: { data: DashboardSource }) {
       rows: found.filter((r) => r.source === "B"),
     },
   ];
+  const ctx = paperContext(data, dashboardDerived(data));
   return (
     <>
       <p className="lead">
@@ -374,6 +454,10 @@ function Checks({ data }: { data: DashboardSource }) {
           rows: data.findings.rows,
           clean: data.findings.clean,
           shopWideCodes: data.readiness.shopWideCodes,
+          // On paper the shop-wide table is above these lines, the counts
+          // with no verdict are not printed, and neither collections nor blog
+          // posts have a total here.
+          ctx: { ...ctx, shopWide: ctx.shopWide ? "above" : null },
         });
         return (
           <section key={side.source}>
@@ -398,7 +482,7 @@ function Checks({ data }: { data: DashboardSource }) {
                           this record; this one did not. */}
                       <td>{OWNER_LABEL[row.code]}</td>
                       <td className="num">
-                        {row.count} of {row.denominator}
+                        {formatCount(row.count)} of {formatCount(row.denominator)}
                       </td>
                       <td>{groupWordFor(row.code)}</td>
                     </tr>
@@ -448,6 +532,12 @@ export function SeoPrintReport({ data }: { data: SeoPrintData }) {
         {data.readiness.lastPageReadAt
           ? `Product pages last read ${formatDay(data.readiness.lastPageReadAt)}.`
           : "No product page has been read yet."}{" "}
+        {/* The cause, when the shop's own settings are it: the document a
+            merchant hands to a developer used to omit the one fact the
+            developer needs (R2-19). */}
+        {data.blockedBy
+          ? `${pagesReadSentence(data.findings, 0, data.blockedBy, "merchant")} `
+          : ""}
         {data.published.at
           ? `The theme was last read ${formatDay(data.published.at)}.`
           : "The theme has not been read yet."}{" "}

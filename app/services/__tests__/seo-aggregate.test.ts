@@ -613,3 +613,39 @@ describe("B9 on a shop with one market", () => {
     expect(CHECKS.map((c) => c.code)).not.toContain("A6");
   });
 });
+
+describe("the pages-read sentence for the merchant (R2-19, R2-20)", () => {
+  function rows(n: number): ScanRowLike[] {
+    const out: ScanRowLike[] = [];
+    for (let i = 0; i < n; i += 1) out.push(row(i));
+    return out;
+  }
+
+  it("keeps the operator's wording by default and gives the merchant plain words", () => {
+    const empty = aggregateFindings([]);
+    expect(pagesReadSentence(empty, 500)).toContain("Fill catalogue");
+    const merchant = pagesReadSentence(empty, 500, null, "merchant");
+    expect(merchant).not.toContain("Fill catalogue");
+    expect(merchant).not.toContain("this table");
+    expect(merchant).toContain("No product has been read from your catalogue yet");
+  });
+
+  it("names the shop's own settings and where to look, never the file", () => {
+    const blocked = aggregateFindings(rows(3));
+    expect(pagesReadSentence(blocked, 500, "GPTBot")).toContain("robots.txt");
+    const merchant = pagesReadSentence(blocked, 500, "GPTBot", "merchant");
+    expect(merchant).toContain("Your shop's own settings turn GPTBot away");
+    expect(merchant).toContain("Online Store, Themes");
+    expect(merchant).not.toMatch(/robots|liquid|below/);
+  });
+
+  it("separates thousands for the merchant only", () => {
+    const big: ScanRowLike[] = [];
+    for (let i = 0; i < 20000; i += 1) {
+      big.push(i < 500 ? row(i, { scannedAt: BULK, status: "ok" }) : row(i));
+    }
+    const aggregate = aggregateFindings(big);
+    expect(pagesReadSentence(aggregate, 500)).toContain("500 of 20000 pages read");
+    expect(pagesReadSentence(aggregate, 500, null, "merchant")).toContain("500 of 20,000 pages read");
+  });
+});

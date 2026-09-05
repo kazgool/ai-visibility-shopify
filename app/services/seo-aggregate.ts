@@ -24,6 +24,7 @@
 
 import { isOurNode } from "./conflicts";
 import { CHECK_LABEL, findingsOf, type Finding, type FindingCode } from "./seo-findings";
+import { formatCount } from "./report-metrics";
 
 /**
  * One SeoScan row, as much of it as any aggregate here reads. Declared
@@ -530,37 +531,52 @@ export function pagesReadSentence(
   aggregate: FindingsAggregate,
   budget: number,
   blockedBy: string | null = null,
+  /**
+   * Who reads it. The operator workspace at /app/seo keeps the wording it has
+   * always had. The merchant dashboard reads the same facts in the words a
+   * shop owner has: no file names, no "this table" on a screen with no table,
+   * and no button named from another screen (R2-19, R2-20).
+   */
+  audience: "operator" | "merchant" = "operator",
 ): string {
   const { products, pagesAttempted, pagesRead, couldNotBeRead } = aggregate;
+  const merchant = audience === "merchant";
+  const n = (value: number): string => (merchant ? formatCount(value) : String(value));
   // State one of three: the catalogue has never been read, so there is nothing
   // to scan and the thing to do is the catalogue pass. Said as "not started",
   // never as a count, because a screen full of zeros reads as finished
   // (4 September 2026, the same class as the "0 of 50" bug in CLAUDE.md).
   if (products === 0) {
-    return (
-      "No products have been read into this table yet, so there are no pages to " +
-      "fetch and none of the checks below can run. Run Fill catalogue on the " +
-      "dashboard first; the nightly page read starts the night after that."
-    );
+    return merchant
+      ? "No product has been read from your catalogue yet, so there is no page to open and " +
+          "none of the checks can run. The first catalogue read starts from this app's home " +
+          "screen; the nightly page read starts the night after that."
+      : "No products have been read into this table yet, so there are no pages to " +
+          "fetch and none of the checks below can run. Run Fill catalogue on the " +
+          "dashboard first; the nightly page read starts the night after that.";
   }
   // The scan is not waiting for a night that will do anything: the shop's own
   // robots.txt turns it away. Promising "starting tonight" here is the one
   // sentence on this card that the app already knows it will never keep
   // (QA of 3 September 2026).
   if (blockedBy) {
-    return (
-      `Your robots.txt disallows ${blockedBy}, so no product page is fetched ` +
-      `and none of the page checks below can run. robots.txt lives in your ` +
-      `theme as robots.txt.liquid.`
-    );
+    return merchant
+      ? `Your shop's own settings turn ${blockedBy} away, so no product page can be opened and ` +
+          "none of the checks that read a page can run. Where to look in Shopify: Online Store, " +
+          "Themes, your current theme, then Edit code; the file that tells search engines what " +
+          "they may read is in the templates. If you are not sure, ask whoever built your theme " +
+          "to allow it."
+      : `Your robots.txt disallows ${blockedBy}, so no product page is fetched ` +
+          `and none of the page checks below can run. robots.txt lives in your ` +
+          `theme as robots.txt.liquid.`;
   }
   const remaining = products - pagesAttempted;
   const nights = budget > 0 ? Math.ceil(remaining / budget) : 0;
   if (pagesAttempted === 0) {
     return (
-      `No product pages have been read yet, out of ${products}. ` +
-      `The nightly pass reads up to ${budget} a night` +
-      (nights > 1 ? `, so this catalogue takes ${nights} nights.` : ", starting tonight.")
+      `No product pages have been read yet, out of ${n(products)}. ` +
+      `The nightly pass reads up to ${n(budget)} a night` +
+      (nights > 1 ? `, so this catalogue takes ${n(nights)} nights.` : ", starting tonight.")
     );
   }
   // State two of three: every page that was waiting has been read. State three
@@ -571,16 +587,16 @@ export function pagesReadSentence(
       ? "; every page is up to date"
       : nights <= 1
         ? "; the rest by tomorrow night"
-        : `; the rest over the next ${nights} nights`;
+        : `; the rest over the next ${n(nights)} nights`;
   // The numerator is pages that answered, not pages attempted. With attempted
   // here, a store whose whole storefront is behind the password read
   // "355 of 355 pages read." directly above "355 of the 355 pages fetched
   // could not be read" - the card contradicting itself in four lines.
   const failed =
     couldNotBeRead > 0
-      ? `; ${couldNotBeRead} more could not be read`
+      ? `; ${n(couldNotBeRead)} more could not be read`
       : "";
-  return `${pagesRead} of ${products} pages read${failed}${rest}.`;
+  return `${n(pagesRead)} of ${n(products)} pages read${failed}${rest}.`;
 }
 
 // --- B1 across the catalogue, for the Structured data card ------------------

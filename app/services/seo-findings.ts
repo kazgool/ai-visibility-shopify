@@ -469,8 +469,11 @@ export const OWNER_LABEL: Record<FindingCode, string> = {
   B10: "Titles that are missing, or get cut off in a search result on a phone",
   B11: "Descriptions that are missing, or get cut off in a search result on a phone",
   B12: "Pages whose largest heading is not the product",
-  B13: "Products that show no preview when someone shares them",
-  B14: "Products that show no preview card on X",
+  // Two checks about shared links, named by where the preview is missing, so a
+  // merchant can tell them apart: one is the preview on WhatsApp, Facebook and
+  // most apps, the other the card on X, formerly Twitter (M3, 5 September 2026).
+  B13: "Products with no preview when shared on WhatsApp, Facebook and most apps",
+  B14: "Products with no preview card when shared on X, formerly Twitter",
   B15: "Photos with no description of what is in them",
   B16: "Links on the page that lead nowhere",
   B17: "Products with very little text on the page",
@@ -599,7 +602,15 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
     what:
       "The page names a longer address as its own, so Google splits attention between two " +
       "versions of the same product.",
-    where: "Same file, same visit. The report names the exact line.",
+    // "Same file, same visit. The report names the exact line." was written
+    // for the mockup, where this step followed the one about product links;
+    // built rows are ordered by count, so "same file" could come first, and
+    // no report of this app names a line (R2-22). What it actually gives: the
+    // spreadsheet of affected products, by handle.
+    where:
+      "Your theme decides which address a page names as its own. A developer changes it in " +
+      "one place and it applies to every page; the spreadsheet of affected products lists " +
+      "each one by its address.",
   },
   B3: {
     what:
@@ -754,9 +765,12 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
     what:
       "The file that tells search engines where they may go has been changed from what Shopify " +
       "ships, and one wrong line in it can hide the whole shop.",
+    // No file name and no "the report names the lines": the file is named by
+    // where it is, and no report of this app names a line (5 September 2026).
     where:
-      "It lives in your theme as robots.txt.liquid. Shopify calls editing it an unsupported " +
-      "change. A developer reads it; the report names the lines.",
+      "It is a file in your theme, under Edit code, in the templates. Shopify calls editing it " +
+      "an unsupported change. A developer reads it and puts back what Shopify ships, or " +
+      "removes the line that hides your products.",
   },
   B24: {
     what:
@@ -864,8 +878,8 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   B10: "Every title is missing, or gets cut off in a search result on a phone",
   B11: "Every description is missing, or gets cut off in a search result on a phone",
   B12: "No product page uses the product as its largest heading",
-  B13: "No product shows a preview when someone shares it",
-  B14: "No product shows a preview card on X",
+  B13: "No product shows a preview when shared on WhatsApp, Facebook and most apps",
+  B14: "No product shows a preview card when shared on X, formerly Twitter",
   B15: "No photo has a description of what is in it",
   B16: "Every product page carries links that lead nowhere",
   B17: "Every product has very little text on its page",

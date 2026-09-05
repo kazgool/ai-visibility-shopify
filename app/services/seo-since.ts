@@ -17,7 +17,7 @@
 
 import { CHECK_LABEL, type FindingCode } from "./seo-findings";
 import { CHECKS } from "./seo-aggregate";
-import { csvRows } from "./report-metrics";
+import { csvRows, formatCount } from "./report-metrics";
 
 /** A stored SeoSnapshot row, as a loader hands it to the browser. */
 export type FactsRow = {
@@ -273,10 +273,42 @@ export function sinceMethodLine(before: FactsRow, today: FactsRow | null): strin
   return `${source} ${when}${manual}`;
 }
 
-/** What the card says instead of a table when no snapshot exists. */
+/**
+ * The line under the heading on the merchant surfaces. Same facts as
+ * `sinceMethodLine`; the by-hand case no longer says "snapshot" or "setup
+ * code", which are the operator's words (5 September 2026).
+ */
+export function ownerSinceMethodLine(before: FactsRow, today: FactsRow | null): string {
+  const source =
+    "Both columns are counted the same way, from one catalogue read and the page reads as they stood.";
+  const when = today
+    ? `Today's figures are from the catalogue pass of ${formatDay(today.takenAt)}.`
+    : "No catalogue pass has run since the starting point was recorded, so there is no today column yet.";
+  const manual =
+    before.takenBy === "manual"
+      ? " This starting point was recorded by hand, after the work had already begun, so it is a since-this-date and not a since-the-start."
+      : "";
+  return `${source} ${when}${manual}`;
+}
+
+/** What the operator's card says instead of a table when no snapshot exists. */
 export const NO_SNAPSHOT_SENTENCE =
   "No before snapshot exists for this shop: the setup code was applied before this app recorded one. " +
   "Until an operator takes one, this card can say what the store looks like today but not what changed.";
+
+/**
+ * The same fact for the merchant surfaces, in words a shop owner has, and
+ * naming the surface it is on rather than "this card" on a sheet of paper
+ * (R2-18). "Snapshot", "setup code" and "operator" stay on /app/seo.
+ */
+export function ownerNoSnapshotSentence(surface: "screen" | "paper"): string {
+  const here = surface === "paper" ? "this report" : "this card";
+  return (
+    "We have no record of how your store stood before this work began, because the work " +
+    `started before this app began keeping one. Until a starting point is recorded, ${here} ` +
+    "can say what your store looks like today but not what has changed."
+  );
+}
 
 /** "30 of 50", or "30" for a figure that is its own denominator. */
 export function figure(value: number | null, denominator: number | null): string {
@@ -399,6 +431,39 @@ export function ownerSinceRows(table: SinceTable): NamedSinceRow[] {
 export type NamedSinceRow = SinceRow & { ownerLabel: string };
 
 /**
+ * The unchanged rows the merchant surfaces would show, and the line that
+ * stands in for them.
+ *
+ * Counted over the same rows `ownerSinceRows` keeps: the fixed figures with a
+ * plain label, never the per-code rows. The screen used to print
+ * `sinceTable`'s own line - "32 figures are unchanged" - under a table of
+ * twelve figures, because twenty-one of the thirty-two were finding rows the
+ * merchant is deliberately never shown (R1 1.2).
+ */
+export function ownerUnchangedRows(table: SinceTable): NamedSinceRow[] {
+  return table.unchanged
+    .filter((row) => !row.key.startsWith("finding:"))
+    .map((row) => ({ row, ownerLabel: ownerFigureLabel(row) }))
+    .filter((r): r is { row: SinceRow; ownerLabel: string } => r.ownerLabel !== null)
+    .map(({ row, ownerLabel }) => ({ ...row, ownerLabel }));
+}
+
+/** "9 figures are unchanged.", over the merchant's rows only; null when none is. */
+export function ownerUnchangedLine(table: SinceTable): string | null {
+  const unchanged = ownerUnchangedRows(table).length;
+  if (unchanged === 0) return null;
+  return `${unchanged} ${unchanged === 1 ? "figure is" : "figures are"} unchanged.`;
+}
+
+/** The since figure on a merchant surface: "30 of 50", with a thousands separator. */
+export function ownerFigure(value: number | null, denominator: number | null): string {
+  if (value === null) return "not read at the time";
+  return denominator === null
+    ? formatCount(value)
+    : `${formatCount(value)} of ${formatCount(denominator)}`;
+}
+
+/**
  * A plain label for a row of `ownerSinceRows`, or null when this release has
  * none.
  *
@@ -488,6 +553,11 @@ export const WRITTEN_NOT_YET_SENTENCE =
   "Not counted yet: the snapshot was taken after the last catalogue pass, so what this app has written " +
   "since then is counted on the next pass.";
 
+/** The same for the merchant surfaces, without the operator's word for the row. */
+export const OWNER_WRITTEN_NOT_YET_SENTENCE =
+  "Not counted yet: the starting point was recorded after the last catalogue pass, so what this app " +
+  "has written since then is counted on the next pass.";
+
 // --- CSV (section 1.3) -----------------------------------------------------
 
 // The cell writer and the row writer are shared with the Report export rather
@@ -542,5 +612,63 @@ export function writtenCsv(before: FactsRow, today: FactsRow | null): string {
     ["What this app wrote since then", "Count", "Earliest", "Latest"],
     ...rows.map((r) => [r.label, r.count, r.earliest ?? "", r.latest ?? ""]),
     [WRITTEN_OMISSION_SENTENCE],
+  ]);
+}
+
+// --- the merchant's then-and-now file ----------------------------------------
+
+/**
+ * The then-and-now spreadsheet the merchant dashboard offers, from the same
+ * two rows as `sinceCsv` and in the words the dashboard uses.
+ *
+ * `sinceCsv` above is the operator's file: FIGURES labels, one row per check
+ * code, ISO dates and "by unlock". The dashboard's button pointed at it (R1
+ * 2.4, R2-12), so a merchant pressing "Spreadsheet: then and now" received
+ * "Meta title", "GTIN", "Product node" and check codes as row prefixes. This
+ * file reads OWNER_FIGURE_LABEL and OWNER_WRITTEN_LABEL, both typed and total,
+ * drops the per-code rows the way `ownerSinceRows` does, and writes the dates
+ * the way the card does. `heading` is the report heading the other four
+ * merchant files start with, so the file names its shop and its date on line
+ * one however it is renamed.
+ */
+export function ownerSinceCsv(heading: string, before: FactsRow, today: FactsRow | null): string {
+  const table = sinceTable(before, today);
+  const rows = [...ownerSinceRows(table), ...ownerUnchangedRows(table)];
+  const body = rows.map((r) => [
+    r.ownerLabel,
+    r.before === null ? "not read at the time" : r.before,
+    r.beforeDenominator === null ? "" : r.beforeDenominator,
+    r.today === null ? "not read" : r.today,
+    r.todayDenominator === null ? "" : r.todayDenominator,
+    differenceLabel(r),
+  ]);
+  const written = writtenRows(before, today);
+  const writtenBlock: (string | number)[][] =
+    written === null
+      ? [[OWNER_WRITTEN_NOT_YET_SENTENCE]]
+      : written.length === 0
+        ? [[WRITTEN_EMPTY_SENTENCE]]
+        : [
+            ["What this app wrote since then", "Count", "Earliest", "Latest"],
+            ...written
+              .map((r) => ({ r, label: ownerWrittenLabel(r) }))
+              .filter((x): x is { r: WrittenRow; label: string } => x.label !== null)
+              .map(({ r, label }) => [
+                label,
+                r.count,
+                r.earliest ? formatDay(r.earliest) : "",
+                r.latest ? formatDay(r.latest) : "",
+              ]),
+          ];
+  return csvRows([
+    [heading],
+    [sinceHeading(before)],
+    [ownerSinceMethodLine(before, today)],
+    [],
+    ["Products that have", "Then", "Out of", "Now", "Out of", "Change"],
+    ...body,
+    [],
+    ...writtenBlock,
+    [OWNER_WRITTEN_OMISSION_SENTENCE],
   ]);
 }

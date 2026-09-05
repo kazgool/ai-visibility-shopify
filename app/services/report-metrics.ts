@@ -719,6 +719,23 @@ export function csvRows(rows: (string | number)[][]): string {
 }
 
 /**
+ * A count with a thousands separator: 20000 reads "20,000".
+ *
+ * For the merchant surfaces - the dashboard, the printed report and the
+ * sentence cells of the spreadsheets. The numeric cells of a spreadsheet stay
+ * plain, because "20,000" in a count column is text to Excel and will not sort
+ * or sum. Hand-rolled rather than toLocaleString so the output does not depend
+ * on the locale of the machine that rendered it: a merchant document must read
+ * the same from the server and from the browser (5 September 2026).
+ */
+export function formatCount(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const [whole, fraction] = Math.abs(value).toString().split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}${grouped}${fraction !== undefined ? `.${fraction}` : ""}`;
+}
+
+/**
  * The family table.
  *
  * It carried a "Values found" column beside "Products stating it", on the

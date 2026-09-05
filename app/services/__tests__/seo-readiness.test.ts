@@ -25,7 +25,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  CSV_CONTEXT,
   GROUP_ORDER,
+  MERCHANT_REASON,
+  UNEXPLAINED_REASON,
+  allOf,
   buildReadiness,
   codeSource,
   columnAccount,
@@ -35,11 +39,16 @@ import {
   groupsPartitionReadSet,
   listingMethod,
   listingReadiness,
+  nProducts,
+  readinessMethod,
   readinessOf,
   shopWideCrossReference,
   shopWideItems,
   shopWideMethod,
+  shopWideScope,
+  unreadSentence,
   type Readiness,
+  type SurfaceContext,
 } from "../seo-readiness";
 import {
   FINDING_OWNER,
@@ -51,6 +60,19 @@ import {
 import { CHECKS, aggregateFindings, type ScanRowLike } from "../seo-aggregate";
 
 const DAY = "2026-09-04T03:45:00.000Z";
+
+/** The screen with every referent rendered, for the sentences that point at things. */
+const SCREEN: SurfaceContext = {
+  surface: "screen",
+  groups: "above",
+  shopWide: "above",
+  counted: true,
+  collectionsTotal: true,
+  blogTotal: true,
+  listingKpi: true,
+  dial: true,
+  readLine: true,
+};
 
 /** One row, with the codes it carries. `page: false` means never read. */
 function row(
@@ -362,8 +384,8 @@ describe("the fixes that cover the whole shop", () => {
       catalogue: 189,
       publishedReasons: null,
     });
-    expect(shopWideMethod(readiness, items)).toContain("100 percent");
-    expect(shopWideMethod(readiness, [])).toContain("Nothing affects every product");
+    expect(shopWideMethod(readiness, items, SCREEN)).toContain("100 percent");
+    expect(shopWideMethod(readiness, [], SCREEN)).toContain("Nothing affects every product");
   });
 });
 
@@ -443,6 +465,7 @@ describe("every check in the vocabulary is accounted for in a column", () => {
           rows: findings.rows,
           clean: findings.clean,
           shopWideCodes: readiness.shopWideCodes,
+          ctx: SCREEN,
         });
         expect(account.balanced, `${source} column on ${store.name}`).toBe(true);
         total += account.total;
@@ -484,9 +507,15 @@ describe("the Google listing card answers from the same source as the rest of th
       { deliveryStated: false, returnsStated: false },
       189,
     );
-    const method = listingMethod(listing);
+    const method = listingMethod(listing, SCREEN);
     // The number the KPI prints, printed again by the sentence that explains it.
     expect(method).toContain(`${listing.inPlace} of ${listing.total} above`);
+    // And where the tile is not rendered, the same figure without the pointer
+    // (R1 1.3, R2-07): never "above" on a surface with nothing above.
+    const alone = listingMethod(listing, { surface: "screen", listingKpi: false });
+    expect(alone).toContain(`${listing.inPlace} of ${listing.total} in place`);
+    expect(alone).not.toContain("above");
+    expect(listingMethod(listing, CSV_CONTEXT)).not.toContain("above");
     const byConstruction = listing.properties.filter((p) => p.basis === "byConstruction");
     expect(byConstruction.length).toBe(4);
     expect(method).toContain(`those ${byConstruction.length} are in place`);
@@ -496,8 +525,8 @@ describe("the Google listing card answers from the same source as the rest of th
   it("claims nothing either way when nothing has been read", () => {
     const listing = listingReadiness(null, null, 0);
     expect(listing.inPlace).toBe(0);
-    expect(listingMethod(listing)).toContain("not been read yet");
-    expect(listingMethod(listing)).not.toContain("are in place");
+    expect(listingMethod(listing, SCREEN)).toContain("not been read yet");
+    expect(listingMethod(listing, SCREEN)).not.toContain("are in place");
   });
 });
 
@@ -562,10 +591,13 @@ describe("the row that says this app is not working", () => {
       ],
     });
     const item = items.find((i) => i.key === "B6")!;
-    expect(item.why).toContain("The app embed is not active in the theme.");
+    // The recorded reason, in the merchant's words and never the operator's
+    // string (R1 2.3).
+    expect(item.why).toContain(MERCHANT_REASON["The app embed is not active in the theme."]);
+    expect(item.why).not.toContain("The app embed is not active in the theme.");
     expect(item.why).toContain("The product itself");
     // Said once, not once per kind.
-    expect(item.why!.split("The app embed is not active").length - 1).toBe(1);
+    expect(item.why!.split("not switched on in your theme").length - 1).toBe(1);
   });
 
   it("says what it does not know and what would settle it when it has no cause", () => {
@@ -582,6 +614,263 @@ describe("the row that says this app is not working", () => {
     const item = items.find((i) => i.key === "B6")!;
     expect(item.why).toContain("We cannot say");
     expect(item.why).toContain("next nightly page read");
+  });
+});
+
+// --- the fixes of 5 September 2026 ------------------------------------------
+
+describe("the shop-wide threshold is 100 percent of the total the check is measured over (M1)", () => {
+  /** 50 catalogue rows, 46 pages read; a catalogue check on all 50, a page check on all 46. */
+  function fortySixOfFifty(catalogueCode = "A5", pageCode = "B12"): ScanRowLike[] {
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, [catalogueCode, pageCode]));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, [catalogueCode], { status: "error" }));
+    return rows;
+  }
+
+  it("measures a catalogue check over the catalogue and a page check over the read set", () => {
+    const readiness = readinessOf(fortySixOfFifty());
+    expect(readiness.catalogueRead).toBe(50);
+    expect(readiness.readSet).toBe(46);
+    expect(readiness.shopWideCodes).toEqual(["A5", "B12"]);
+    expect(shopWideScope("A5", readiness)).toEqual({ over: "catalogue", of: 50 });
+    expect(shopWideScope("B12", readiness)).toEqual({ over: "readSet", of: 46 });
+    const items = shopWideItems(readiness, {
+      deliveryStated: true,
+      returnsStated: true,
+      barcode: null,
+      brand: null,
+      productCode: null,
+      photo: null,
+      catalogue: 50,
+      publishedReasons: null,
+    });
+    expect(items.find((i) => i.key === "A5")!.appliesTo).toContain("Found on all 50 products in your catalogue.");
+    expect(items.find((i) => i.key === "B12")!.appliesTo).toContain("Found on all 46 products whose page we read.");
+    // The method line names both totals rather than one for all.
+    const method = shopWideMethod(readiness, items, SCREEN);
+    expect(method).toContain("all 50 products in your catalogue");
+    expect(method).toContain("all 46 products whose page we read");
+  });
+
+  it("keeps a catalogue check on every read page but not every catalogue row as per-product", () => {
+    // A5 on the 46 read rows only: 46 of 46 read, 46 of 50 in the catalogue.
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, ["A5"]));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, [], { status: "error" }));
+    const readiness = readinessOf(rows);
+    expect(readiness.shopWideCodes).toEqual([]);
+    expect(readiness.merchant).toBe(46);
+  });
+
+  for (const store of STORES) {
+    it(`holds on ${store.name}`, () => {
+      const readiness = readinessOf(store.rows);
+      const findings = aggregateFindings(store.rows);
+      for (const code of readiness.shopWideCodes) {
+        const scope = shopWideScope(code, readiness);
+        const found = findings.rows.find((r) => r.code === code)!;
+        // The shop-wide sentence and the findings row name the same total.
+        expect(found.count, `${store.name}: ${code}`).toBe(scope.of);
+        expect(found.denominator, `${store.name}: ${code}`).toBe(scope.of);
+      }
+      expect(groupsPartitionReadSet(readiness)).toBe(true);
+    });
+  }
+});
+
+describe("the clean line groups by denominator (R1 1.1)", () => {
+  it("names both totals when the page column has two", () => {
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, []));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, [], { status: "error" }));
+    const findings = aggregateFindings(rows);
+    const readiness = readinessOf(rows);
+    const b5 = findings.clean.find((r) => r.code === "B5")!;
+    expect(b5.denominator).toBe(50);
+    expect(findings.pagesRead).toBe(46);
+    const account = columnAccount({
+      source: "B",
+      rows: findings.rows,
+      clean: findings.clean,
+      shopWideCodes: readiness.shopWideCodes,
+      ctx: SCREEN,
+    });
+    const clean = account.lines[0];
+    expect(clean).toMatch(/\d+ checks found nothing at all on 46 pages; 1 check found nothing at all on 50 pages, so there is nothing to show\./);
+    expect(account.balanced).toBe(true);
+  });
+});
+
+describe("sentences point only at what the surface renders (root cause A)", () => {
+  const rows = fiftyProducts();
+  const findings = aggregateFindings(rows);
+  const readiness = readinessOf(rows);
+  const REFERENTS = [
+    /\babove\b/,
+    /\bbelow\b/,
+    /\bthis screen\b/,
+    /\bthis report\b/,
+    /\bthis card\b/,
+    /\bthe dial\b/,
+    /\bthe line above\b/,
+    /\bfoot of\b/,
+  ];
+
+  it("names nothing on a spreadsheet", () => {
+    const lines = [
+      ...(["A", "B"] as const).flatMap(
+        (source) =>
+          columnAccount({
+            source,
+            rows: findings.rows,
+            clean: findings.clean,
+            shopWideCodes: readiness.shopWideCodes,
+            ctx: CSV_CONTEXT,
+          }).lines,
+      ),
+      shopWideMethod(readiness, [], CSV_CONTEXT),
+      readinessMethod(readiness, [], CSV_CONTEXT),
+      unreadSentence(readinessOf(twentyThousand()), 0, CSV_CONTEXT) ?? "",
+      listingMethod(listingReadiness(null, null, 50), CSV_CONTEXT),
+    ];
+    for (const line of lines) {
+      for (const referent of REFERENTS) {
+        expect(referent.test(line), `"${referent.source}" in a spreadsheet line: ${line}`).toBe(false);
+      }
+    }
+  });
+
+  it("points at the counted card only when it is rendered", () => {
+    const b = (ctx: SurfaceContext) =>
+      columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx });
+    expect(b({ ...SCREEN, counted: true }).lines.join(" ")).toContain("at the foot of this screen");
+    expect(b({ ...SCREEN, counted: false }).lines.join(" ")).not.toContain("foot of");
+    expect(b({ surface: "paper", counted: true }).lines.join(" ")).toContain("at the foot of this report");
+  });
+
+  it("points at a collections or blog total only when one is rendered", () => {
+    const a = columnAccount({ source: "A", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: { ...SCREEN, collectionsTotal: false } });
+    expect(a.lines.join(" ")).toContain("counted against your collections");
+    expect(a.lines.join(" ")).not.toContain("own total above");
+    const b = columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: { ...SCREEN, blogTotal: false } });
+    expect(b.lines.join(" ")).toContain("counted against your blog posts");
+    expect(b.lines.join(" ")).not.toContain("own total above");
+    expect(columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: SCREEN }).lines.join(" ")).toContain("own total above");
+  });
+
+  it("says where the groups are, or nothing, from the shop-wide method line", () => {
+    expect(shopWideMethod(readiness, [], { surface: "screen", groups: "above" })).toContain("in the groups above");
+    expect(shopWideMethod(readiness, [], { surface: "paper", groups: "below" })).toContain("in the groups below");
+    expect(shopWideMethod(readiness, [], { surface: "screen", groups: null })).not.toContain("above");
+  });
+
+  it("names the dial only where it is drawn", () => {
+    expect(readinessMethod(readiness, [], { surface: "screen", dial: true, shopWide: "below" })).toContain("The dial is drawn");
+    expect(readinessMethod(readiness, [], { surface: "screen", dial: false, shopWide: "below" })).not.toContain("dial");
+  });
+
+  it("says nothing was shown above when no bar is drawn", () => {
+    const empty = aggregateFindings([]);
+    const a = columnAccount({ source: "A", rows: empty.rows, clean: empty.clean, shopWideCodes: [], ctx: SCREEN });
+    expect(a.lines[a.lines.length - 1]).toContain("none with something found");
+    expect(a.lines[a.lines.length - 1]).not.toContain("0 shown above");
+  });
+});
+
+describe("the products in no group, in one sentence (R2-16)", () => {
+  it("tells apart pages never opened from pages that could not be read, and says they are the same pages", () => {
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, []));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
+    const readiness = readinessOf(rows);
+    const findings = aggregateFindings(rows);
+    expect(readiness.awaitingPage).toBe(4);
+    expect(findings.couldNotBeRead).toBe(4);
+    const sentence = unreadSentence(readiness, findings.couldNotBeRead, SCREEN)!;
+    expect(sentence).toContain("4 of 50 products have been read from your catalogue, and their page was opened but could not be read");
+    expect(sentence).toContain("the same 4 the line above counts as could not be read");
+    expect(sentence).not.toContain("not been opened yet");
+    // Without the read line above it, the sentence stands on its own.
+    expect(unreadSentence(readiness, findings.couldNotBeRead, { surface: "paper" })).not.toContain("line above");
+  });
+
+  it("names both kinds when both exist", () => {
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 40; i += 1) rows.push(row(i, []));
+    for (let i = 40; i < 46; i += 1) rows.push(row(i, [], { page: false }));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
+    const sentence = unreadSentence(readinessOf(rows), aggregateFindings(rows).couldNotBeRead, SCREEN)!;
+    expect(sentence).toContain("10 of 50 products have a catalogue row but are not fully checked yet");
+    expect(sentence).toContain("6 have not had their page opened yet");
+    expect(sentence).toContain("4 were opened but could not be read");
+  });
+
+  it("is null when every product is fully checked", () => {
+    expect(unreadSentence(readinessOf(fiftyProducts()), 0, SCREEN)).toBeNull();
+  });
+});
+
+describe("counts in words (R2-24, R2-27)", () => {
+  it("pluralises and separates thousands", () => {
+    expect(nProducts(1)).toBe("1 product");
+    expect(nProducts(20000)).toBe("20,000 products");
+    expect(allOf(1, "whose page we read")).toBe("the one product whose page we read");
+    expect(allOf(46, "whose page we read")).toBe("all 46 products whose page we read");
+  });
+
+  it("reads as English on a one-product store", () => {
+    const readiness = readinessOf([row(1, ["A15", "B25"])]);
+    const items = shopWideItems(readiness, {
+      deliveryStated: true,
+      returnsStated: true,
+      barcode: { have: 0, of: 1 },
+      brand: null,
+      productCode: null,
+      photo: null,
+      catalogue: 1,
+      publishedReasons: null,
+    });
+    const text = [
+      ...items.flatMap((i) => [i.appliesTo, i.title, i.what]),
+      shopWideMethod(readiness, items, SCREEN),
+      shopWideCrossReference(readiness, items, "below"),
+      listingMethod(listingReadiness({ products: 1, withVendor: 1, withImage: 1, withBarcode: 0 }, null, 1), SCREEN),
+    ].join(" ");
+    expect(text).not.toMatch(/\ball 1\b/);
+    expect(text).not.toMatch(/\b1 products\b/);
+    expect(text).toContain("the one product");
+  });
+});
+
+describe("the reasons the page read records reach the merchant in plain words (R1 2.3)", () => {
+  const rows: ScanRowLike[] = [];
+  for (let i = 0; i < 12; i += 1) rows.push(row(i, ["B6"]));
+  const readiness = readinessOf(rows);
+  const facts = (reason: string) => ({
+    deliveryStated: true,
+    returnsStated: true,
+    barcode: null,
+    brand: null,
+    productCode: null,
+    photo: null,
+    catalogue: 12,
+    publishedReasons: [{ nodeType: "WebSite/SearchAction", emitted: false, reason }],
+  });
+
+  it("translates a recorded reason and never prints the operator's sentence", () => {
+    const raw =
+      "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.";
+    const item = shopWideItems(readiness, facts(raw)).find((i) => i.key === "B6")!;
+    expect(item.why).toContain(MERCHANT_REASON[raw]);
+    expect(item.why).not.toContain("node");
+    expect(item.why).toContain("Your shop and its search box");
+  });
+
+  it("says so when it cannot explain a reason, rather than printing it", () => {
+    const item = shopWideItems(readiness, facts("Something new the scan wrote.")).find((i) => i.key === "B6")!;
+    expect(item.why).toContain(UNEXPLAINED_REASON);
+    expect(item.why).not.toContain("Something new the scan wrote");
   });
 });
 
@@ -611,6 +900,14 @@ const FORBIDDEN: { name: string; pattern: RegExp }[] = [
   { name: "Open Graph", pattern: /\bopen graph\b/i },
   { name: "H1", pattern: /\bh1\b/i },
   { name: "meta", pattern: /\bmeta\b/i },
+  { name: "metafield", pattern: /\bmetafields?\b/i },
+  { name: "snapshot", pattern: /\bsnapshots?\b/i },
+  { name: "operator", pattern: /\boperators?\b/i },
+  { name: "setup code", pattern: /\bsetup code\b/i },
+  { name: "robots.txt", pattern: /\brobots\b/i },
+  { name: "liquid", pattern: /\bliquid\b/i },
+  { name: "Fill catalogue", pattern: /\bfill catalogue\b/i },
+  { name: "a check code", pattern: /\b[AB]\d{1,2}\b/ },
 ];
 
 describe("the language rule of the merchant dashboard", () => {
@@ -677,25 +974,36 @@ describe("the language rule of the merchant dashboard", () => {
     const strings = [
       ...readiness.groups.flatMap((g) => [g.title, g.summary, g.foot]),
       ...items.flatMap((i) => [i.title, i.what, i.why ?? "", i.where, i.appliesTo, i.ownerNote]),
-      shopWideMethod(readiness, items),
+      shopWideMethod(readiness, items, SCREEN),
+      shopWideMethod(readiness, items, CSV_CONTEXT),
       shopWideCrossReference(readiness, items, "below"),
       shopWideCrossReference(readiness, items, "above"),
+      shopWideCrossReference(readiness, items, null),
+      readinessMethod(readiness, items, SCREEN),
+      readinessMethod(readiness, items, { surface: "screen", groups: null, shopWide: null }),
+      unreadSentence(readinessOf(twentyThousand()), 0, SCREEN) ?? "",
       listingMethod(
         listingReadiness(
           { products: 189, withVendor: 189, withImage: 171, withBarcode: 0 },
           { deliveryStated: false, returnsStated: false },
           189,
         ),
+        SCREEN,
       ),
-      ...(["A", "B"] as const).flatMap(
-        (source) =>
-          columnAccount({
-            source,
-            rows: findings.rows,
-            clean: findings.clean,
-            shopWideCodes: readiness.shopWideCodes,
-          }).lines,
+      ...(["A", "B"] as const).flatMap((source) =>
+        [SCREEN, CSV_CONTEXT].flatMap(
+          (ctx) =>
+            columnAccount({
+              source,
+              rows: findings.rows,
+              clean: findings.clean,
+              shopWideCodes: readiness.shopWideCodes,
+              ctx,
+            }).lines,
+        ),
       ),
+      ...Object.values(MERCHANT_REASON),
+      UNEXPLAINED_REASON,
     ];
     for (const text of strings) {
       for (const word of FORBIDDEN) {

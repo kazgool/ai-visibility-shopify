@@ -46,6 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     domain: source.domain,
     findings: source.findings,
     readiness: source.readiness,
+    blockedBy: source.blockedBy,
     since: source.since,
     business: source.business,
     published: source.published,

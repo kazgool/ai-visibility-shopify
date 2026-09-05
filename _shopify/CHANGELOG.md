@@ -16,6 +16,135 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Two QA rounds on the merchant dashboard, adjudicated and fixed (5 September 2026)
+
+`QA-SEO-DASHBOARD-R1.md` and `QA-SEO-DASHBOARD-R2.md`, read independently and
+adjudicated into six root causes. Server only; nothing in an extension
+changed. Fixed: R1 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3;
+R2-01 to R2-29; and M1, M2, M3 from the adjudication.
+
+**Root cause A: sentences that assumed the screen.** Every sentence that
+points at another element - "above", "below", "at the foot of this screen",
+"the dial", "the 4 of 10 above" - was written once in the screen's layout and
+then printed verbatim on paper and copied into a spreadsheet, where the thing
+it pointed at was elsewhere or nowhere (R1 2.1, R2-01 to R2-08). Those
+sentences are now produced by functions that take a `SurfaceContext`: the
+surface (`screen`, `paper`, `csv`) and what that surface renders in that
+state. A referent is named only when the caller says it is rendered; on a
+spreadsheet nothing is pointed at, ever. Applied to `columnAccount`,
+`shopWideMethod`, `shopWideCrossReference`, `listingMethod`, the new
+`readinessMethod` (the readiness card's method line, which named the dial on
+a store that draws none) and the new `unreadSentence`. `rowScopeNote` is now
+rendered on the screen as well as on paper, which is what the previous entry
+claimed (R2-17). The blog row prints "not checked yet" in the same state the
+collections row does (R2-06). The test renders the twelve stores round 2
+used, on both surfaces, and asserts that every pointer present has its
+referent in the same markup and that no unlisted "above" or "below" survives;
+the five spreadsheets are asserted to contain no pointer at all.
+
+**Root cause B: guards that could not fail.** The group steps were
+`useState(false)` plus Polaris Collapsible, which renders no children when
+closed, so without JavaScript the steps did not exist and the vocabulary
+guard reading the server markup never saw them (R1 2.5, 4.1, R2-14, R2-26).
+They are now a native `<details>`/`<summary>`: in the markup, no script
+needed, focusable and keyboard operable, and the mockup's note is true. The
+cross-render figure test asserted a bare substring, which "5" satisfied on any
+page containing "50" (R1 4.3, R2-15). Every `KeyFigure` now carries a `token`
+("26 of 50", "2 fixes that cover the whole shop") asserted with digit
+boundaries inside the region of each surface it belongs to; asserting it
+anywhere on the page was passed by the group heading two sections down
+carrying the same figure from the same object. The CSV vocabulary guard now
+covers all five merchant files (R1 4.2), driven by a store with every code,
+a shop-wide B6 with raw recorded reasons, and both snapshots. Proved by
+mutation, each reverted: a check code reintroduced in the step line fails the
+screen guard on seven of twelve stores; the operator's label in the
+then-and-now file fails two tests; a tile printing "5" for the clean count
+fails the cross-render test on the three populated stores.
+
+**Root cause C: merchant surfaces received the operator's vocabulary.** The
+"Spreadsheet: then and now" button pointed at `/app/seo/export/since`, the
+operator's file ("Meta title", "GTIN", "Product node", check codes as row
+prefixes, "by unlock") (R1 2.4, R2-12). A new gated resource route
+`/app/seo/dashboard/export/since` writes `ownerSinceCsv`: `OWNER_FIGURE_LABEL`
+and `OWNER_WRITTEN_LABEL`, dates through `formatDay`, the report heading on
+line one and `exportFilename` naming, so the caption about filenames is true
+of all five (R2-13). The operator route is untouched. The reasons the page
+read records reached the shop-wide row raw ("node", "metafields") (R1 2.3);
+`MERCHANT_REASON` is a record keyed by the exact operator sentence, a reason
+it does not know maps to an honest "we recorded a reason we cannot yet
+explain in plain words" sentence, and `theme-scan.server.test.ts` drives every
+branch of `deriveMissingReasons` and asserts each reason has an entry and the
+record names nothing the function cannot write. The no-snapshot sentence,
+the crawler-turned-away sentence and the empty-catalogue sentence have
+merchant variants (R2-18, R2-19, R2-20); `pagesReadSentence` takes an
+`audience` and `/app/seo` keeps its wording. The step line no longer
+lower-cases labels, so "Google" and "X" keep their case (R2-21). The
+vocabulary guards gained snapshot, operator, setup code, robots, liquid,
+metafield and Fill catalogue, which found and fixed three more leaks on the
+merchant screen: the since card's by-hand line and "not counted yet"
+sentence, and two "operator view" mentions on the published and counted
+cards; and one in the records: B23's step named `robots.txt.liquid` and
+promised "the report names the lines".
+
+**Root cause D: paper did not mirror the screen's honest states.** The strip
+printed `figures.slice(0, 4)`: four tiles of "0 of 0" on an empty store, three
+of the four groups on a store with no page read (R2-09, R2-10). `keyFigures`
+now marks which figures are strip figures and emits none without a read set;
+both surfaces print `nothingGroupedSentence` instead, and the report prints
+no empty groups. The products in no group are a number on paper - "19,500 of
+20,000 products not checked yet", with the reason (R2-11, M2) - and the same
+tile is on the screen. The since section on paper carries the unchanged line
+and the written-since block (R2-29). The read warning is one sentence about
+the pages in no group, telling apart the pages never opened from the pages
+opened and unreadable, and saying the latter are the same pages the read line
+counts (R2-16). The report names the crawler the shop's own settings turn
+away (R2-19).
+
+**Root cause E: denominators and arithmetic.** The clean line quoted the first
+row's total for every clean check while B5 is measured over the pages that
+answered anything; it now groups by denominator the way `cleanSentence` does
+(R1 1.1: "24 checks found nothing at all on 46 pages; 1 check found nothing at
+all on 50 pages"). "32 figures are unchanged" counted 21 per-code rows the
+merchant never sees; `ownerUnchangedLine` counts the rows the merchant's
+table holds (R1 1.2). The Google method line names the tile only where it is
+rendered (R1 1.3). The shop-wide threshold is 100 percent of the total the
+check is measured over: the catalogue for a catalogue-basis check, the read
+set for a page-basis one (M1). A catalogue check on all 50 catalogue rows is
+shop-wide because of those 50, and the row says "Found on all 50 products in
+your catalogue" while its findings row says 50 of 50; one on all 46 read pages
+but 46 of 50 catalogue rows is not on every product and stays per-product.
+The read set still has to exist: shop-wide means "taken out of the grouping",
+and a store whose pages were never read names no shop-wide code whatever its
+catalogue rows carry. The findings file's State cell is one state (R2-23):
+"Found on every product in the catalogue, so it is one fix for the whole
+shop", or "whose page we read". Plurals: "the one product whose page we read",
+never "all 1 of the products" (R2-24). Every count on the screen, on paper
+and in the sentence cells of the files carries a thousands separator
+(`formatCount`, hand-rolled so it does not depend on the machine's locale);
+numeric cells stay plain so they sort. The 4 September entry below reads "500
+of 20,000" and the surfaces now agree with it (R2-27). The pages-never-read
+store exports 30 page checks as "Not checked yet", not 31: B30 counts blog
+posts and is not a row; the entry below and the PRD table said 31 and now say
+30 (R2-28).
+
+**Root cause F: copy.** B2's step promised "the report names the exact line";
+no report of this app names a line, and the mockup's "same file" order does
+not survive sorting by count (R2-22); it now says what the spreadsheet gives.
+The mockup claimed the report lists affected products by name; the products
+file does, by handle (R2-25). The two shared-link checks read as one finding
+with contradicting figures; `OWNER_LABEL` and `SHOP_WIDE_LABEL` for B13 and
+B14 now name the places: "on WhatsApp, Facebook and most apps" and "on X,
+formerly Twitter" (M3).
+
+**Known and deferred.** The printed report still runs to five pages with blank
+space; the page count needs a browser. The two operator export routes keep
+their old filenames (Amendment 8). Round 2's six UNVERIFIABLE items stand as
+listed there: the page count and `window.print()` inside the admin frame; a
+real store showing the Google card's brand and barcode counts disagreeing with
+the A1 row; the rolling `today` snapshot lagging the scan table; Excel on
+Windows and the byte order mark; layout at 375 px; whether a scan row can ever
+carry A6, A10, A11 or B30.
+
 ### The printed report, read on paper (5 September 2026)
 
 Ten defects, found by printing the report from the dev store and reading it.
@@ -182,9 +311,11 @@ a button that can only fail is not a button.
 **A check that could not run is a sentence in the file too.** Every count column
 is a string for that reason: a numeric column cannot hold "not checked yet", and
 a spreadsheet full of zeros for checks that never ran is the "0 of 50" failure in
-a form a merchant can sort by. On the store whose pages were never read, all 31
-page checks export "Not checked yet" against "No product page has been read
-yet". On the empty store, `findings` is 40 sentences, `shopwide` is its headings
+a form a merchant can sort by. On the store whose pages were never read, all 30
+page-check rows export "Not checked yet" against "No product page has been
+read yet" (this entry said 31: the page column has 31 codes, but B30 counts
+blog posts and is not a row of this file - corrected 5 September 2026,
+R2-28). On the empty store, `findings` is 40 sentences, `shopwide` is its headings
 and one line saying why it is empty, and `products` says "No product carries a
 finding, so this file has no rows. That is the answer, not a failure."
 

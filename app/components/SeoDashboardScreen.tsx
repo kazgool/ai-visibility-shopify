@@ -19,14 +19,12 @@
 // specification uses, and a check code never appears. seo-findings.ts says why
 // at OWNER_LABEL, and seo-readiness.test.ts asserts it.
 
-import { useState } from "react";
 import {
   Badge,
   BlockStack,
   Box,
   Button,
   Card,
-  Collapsible,
   Divider,
   InlineGrid,
   InlineStack,
@@ -40,8 +38,18 @@ import {
   type ThemeNodeAggregate,
 } from "../services/seo-aggregate";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
-import { dialArc } from "../services/report-metrics";
-import { LISTING_UNMEASURED_SENTENCE, dashboardDerived } from "../services/seo-report";
+import { dialArc, formatCount } from "../services/report-metrics";
+import {
+  LISTING_UNMEASURED_SENTENCE,
+  cleanLabel,
+  dashboardDerived,
+  needSomethingLabel,
+  notCheckedLabel,
+  ofCatalogue,
+  rowScopeNote,
+  shopWideHeading,
+  shopWideLabel,
+} from "../services/seo-report";
 import {
   FINDING_OWNER,
   OWNER_LABEL,
@@ -54,25 +62,31 @@ import {
   columnAccount,
   groupWordFor,
   listingMethod,
+  nothingGroupedSentence,
+  readinessMethod,
   shopWideCrossReference,
   shopWideMethod,
+  unreadSentence,
   type GroupView,
   type ListingProperty,
   type Readiness,
   type ReadinessGroup,
+  type ShopWideItem,
+  type SurfaceContext,
 } from "../services/seo-readiness";
 import {
-  NO_SNAPSHOT_SENTENCE,
+  ownerNoSnapshotSentence,
   ownerWrittenLabel,
+  OWNER_WRITTEN_NOT_YET_SENTENCE,
   OWNER_WRITTEN_OMISSION_SENTENCE,
   WRITTEN_EMPTY_SENTENCE,
-  WRITTEN_NOT_YET_SENTENCE,
   differenceLabel,
-  figure,
   formatDay,
+  ownerFigure,
+  ownerSinceMethodLine,
   ownerSinceRows,
+  ownerUnchangedLine,
   sinceHeading,
-  sinceMethodLine,
   sinceTable,
   writtenRows,
   type FactsRow,
@@ -220,15 +234,17 @@ function Kpi({
           <Text as="p" variant="headingLg" numeric>
             {value}
           </Text>
-          <Text as="p" variant="bodySm" tone="subdued" numeric>
-            {denominator}
-            {percent === null ? "" : ` (${percent}%)`}
-          </Text>
+          {denominator === "" ? null : (
+            <Text as="p" variant="bodySm" tone="subdued" numeric>
+              {denominator}
+              {percent === null ? "" : ` (${percent}%)`}
+            </Text>
+          )}
         </InlineStack>
         <Text as="p" variant="bodySm">
           {label}
         </Text>
-        <Bar count={count} of={of} colour={colour} label={`${value} ${label}, ${denominator}`} />
+        <Bar count={count} of={of} colour={colour} label={`${value} ${label}${denominator === "" ? "" : `, ${denominator}`}`} />
       </BlockStack>
     </Card>
   );
@@ -255,7 +271,7 @@ function HeroDial({ clean, catalogue }: { clean: number; catalogue: number }) {
       width="100%"
       style={{ maxWidth: 250 }}
       role="img"
-      aria-label={`${clean} of ${readSet} products have nothing of their own to fix`}
+      aria-label={`${formatCount(clean)} of ${formatCount(readSet)} products have nothing of their own to fix`}
     >
       <path
         d="M 25 130 A 85 85 0 0 1 195 130"
@@ -275,10 +291,10 @@ function HeroDial({ clean, catalogue }: { clean: number; catalogue: number }) {
         fontWeight="700"
         fill="#1f1f1f"
       >
-        {clean}
+        {formatCount(clean)}
       </text>
       <text x="110" y="136" textAnchor="middle" fontSize="12.5" fill="#5c5c5c">
-        {`of ${readSet} products`}
+        {`of ${formatCount(readSet)} products`}
       </text>
     </svg>
   );
@@ -319,7 +335,7 @@ function Segments({ readiness }: { readiness: Readiness }) {
           <div
             key={p.key}
             style={{ width: `${(p.count / of) * 100}%`, background: p.colour, height: 18 }}
-            title={`${p.count} ${p.name}`}
+            title={`${formatCount(p.count)} ${p.name}`}
           />
         ))}
       </div>
@@ -343,7 +359,7 @@ function Segments({ readiness }: { readiness: Readiness }) {
               </Text>
             </InlineStack>
             <Text as="span" variant="bodySm" numeric>
-              {`${p.count} of ${of}`}
+              {`${formatCount(p.count)} of ${formatCount(of)}`}
             </Text>
           </InlineStack>
         ))}
@@ -375,7 +391,7 @@ function FindingBar({ row }: { row: CheckRow }) {
             {groupWordFor(row.code)}
           </Text>
           <Text as="span" variant="bodySm" numeric>
-            {`${row.count} of ${row.denominator}`}
+            {`${formatCount(row.count)} of ${formatCount(row.denominator)}`}
           </Text>
         </InlineStack>
       </InlineStack>
@@ -384,7 +400,7 @@ function FindingBar({ row }: { row: CheckRow }) {
         of={row.denominator}
         colour={ownerColour(row.code)}
         height={6}
-        label={`${OWNER_LABEL[row.code]}: ${row.count} of ${row.denominator}, ${groupWordFor(row.code)}`}
+        label={`${OWNER_LABEL[row.code]}: ${formatCount(row.count)} of ${formatCount(row.denominator)}, ${groupWordFor(row.code)}`}
       />
     </BlockStack>
   );
@@ -422,7 +438,7 @@ function ListingBar({ property }: { property: ListingProperty }) {
             {property.requirement}
           </Text>
           <Text as="span" variant="bodySm" numeric>
-            {measured ? `${property.have} of ${property.of}` : missingWord(property)}
+            {measured ? `${formatCount(property.have!)} of ${formatCount(property.of!)}` : missingWord(property)}
           </Text>
         </InlineStack>
       </InlineStack>
@@ -432,7 +448,7 @@ function ListingBar({ property }: { property: ListingProperty }) {
         colour={complete ? COLOUR.good : COLOUR.merchant}
         height={6}
         label={`${property.label}, ${property.requirement}: ${
-          measured ? `${property.have} of ${property.of}` : missingWord(property)
+          measured ? `${formatCount(property.have!)} of ${formatCount(property.of!)}` : missingWord(property)
         }`}
       />
     </BlockStack>
@@ -451,9 +467,67 @@ function Method({ children }: { children: React.ReactNode }) {
 // The four expandable groups
 // ---------------------------------------------------------------------------
 
+/**
+ * One readiness group: the closed state carries the count, the title and a
+ * one-line summary; opening it shows the steps.
+ *
+ * A native <details>/<summary>, not React state and not Polaris Collapsible.
+ * The mockup's note asks for a native disclosure element "so the screen still
+ * works if hydration fails", and the first build used `useState(false)` plus
+ * Collapsible, which renders no children at all when closed: without
+ * JavaScript "What to do" was a button that did nothing and the steps were not
+ * on the page (R1 2.5, R2-26). It also meant the vocabulary guard, which reads
+ * the server markup, could not see the steps at all (R2-14). With <details>
+ * the steps are in the markup, the summary is a native button - focusable,
+ * toggled with Enter and Space, announced with its expanded state by every
+ * screen reader - and no script has to run for any of it.
+ */
 function GroupPanel({ view }: { view: GroupView }) {
-  const [open, setOpen] = useState(false);
   const hasSteps = view.rows.length > 0;
+  const head = (
+    /* Wraps rather than holding one line: at 375 wide inside the admin
+       iframe a fixed row squeezes the disclosure hint off the edge, and
+       Built for Shopify 4.1.2 fails a collapsed section with no way to
+       expand it. */
+    <InlineStack gap="300" blockAlign="center" wrap>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-block",
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          background: GROUP_COLOUR[view.group],
+          flex: "0 0 auto",
+        }}
+      />
+      {/* The count with what it is out of, as the report's heading prints
+          it, so "380 of 20,000" is one token on both surfaces. */}
+      <InlineStack gap="100" blockAlign="baseline" wrap={false}>
+        <Text as="span" variant="headingLg" numeric>
+          {formatCount(view.count)}
+        </Text>
+        <Text as="span" variant="bodySm" tone="subdued" numeric>
+          {`of ${formatCount(view.denominator)}`}
+        </Text>
+      </InlineStack>
+      <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+        <BlockStack gap="050">
+          <Text as="p" variant="headingSm">
+            {view.title}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {view.summary}
+          </Text>
+        </BlockStack>
+      </div>
+      {hasSteps ? (
+        <Text as="span" variant="bodySm" tone="subdued">
+          What to do
+        </Text>
+      ) : null}
+    </InlineStack>
+  );
   return (
     <Box
       padding="300"
@@ -462,61 +536,19 @@ function GroupPanel({ view }: { view: GroupView }) {
       borderRadius="200"
       background="bg-surface"
     >
-      <BlockStack gap="200">
-        {/* Wraps rather than holding one line: at 375 wide inside the admin
-            iframe a fixed row squeezes the disclosure button off the edge,
-            and Built for Shopify 4.1.2 fails a collapsed section with no way
-            to expand it. */}
-        <InlineStack gap="300" blockAlign="center" wrap>
-          <span
-            aria-hidden="true"
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: 5,
-              background: GROUP_COLOUR[view.group],
-              flex: "0 0 auto",
-            }}
-          />
-          <Text as="span" variant="headingLg" numeric>
-            {view.count}
-          </Text>
-          <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-            <BlockStack gap="050">
-              <Text as="p" variant="headingSm">
-                {view.title}
-              </Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                {view.summary}
-              </Text>
-            </BlockStack>
-          </div>
-          {hasSteps ? (
-            <Button
-              variant="plain"
-              disclosure={open ? "up" : "down"}
-              onClick={() => setOpen((v) => !v)}
-              ariaExpanded={open}
-              ariaControls={`group-${view.group}`}
-            >
-              {open ? "Hide the steps" : "What to do"}
-            </Button>
-          ) : null}
-        </InlineStack>
-
-        {hasSteps ? (
-          <Collapsible
-            open={open}
-            id={`group-${view.group}`}
-            transition={{ duration: "150ms", timingFunction: "ease-in-out" }}
-          >
+      {hasSteps ? (
+        <details>
+          <summary style={{ cursor: "pointer" }}>{head}</summary>
+          <Box paddingBlockStart="300">
             <BlockStack gap="300">
               <Divider />
               {view.rows.map((row, index) => (
                 <BlockStack gap="100" key={row.code}>
                   <Text as="p" variant="bodySm">
-                    <b>{`${index + 1}. ${row.count} of ${row.denominator}: ${row.label.toLowerCase()}.`}</b>
+                    {/* The label as written, never lower-cased: it carries
+                        proper nouns (Google, X), and lower-casing them made
+                        "for google" and "on x" (R2-21). */}
+                    <b>{`${index + 1}. ${row.label}: ${formatCount(row.count)} of ${formatCount(row.denominator)}.`}</b>
                     {` ${row.what}`}
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
@@ -528,9 +560,11 @@ function GroupPanel({ view }: { view: GroupView }) {
                 {view.foot}
               </Text>
             </BlockStack>
-          </Collapsible>
-        ) : null}
-      </BlockStack>
+          </Box>
+        </details>
+      ) : (
+        head
+      )}
     </Box>
   );
 }
@@ -586,8 +620,8 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
   const headerParts = [
     domain,
     readiness.readSet > 0
-      ? `${readiness.readSet} of ${readiness.products} products fully checked`
-      : `${readiness.products} products in the catalogue`,
+      ? `${formatCount(readiness.readSet)} of ${formatCount(readiness.products)} products fully checked`
+      : `${formatCount(readiness.products)} products in the catalogue`,
     readiness.lastPageReadAt
       ? `last page read ${formatDay(readiness.lastPageReadAt)}`
       : "no product page read yet",
@@ -600,6 +634,35 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
   const counted = findings.rows.filter((r) => r.state === "counted");
   const catalogueFound = found.filter((r) => r.source === "A");
   const pageFound = found.filter((r) => r.source === "B");
+  // What this screen renders in this state, so every sentence that points at
+  // another element points only at one that is there. The order of the cards
+  // is the order of this file: read warnings, the headline strip, readiness,
+  // shop-wide, since, the checks, Google, what the page publishes, counted.
+  const countedShown = counted.filter((r) => r.count > 0 && r.totals).length > 0;
+  const groupsShown = readiness.readSet > 0;
+  const readinessCtx: SurfaceContext = {
+    surface: "screen",
+    groups: groupsShown ? "above" : null,
+    shopWide: "below",
+    dial: groupsShown,
+  };
+  const shopWideCtx: SurfaceContext = {
+    surface: "screen",
+    groups: groupsShown ? "above" : null,
+    shopWide: null,
+  };
+  const checksCtx: SurfaceContext = {
+    surface: "screen",
+    groups: groupsShown ? "above" : null,
+    shopWide: wide.length > 0 ? "above" : null,
+    counted: countedShown,
+    collectionsTotal: collections !== null && collections.checked > 0,
+    blogTotal: blogPosts !== null && blogPosts.read > 0,
+  };
+  const listingCtx: SurfaceContext = {
+    surface: "screen",
+    listingKpi: readiness.readSet > 0 && !listing.unmeasured,
+  };
 
   return (
     <Page title="SEO" subtitle={headerParts.join("  |  ")}>
@@ -609,6 +672,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
           findings={findings}
           budget={budget}
           blockedBy={blockedBy}
+          groupsShown={groupsShown}
         />
 
         {readiness.readSet > 0 ? (
@@ -616,40 +680,63 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
           // which is roughly 250 to 300 px narrower than the browser window,
           // so a breakpoint chosen against the window puts four tiles side by
           // side in a frame that has room for two.
+          <BlockStack gap="200">
+            {/* The strip's heading, read by a screen reader and by the test
+                that asserts each tile inside its own region; the report
+                prints the same heading over the same tiles. */}
+            <Text as="h2" variant="headingMd" visuallyHidden>
+              Where this shop stands today
+            </Text>
           <InlineGrid columns={{ xs: 1, sm: 1, md: 2, lg: 4 }} gap="400">
             <Kpi
               count={readiness.clean}
               of={readiness.products}
               colour={COLOUR.good}
-              value={String(readiness.clean)}
-              label="products with nothing of their own to fix"
-              denominator={`of ${readiness.products} in your catalogue`}
+              value={formatCount(readiness.clean)}
+              label={cleanLabel(readiness.clean)}
+              denominator={ofCatalogue(readiness.products)}
             />
             <Kpi
               count={readiness.needSomething}
               of={readiness.products}
               colour={COLOUR.merchant}
-              value={String(readiness.needSomething)}
-              label="products needing something specific"
-              denominator={`of ${readiness.products} in your catalogue`}
+              value={formatCount(readiness.needSomething)}
+              label={needSomethingLabel(readiness.needSomething)}
+              denominator={ofCatalogue(readiness.products)}
             />
+            {readiness.notChecked > 0 ? (
+              // The fifth band of the bar as a tile of its own, the same tile
+              // the report prints, so the products in no group are a number
+              // in the strip and not only a segment of a bar (R2-11).
+              <Kpi
+                count={readiness.notChecked}
+                of={readiness.products}
+                colour={COLOUR.faint}
+                value={formatCount(readiness.notChecked)}
+                label={notCheckedLabel(readiness.notChecked)}
+                denominator={ofCatalogue(readiness.products)}
+              />
+            ) : null}
             <Kpi
               count={null}
               of={null}
               colour={COLOUR.merchant}
               value={String(wide.length)}
-              label="fixes that cover the whole shop"
-              denominator="listed once, not per product"
+              label={shopWideLabel(wide.length)}
+              denominator=""
             />
-            <Kpi
-              count={listing.inPlace}
-              of={listing.total}
-              colour={COLOUR.good}
-              value={String(listing.inPlace)}
-              label="details Google asks for, in place"
-              denominator={`of ${listing.total}`}
-            />
+            {listing.unmeasured ? null : (
+              <Kpi
+                count={listing.inPlace}
+                of={listing.total}
+                colour={COLOUR.good}
+                value={String(listing.inPlace)}
+                label="details Google asks for, in place"
+                denominator={`of ${listing.total}`}
+              />
+            )}
           </InlineGrid>
+          </BlockStack>
         ) : null}
 
         {/* How ready your shop is */}
@@ -661,12 +748,12 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
               </Text>
               <Text as="p" variant="bodySm" tone="subdued">
                 {readiness.readSet > 0
-                  ? `Every one of the ${readiness.readSet} products we have fully checked falls into exactly one of these four.${
+                  ? `Every one of the ${formatCount(readiness.readSet)} products we have fully checked falls into exactly one of these four.${
                       readiness.notChecked > 0
-                        ? ` The other ${readiness.notChecked} are the last band on the bar, and the dial counts them in.`
+                        ? ` The other ${formatCount(readiness.notChecked)} are the last band on the bar, and the dial counts them in.`
                         : ""
                     }`
-                  : "No product has been fully checked yet, so there is nothing to group. This card fills in as the nightly read works through your catalogue."}
+                  : nothingGroupedSentence("screen")}
               </Text>
             </BlockStack>
 
@@ -691,17 +778,11 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
             ) : null}
 
             <Method>
-              A product with several gaps is counted once, in the group of whoever has to move
-              first: you, then us, then your theme. This is not a grade and nothing is weighted.
-              {readiness.shopWideCodes.length > 0
-                ? ` Problems that affect every product equally are not counted here at all, because those are one decision each and not ${readiness.readSet}. ${shopWideCrossReference(readiness, wide, "below")}`
-                : " A problem that affected every product equally would be moved out of this card and into the shop-wide one below; today there is none."}{" "}
-              The dial is drawn against your whole catalogue, and a product joins one of the four
-              groups only once its catalogue row and its live page have both been read.
+              {readinessMethod(readiness, wide, readinessCtx)}
               {readiness.awaitingPage > 0
-                ? ` ${readiness.awaitingPage} of ${readiness.products} ${
+                ? ` ${formatCount(readiness.awaitingPage)} of ${formatCount(readiness.products)} ${
                     readiness.awaitingPage === 1 ? "product is" : "products are"
-                  } still waiting for a first page read, and ${
+                  } still waiting to be fully checked, and ${
                     readiness.awaitingPage === 1 ? "it is" : "they are"
                   } in none of the four groups.`
                 : ""}
@@ -714,9 +795,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
           <BlockStack gap="400">
             <BlockStack gap="100">
               <Text as="h2" variant="headingMd">
-                {wide.length === 0
-                  ? "Fixes that cover the whole shop"
-                  : `${wide.length} ${wide.length === 1 ? "fix that covers" : "fixes that cover"} the whole shop`}
+                {shopWideHeading(wide.length)}
               </Text>
               <Text as="p" variant="bodySm" tone="subdued">
                 {/* No blanket denominator. Two of these three rows are facts
@@ -771,7 +850,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
               </Box>
             ))}
 
-            <Method>{shopWideMethod(readiness, wide)}</Method>
+            <Method>{shopWideMethod(readiness, wide, shopWideCtx)}</Method>
           </BlockStack>
         </Card>
 
@@ -797,8 +876,8 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
                 <Text as="h3" variant="headingSm">
                   {findings.bulkRead === 0
                     ? "Found in your Shopify admin - no product has been read yet"
-                    : `Found in your Shopify admin - ${findings.bulkRead} products${
-                        collections ? `, ${collections.checked} collections` : ""
+                    : `Found in your Shopify admin - ${formatCount(findings.bulkRead)} products${
+                        collections ? `, ${formatCount(collections.checked)} collections` : ""
                       }`}
                 </Text>
                 {catalogueFound.length === 0 ? (
@@ -809,11 +888,13 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
                   catalogueFound.map((row) => <FindingBar key={row.code} row={row} />)
                 )}
                 <CollectionRows collections={collections} />
+                {pageScopeNotes(catalogueFound, findings.bulkRead)}
                 <ColumnNotes
                   rows={findings.rows}
                   clean={findings.clean}
                   source="A"
                   shopWideCodes={readiness.shopWideCodes}
+                  ctx={checksCtx}
                 />
               </BlockStack>
 
@@ -821,7 +902,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
                 <Text as="h3" variant="headingSm">
                   {findings.pagesRead === 0
                     ? "Found on the live page - no page has been opened yet"
-                    : `Found on the live page - ${findings.pagesRead} pages opened`}
+                    : `Found on the live page - ${formatCount(findings.pagesRead)} pages opened`}
                 </Text>
                 {pageFound.length === 0 ? (
                   <Text as="p" variant="bodySm" tone="subdued">
@@ -831,11 +912,13 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
                   pageFound.map((row) => <FindingBar key={row.code} row={row} />)
                 )}
                 <BlogRow blogPosts={blogPosts} />
+                {pageScopeNotes(pageFound, findings.pagesRead)}
                 <ColumnNotes
                   rows={findings.rows}
                   clean={findings.clean}
                   source="B"
                   shopWideCodes={readiness.shopWideCodes}
+                  ctx={checksCtx}
                 />
               </BlockStack>
             </InlineGrid>
@@ -879,7 +962,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
               </>
             )}
 
-            <Method>{listingMethod(listing)}</Method>
+            <Method>{listingMethod(listing, listingCtx)}</Method>
           </BlockStack>
         </Card>
 
@@ -912,28 +995,56 @@ function ReadWarnings({
   findings,
   budget,
   blockedBy,
+  groupsShown,
 }: {
   readiness: Readiness;
   findings: FindingsAggregate;
   budget: number;
   blockedBy: string | null;
+  groupsShown: boolean;
 }) {
+  // One sentence about the products in no group, telling apart the pages
+  // never opened from the pages opened and not readable, and saying that the
+  // latter are the same pages the read line above counts. The card used to
+  // say "4 more could not be read", then "4 have not been opened yet", then
+  // "4 did not answer" - three sentences, one fact (R2-16).
+  const unread = unreadSentence(readiness, findings.couldNotBeRead, {
+    surface: "screen",
+    groups: groupsShown ? "below" : null,
+    readLine: true,
+  });
   return (
     <Card>
       <BlockStack gap="200">
-        <Text as="p">{pagesReadSentence(findings, budget, blockedBy)}</Text>
-        {readiness.awaitingPage > 0 && readiness.products > 0 ? (
+        <Text as="p">{pagesReadSentence(findings, budget, blockedBy, "merchant")}</Text>
+        {unread ? (
           <Text as="p" variant="bodySm" tone="subdued">
-            {`${readiness.awaitingPage} of ${readiness.products} products have been read from your catalogue but their live page has not been opened yet, so they are counted in none of the four groups below. Nothing is claimed about a page nobody has read.`}
-          </Text>
-        ) : null}
-        {findings.couldNotBeRead > 0 ? (
-          <Text as="p" variant="bodySm" tone="subdued">
-            {`${findings.couldNotBeRead} of the pages we asked for did not answer the way a search engine would see them. Those are not counted as clean.`}
+            {unread}
           </Text>
         ) : null}
       </BlockStack>
     </Card>
+  );
+}
+
+/**
+ * The line a row needs when its own denominator is not its column's - on the
+ * screen as well as on paper. The CHANGELOG of 5 September said the line was
+ * on both; it was on the report only (R2-17).
+ */
+function pageScopeNotes(rows: CheckRow[], columnDenominator: number) {
+  const notes = rows
+    .map((row) => rowScopeNote(row, columnDenominator))
+    .filter((note): note is string => note !== null);
+  if (notes.length === 0) return null;
+  return (
+    <BlockStack gap="100">
+      {notes.map((note) => (
+        <Text as="p" variant="bodySm" tone="subdued" key={note}>
+          {note}
+        </Text>
+      ))}
+    </BlockStack>
   );
 }
 
@@ -956,7 +1067,7 @@ function CollectionRows({ collections }: { collections: CollectionSeoQueue | nul
   if (rows.length === 0) {
     return (
       <Text as="p" variant="bodySm" tone="subdued">
-        {`Nothing was found on your ${collections.checked} collections.`}
+        {`Nothing was found on your ${formatCount(collections.checked)} collections.`}
       </Text>
     );
   }
@@ -986,11 +1097,20 @@ function BlogRow({
 }: {
   blogPosts: { read: number; withoutLinks: number } | null;
 }) {
-  if (!blogPosts || blogPosts.read === 0) return null;
+  // The same sentence the collections row prints in the same state, rather
+  // than nothing: the column's accounting names a check that counts blog
+  // posts, and a reader looked for it here and found no line (R2-06).
+  if (!blogPosts || blogPosts.read === 0) {
+    return (
+      <Text as="p" variant="bodySm" tone="subdued">
+        Your blog posts have not been checked yet, so nothing about them is counted here.
+      </Text>
+    );
+  }
   if (blogPosts.withoutLinks === 0) {
     return (
       <Text as="p" variant="bodySm" tone="subdued">
-        {`All ${blogPosts.read} blog posts we read link to at least one product or category.`}
+        {`All ${formatCount(blogPosts.read)} blog posts we read link to at least one product or category.`}
       </Text>
     );
   }
@@ -1052,13 +1172,15 @@ function ColumnNotes({
   clean,
   source,
   shopWideCodes,
+  ctx,
 }: {
   rows: CheckRow[];
   clean: CheckRow[];
   source: "A" | "B";
   shopWideCodes: FindingCode[];
+  ctx: SurfaceContext;
 }) {
-  const account = columnAccount({ source, rows, clean, shopWideCodes });
+  const account = columnAccount({ source, rows, clean, shopWideCodes, ctx });
   if (account.lines.length === 0) return null;
   return (
     <BlockStack gap="100">
@@ -1088,7 +1210,7 @@ function SinceCard({
             What has changed since we started
           </Text>
           <Text as="p" tone="subdued">
-            {NO_SNAPSHOT_SENTENCE}
+            {ownerNoSnapshotSentence("screen")}
           </Text>
         </BlockStack>
       </Card>
@@ -1107,7 +1229,7 @@ function SinceCard({
             {sinceHeading(before)}
           </Text>
           <Text as="p" variant="bodySm" tone="subdued">
-            {sinceMethodLine(before, today)}
+            {ownerSinceMethodLine(before, today)}
           </Text>
         </BlockStack>
 
@@ -1150,10 +1272,10 @@ function SinceCard({
                   </div>
                   <InlineStack gap="300" blockAlign="center">
                     <Text as="span" variant="bodySm" tone="subdued" numeric>
-                      {figure(row.before, row.beforeDenominator)}
+                      {ownerFigure(row.before, row.beforeDenominator)}
                     </Text>
                     <Text as="span" variant="bodySm" numeric>
-                      {row.today === null ? "not read" : figure(row.today, row.todayDenominator)}
+                      {row.today === null ? "not read" : ownerFigure(row.today, row.todayDenominator)}
                     </Text>
                     <Text as="span" variant="bodySm" numeric>
                       {differenceLabel(row)}
@@ -1162,14 +1284,17 @@ function SinceCard({
                 </InlineStack>
               ))
             )}
-            {table.unchangedLine ? (
+            {/* Counted over the rows this card shows, never over the per-code
+                rows the merchant is not shown: "32 figures are unchanged"
+                under twelve figures was 21 of them invisible (R1 1.2). */}
+            {ownerUnchangedLine(table) ? (
               <Text as="p" variant="bodySm" tone="subdued">
-                {table.unchangedLine}
+                {ownerUnchangedLine(table)}
               </Text>
             ) : null}
             {collections ? (
               <Text as="p" variant="bodySm" tone="subdued">
-                {`Of your ${collections.checked} collections, ${collections.checked - collections.withFinding} have both a title and a description for Google today. The starting figure for collections was not recorded, so there is no then to compare it with.`}
+                {`Of your ${formatCount(collections.checked)} collections, ${formatCount(collections.checked - collections.withFinding)} have both a title and a description for Google today. The starting figure for collections was not recorded, so there is no then to compare it with.`}
               </Text>
             ) : null}
           </BlockStack>
@@ -1180,7 +1305,7 @@ function SinceCard({
             </Text>
             {written === null ? (
               <Text as="p" variant="bodySm" tone="subdued">
-                {WRITTEN_NOT_YET_SENTENCE}
+                {OWNER_WRITTEN_NOT_YET_SENTENCE}
               </Text>
             ) : written.length === 0 ? (
               <Text as="p" variant="bodySm" tone="subdued">
@@ -1199,7 +1324,7 @@ function SinceCard({
                     {label}
                   </Text>
                   <Text as="span" variant="bodySm" numeric>
-                    {row.count}
+                    {formatCount(row.count)}
                   </Text>
                 </InlineStack>
               ))
@@ -1249,7 +1374,7 @@ function PublishedCard({
           </Text>
           <Text as="p" variant="bodySm" tone="subdued">
             {themeNodes.pagesRead > 0
-              ? `The product itself is counted across all ${themeNodes.pagesRead} pages read. The rest is from one product page.`
+              ? `The product itself is counted across all ${formatCount(themeNodes.pagesRead)} pages read. The rest is from one product page.`
               : "No product page has been read yet."}
           </Text>
         </BlockStack>
@@ -1266,7 +1391,7 @@ function PublishedCard({
                 The product itself, described by your theme
               </Text>
               <Text as="span" variant="bodySm" numeric>
-                {`${themeNodes.theme} of ${themeNodes.pagesRead} pages`}
+                {`${formatCount(themeNodes.theme)} of ${formatCount(themeNodes.pagesRead)} pages`}
               </Text>
             </InlineStack>
             {themeNodes.none > 0 ? (
@@ -1275,7 +1400,7 @@ function PublishedCard({
                   Pages describing no product at all
                 </Text>
                 <Text as="span" variant="bodySm" numeric>
-                  {`${themeNodes.none} of ${themeNodes.pagesRead} pages`}
+                  {`${formatCount(themeNodes.none)} of ${formatCount(themeNodes.pagesRead)} pages`}
                 </Text>
               </InlineStack>
             ) : null}
@@ -1285,7 +1410,7 @@ function PublishedCard({
                   Pages describing two products where there should be one
                 </Text>
                 <Text as="span" variant="bodySm" numeric>
-                  {`${themeNodes.two} of ${themeNodes.pagesRead} pages`}
+                  {`${formatCount(themeNodes.two)} of ${formatCount(themeNodes.pagesRead)} pages`}
                 </Text>
               </InlineStack>
             ) : null}
@@ -1312,7 +1437,7 @@ function PublishedCard({
             ))}
             {unnamed > 0 ? (
               <Text as="p" variant="bodySm" tone="subdued">
-                {`${unnamed} other ${unnamed === 1 ? "kind" : "kinds"} of detail were looked at and are named only in the operator view, because their names are not words you should have to learn.`}
+                {`${unnamed} other ${unnamed === 1 ? "kind" : "kinds"} of detail ${unnamed === 1 ? "was" : "were"} looked at and ${unnamed === 1 ? "is" : "are"} not named here, because ${unnamed === 1 ? "its name is not a word" : "their names are not words"} you should have to learn.`}
               </Text>
             ) : null}
           </BlockStack>
@@ -1370,7 +1495,7 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
           {links ? (
             <BlockStack gap="200">
               <Text as="h3" variant="headingSm">
-                {`Links on a product page, by kind - average over ${links.count} pages`}
+                {`Links on a product page, by kind - average over ${formatCount(links.count)} pages`}
               </Text>
               {linkKinds.map((kind) => (
                 <BlockStack gap="100" key={kind.label}>
@@ -1404,7 +1529,7 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
           {scripts ? (
             <BlockStack gap="200">
               <Text as="h3" variant="headingSm">
-                {`Code your product page loads - average over ${scripts.count} pages`}
+                {`Code your product page loads - average over ${formatCount(scripts.count)} pages`}
               </Text>
               <InlineStack align="space-between" blockAlign="center" gap="200">
                 <Text as="span" variant="bodySm">
@@ -1423,9 +1548,9 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
                 </Text>
               </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
-                The places themselves are named per page in the operator view. This card carries
-                the totals across every page read, and a name summed across pages would say
-                nothing.
+                The places themselves are recorded per page and are not listed here. This card
+                carries the totals across every page read, and a name summed across pages would
+                say nothing.
               </Text>
             </BlockStack>
           ) : null}
@@ -1451,11 +1576,15 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
  * zip - both of which are harder to open than four named files. The mockup was
  * updated to match rather than left disagreeing.
  *
- * The comparison file is the fifth, and it is the existing route: the
- * then-and-now figures already export from /app/seo/export/since, read from
- * the same two snapshot rows. It is offered here only when there is a snapshot
- * to compare against, because that route answers a request with no snapshot
- * with a 409 and a sentence, and a button that can only fail is not a button.
+ * The comparison file is the fifth, at /app/seo/dashboard/export/since. It
+ * used to point at the operator's route, /app/seo/export/since, which writes
+ * the operator's labels and one row per check code; a merchant pressing the
+ * button received "Meta title", "GTIN" and "Product node" (R1 2.4, R2-12). The
+ * merchant route reads the same two rows and writes the words this screen
+ * uses, with the shop and the date in its name like the other four. It is
+ * offered only when there is a starting point to compare against, because the
+ * route answers a request without one with a 409 and a sentence, and a button
+ * that can only fail is not a button.
  *
  * target="_blank" is load-bearing on all of them: Polaris renders `url` as a
  * Remix Link, which would otherwise intercept the click and ask the router for
@@ -1487,7 +1616,7 @@ function TakeItAway({ hasSnapshot }: { hasSnapshot: boolean }) {
             Spreadsheet: what Google asks for
           </Button>
           {hasSnapshot ? (
-            <Button url="/app/seo/export/since" target="_blank" download>
+            <Button url="/app/seo/dashboard/export/since" target="_blank" download>
               Spreadsheet: then and now
             </Button>
           ) : null}

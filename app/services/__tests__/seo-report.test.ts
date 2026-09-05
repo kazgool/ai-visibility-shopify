@@ -16,7 +16,7 @@ import { aggregateFindings, themeNodeAggregate, type ScanRowLike } from "../seo-
 import { readinessOf } from "../seo-readiness";
 import { FINDING_OWNER } from "../seo-findings";
 import { csvCell, csvRows } from "../report-metrics";
-import type { FactsRow } from "../seo-since";
+import { ownerSinceCsv, type FactsRow } from "../seo-since";
 import {
   dashboardDerived,
   exportFilename,
@@ -27,6 +27,7 @@ import {
   productFindingsCsv,
   reportHeading,
   shopWideCsv,
+  stripSentence,
   EXPORT_TABLES,
   type DashboardSource,
 } from "../seo-report";
@@ -82,11 +83,27 @@ function source(rows: ScanRowLike[], over: Partial<DashboardSource> = {}): Dashb
     domain: "republicabio.ro",
     findings: aggregateFindings(rows),
     readiness: readinessOf(rows),
+    blockedBy: null,
     since: { before: null, today: null },
     business: null,
     published: { at: null, reasons: [] },
     ...over,
   };
+}
+
+/** The five merchant spreadsheets for a store, as the routes write them. */
+function merchantFiles(data: DashboardSource, rows: ScanRowLike[]): [string, string][] {
+  const derived = dashboardDerived(data);
+  const files: [string, string][] = [
+    ["findings", findingsCsv(data, NOW)],
+    ["shopwide", shopWideCsv(data, derived, NOW)],
+    ["listing", listingCsv(data, derived, NOW)],
+    ["products", productFindingsCsv(data, rows, NOW)],
+  ];
+  if (data.since.before) {
+    files.push(["since", ownerSinceCsv(reportHeading(data, NOW), data.since.before, data.since.today)]);
+  }
+  return files;
 }
 
 function fiftyProducts(): ScanRowLike[] {
@@ -257,12 +274,44 @@ describe("the report and the screen answer from one place", () => {
       // Never "12 of 12": the scope sentence is denominated in the catalogue,
       // or it says the catalogue size and nothing about being checked.
       if (data.readiness.readSet > 0) {
-        expect(heading).toContain(`${data.readiness.readSet} of ${data.readiness.products}`);
+        expect(heading).toContain(`${data.readiness.readSet} of `);
       } else {
         expect(heading).toContain("in the catalogue");
       }
     });
+
+    it(`puts a figure in the strip only once a product is fully checked, on ${name}`, () => {
+      // The same rule as the screen: tiles only with a read set, one sentence
+      // otherwise (R2-09, R2-10). And every figure carries the exact token
+      // both surfaces print.
+      const figures = keyFigures(data, dashboardDerived(data));
+      const strip = figures.filter((f) => f.strip);
+      if (data.readiness.readSet === 0) {
+        expect(strip).toEqual([]);
+        expect(stripSentence(data)).toContain("nothing to group");
+        expect(figures.filter((f) => f.key.startsWith("group-"))).toEqual([]);
+      } else {
+        expect(strip.length).toBeGreaterThanOrEqual(4);
+        expect(stripSentence(data)).toBeNull();
+      }
+      for (const figure of figures) {
+        expect(figure.token.length).toBeGreaterThan(0);
+        if (figure.of !== null) expect(figure.token).toContain(" of ");
+      }
+    });
   }
+
+  it("states the unchecked products as a number with the reason, with a thousands separator (R2-11, R2-27)", () => {
+    const data = source(twentyThousand());
+    const figures = keyFigures(data, dashboardDerived(data));
+    const notChecked = figures.find((f) => f.key === "notChecked")!;
+    expect(notChecked.value).toBe("19,500");
+    expect(notChecked.of).toBe("of 20,000 in your catalogue");
+    expect(notChecked.token).toBe("19,500 of 20,000");
+    expect(notChecked.method).toContain("19,500 of 20,000 products have been read from your catalogue but their live page has not been opened yet");
+    expect(reportHeading(data, NOW)).toContain("500 of 20,000 products fully checked");
+    expect(keyFigures(source(fiftyProducts()), dashboardDerived(source(fiftyProducts()))).find((f) => f.key === "notChecked")).toBeUndefined();
+  });
 });
 
 describe("the findings export", () => {
@@ -344,7 +393,119 @@ describe("the findings export", () => {
     const table = cells(findingsCsv(data, NOW)).slice(3);
     const line = table.find((l) => l[5]?.includes("one fix for the whole shop"));
     expect(line).toBeTruthy();
+    // One state, not "some" and "every" in one cell (R2-23), and the total
+    // is the check's own: B6 is a catalogue check.
+    expect(line![5]).toBe("Found on every product in the catalogue, so it is one fix for the whole shop");
+    expect(line![5]).not.toContain("some");
   });
+
+  it("names the read set for a shop-wide page check (R2-23, M1)", () => {
+    const data = source(oneEightyNine());
+    const table = cells(findingsCsv(data, NOW)).slice(3);
+    const line = table.find((l) => l[5]?.includes("one fix for the whole shop"))!;
+    expect(line[5]).toBe("Found on every product whose page we read, so it is one fix for the whole shop");
+  });
+});
+
+describe("no spreadsheet points at anything (root cause A, R2-03, R2-05)", () => {
+  const REFERENTS = [
+    /\babove\b/,
+    /\bbelow\b/,
+    /\bthis screen\b/,
+    /\bthis report\b/,
+    /\bthis card\b/,
+    /\bthe dial\b/,
+    /\bfoot of\b/,
+    /\bthe line above\b/,
+  ];
+  const withSnapshot = source(oneEightyNine(), {
+    business: { deliveryStated: false, returnsStated: false },
+    since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current", withBarcode: 4 }) },
+  });
+  const all: [string, DashboardSource, ScanRowLike[]][] = [
+    ...STORES.map(([name, data]) => [name, data, data.readiness.products > 0 ? fiftyProducts() : []] as [string, DashboardSource, ScanRowLike[]]),
+    ["189 with a snapshot", withSnapshot, oneEightyNine()],
+  ];
+  for (const [name, data, rows] of all) {
+    it(`on ${name}`, () => {
+      for (const [table, file] of merchantFiles(data, rows)) {
+        for (const referent of REFERENTS) {
+          const hit = file.match(referent);
+          expect(hit, `${name}: the ${table} file says "${hit?.[0]}"`).toBeNull();
+        }
+      }
+    });
+  }
+});
+
+describe("the vocabulary guard covers all five merchant files (R1 4.2)", () => {
+  const FORBIDDEN = [
+    /\bcanonical\b/i,
+    /\bhreflang\b/i,
+    /\bJSON-LD\b/i,
+    /\bh1\b/i,
+    /\bnoindex\b/i,
+    /\bopen graph\b/i,
+    /\bschema\b/i,
+    /\bgtin\b/i,
+    /\blazy[- ]?load/i,
+    /\bmeta\b/i,
+    /\bmetafields?\b/i,
+    /\bnodes?\b/i,
+    /\bstructured data\b/i,
+    /\bsnapshots?\b/i,
+    /\boperators?\b/i,
+    /\bsetup code\b/i,
+    /\brobots\b/i,
+    /\bliquid\b/i,
+    /\bfill catalogue\b/i,
+    /\b[AB]\d{1,2}\b/,
+  ];
+  // Every code in the vocabulary, a shop-wide B6 with a raw recorded reason,
+  // and both snapshots, so every writer is driven through its jargon paths.
+  const codes = Object.keys(FINDING_OWNER);
+  const rows: ScanRowLike[] = [];
+  for (let i = 0; i < 12; i += 1) {
+    rows.push(row(i, i === 0 ? codes : ["B6", ...codes.filter((_, n) => n % 3 === i % 3)]));
+  }
+  const data = source(rows, {
+    business: { deliveryStated: false, returnsStated: false },
+    since: {
+      before: facts({ findingsByCode: { A1: 12, B17: 4 } }),
+      today: facts({ takenAt: DAY, takenBy: "current", findingsByCode: { A1: 12, B17: 2 } }),
+    },
+    published: {
+      at: DAY,
+      reasons: [
+        {
+          nodeType: "WebSite/SearchAction",
+          emitted: false,
+          reason:
+            "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
+        },
+        {
+          nodeType: "AggregateRating",
+          emitted: false,
+          reason:
+            "The last scan found no rating on this product's page - no review app has written rating metafields for it yet.",
+        },
+      ],
+    },
+  });
+
+  const files = merchantFiles(data, rows);
+  it("drives all five files", () => {
+    expect(files.map(([t]) => t)).toEqual(["findings", "shopwide", "listing", "products", "since"]);
+    expect(data.readiness.shopWideCodes).toContain("B6");
+  });
+  for (const [table, file] of files) {
+    it(`keeps the ${table} file free of it`, () => {
+      for (const pattern of FORBIDDEN) {
+        const hit = file.match(pattern);
+        expect(hit, `the ${table} file says "${hit?.[0]}"`).toBeNull();
+      }
+    });
+  }
 });
 
 describe("the shop-wide export", () => {
@@ -452,13 +613,8 @@ describe("plain characters only, in every file a merchant opens", () => {
     it(`on ${name}`, () => {
       const derived = dashboardDerived(data);
       const rows = data.readiness.products > 0 ? fiftyProducts() : [];
-      const files = [
-        findingsCsv(data, NOW),
-        shopWideCsv(data, derived, NOW),
-        listingCsv(data, derived, NOW),
-        productFindingsCsv(data, rows, NOW),
-      ];
-      for (const file of files) expect(forbidden.test(file), name).toBe(false);
+      expect(derived).toBeTruthy();
+      for (const [, file] of merchantFiles(data, rows)) expect(forbidden.test(file), name).toBe(false);
     });
   }
 });

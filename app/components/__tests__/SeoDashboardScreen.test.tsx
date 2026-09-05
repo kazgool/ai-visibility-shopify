@@ -261,13 +261,15 @@ describe("a 20,000-product store part-way through its first page read", () => {
   const text = render(data(rows));
 
   it("counts against the pages actually read and says how many are waiting", () => {
-    expect(text).toContain("500 of 20000 products fully checked");
-    expect(text).toContain("19500 of 20000 products have been read from your catalogue");
+    // With a thousands separator, on every merchant surface (R2-27).
+    expect(text).toContain("500 of 20,000 products fully checked");
+    expect(text).toContain("19,500 of 20,000 products have been read from your catalogue");
     // The headline is drawn against the catalogue, so it cannot read as
     // complete while 19,500 products have never been examined.
-    expect(text).toContain("of 20000 products");
-    expect(text).toContain("Not checked yet 19500 of 20000");
+    expect(text).toContain("of 20,000 products");
+    expect(text).toContain("Not checked yet 19,500 of 20,000");
     expect(text).not.toContain("380 of 380");
+    expect(text).not.toContain("20000");
   });
 
   it("never claims a product nobody read is clean", () => {
@@ -281,7 +283,11 @@ describe("an empty store", () => {
   const text = render(data([]));
 
   it("says there is nothing to read rather than printing zeros", () => {
-    expect(text).toContain("No products have been read into this table yet");
+    // In the merchant's words: no "this table" on a screen with no table and
+    // no button named from another screen (R2-20).
+    expect(text).toContain("No product has been read from your catalogue yet");
+    expect(text).not.toContain("this table");
+    expect(text).not.toContain("Fill catalogue");
     expect(text).toContain("No product has been fully checked yet");
     expect(text).not.toContain("0 of 0");
   });
@@ -380,15 +386,58 @@ describe("the layout the admin iframe has room for", () => {
     });
   }
 
-  it("keeps every collapsed group openable", () => {
+  it("keeps every collapsed group openable without a script, with its steps in the markup", () => {
+    // A native <details>/<summary>: the summary is a focusable, keyboard
+    // operable control the browser provides, and the steps are in the server
+    // markup whether or not hydration ever runs (R1 2.5, R2-26). Polaris
+    // Collapsible rendered no children when closed.
     const html = renderToStaticMarkup(
       <AppProvider i18n={{}}>
         <SeoDashboardScreen data={data(fiftyProducts())} />
       </AppProvider>,
     );
     const readiness = readinessOf(fiftyProducts());
-    const withSteps = readiness.groups.filter((g) => g.rows.length > 0).length;
-    expect((html.match(/aria-expanded="false"/g) ?? []).length).toBe(withSteps);
+    const withSteps = readiness.groups.filter((g) => g.rows.length > 0);
+    expect((html.match(/<details/g) ?? []).length).toBe(withSteps.length);
+    expect((html.match(/<summary/g) ?? []).length).toBe(withSteps.length);
+    expect(html).not.toContain("<details open");
     expect(html).toContain("What to do");
+    for (const step of withSteps.flatMap((g) => g.rows)) {
+      expect(html).toContain(step.where);
+    }
+  });
+
+  it("carries the B5 scope line on the screen, not only on paper (R2-17)", () => {
+    const rows: ScanRowLike[] = [];
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B17"] : []));
+    for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
+    const text = render(data(rows));
+    expect(text).toContain("is counted out of 50, not 46");
+    // And one sentence about those four pages, not three (R2-16).
+    expect(text).toContain("46 of 50 pages read; 4 more could not be read");
+    expect(text).toContain("the same 4 the line above counts as could not be read");
+    expect(text).not.toContain("did not answer the way a search engine would see them");
+    expect(text).not.toContain("has not been opened yet");
+  });
+
+  it("points the then-and-now button at the merchant's file, and the caption is true of all five", () => {
+    const html = renderToStaticMarkup(
+      <AppProvider i18n={{}}>
+        <SeoDashboardScreen
+          data={data(oneEightyNine(), { since: { before: facts(), today: facts({ takenAt: DAY }) } })}
+        />
+      </AppProvider>,
+    );
+    expect(html).toContain("/app/seo/dashboard/export/since");
+    expect(html).not.toContain("/app/seo/export/since");
+    expect(html).toContain("with the shop and the date in its name");
+  });
+
+  it("names the shop's own settings, and where to look, when a crawler is turned away (R2-19)", () => {
+    const text = render(data(pageReadNeverRan(), { blockedBy: "GPTBot" }));
+    expect(text).toContain("Your shop's own settings turn GPTBot away");
+    expect(text).toContain("Online Store, Themes");
+    expect(text).not.toMatch(/\brobots\b/i);
+    expect(text).not.toMatch(/\bliquid\b/i);
   });
 });

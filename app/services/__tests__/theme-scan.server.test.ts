@@ -11,6 +11,7 @@ import {
   themeRowKey,
   type ThemeScanResult,
 } from "../theme-scan.server";
+import { MERCHANT_REASON } from "../seo-readiness";
 
 function withScript(json: string): string {
   return `<html><head><script type="application/ld+json">${json}</script></head><body></body></html>`;
@@ -532,5 +533,62 @@ describe("mergeNarrowScanIntoDetail", () => {
       product: { ...narrow.product!, nodes: [], passwordProtected: true },
     };
     expect(mergeNarrowScanIntoDetail(richPrevious, walled)).toBe(richPrevious);
+  });
+});
+
+describe("every reason deriveMissingReasons can record has a merchant sentence", () => {
+  // The merchant dashboard, the printed report and the shop-wide spreadsheet
+  // print the recorded reason through MERCHANT_REASON in seo-readiness.ts,
+  // keyed by the exact operator sentence. A reason reworded here without a
+  // matching entry there falls to the "we cannot yet explain" sentence, which
+  // is honest but useless; this test makes that a failure at the source. Every
+  // branch of the function is driven, including the collection page.
+  const base = {
+    embedActive: true,
+    mode: "extend" as const,
+    hasFacts: false,
+    hasSummary: false,
+    hasFitFor: false,
+    hasReturnDays: false,
+    hasDeliveryTime: false,
+    hasRating: false as boolean | null,
+    hasWebSiteNode: false as boolean | null,
+    hasBreadcrumbNode: false as boolean | null,
+    hasCollectionQuestions: false as boolean | null,
+    hasSocialProfiles: false,
+    seoUnlocked: false,
+    isCollectionPage: false,
+  };
+  const inputs = [
+    base,
+    { ...base, embedActive: false },
+    { ...base, seoUnlocked: true },
+    { ...base, seoUnlocked: true, hasWebSiteNode: null, hasBreadcrumbNode: null },
+    { ...base, hasRating: null },
+    { ...base, isCollectionPage: true },
+    { ...base, isCollectionPage: true, hasCollectionQuestions: null },
+    { ...base, mode: "full" as const, hasFacts: true, hasSummary: true, hasRating: true, hasSocialProfiles: true, hasReturnDays: true, hasDeliveryTime: true },
+  ];
+
+  it("maps every recorded reason, and the map holds nothing the function cannot write", () => {
+    const recorded = new Set<string>();
+    for (const input of inputs) {
+      for (const r of deriveMissingReasons(input)) {
+        if (r.reason !== null) recorded.add(r.reason);
+      }
+    }
+    expect(recorded.size).toBeGreaterThan(8);
+    for (const reason of recorded) {
+      expect(MERCHANT_REASON[reason], `no merchant sentence for: ${reason}`).toBeTruthy();
+    }
+    for (const key of Object.keys(MERCHANT_REASON)) {
+      expect(recorded.has(key), `MERCHANT_REASON names a reason the scan never writes: ${key}`).toBe(true);
+    }
+  });
+
+  it("keeps the merchant sentences free of the operator's words", () => {
+    for (const sentence of Object.values(MERCHANT_REASON)) {
+      expect(sentence).not.toMatch(/\b(nodes?|metafields?|scan|operator)\b/i);
+    }
   });
 });
