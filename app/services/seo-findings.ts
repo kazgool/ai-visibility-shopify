@@ -444,7 +444,7 @@ export const FINDING_OWNER: Record<FindingCode, FindingOwner> = {
  * products, stated as a count of products and never as advice.
  */
 export const OWNER_LABEL: Record<FindingCode, string> = {
-  A1: "Products missing a barcode, a brand, a product code or a photo",
+  A1: "Products missing at least one of a barcode, a brand, a product code or a photo",
   A2: "Products whose page shows a different price or stock than the product has",
   A3: "Products sharing their search title or description with another product",
   A4: "Products whose address changed with no forwarding from the old one",
@@ -839,7 +839,7 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
  * record stays total.
  */
 export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
-  A1: "Every product is missing a barcode, a brand, a product code or a photo",
+  A1: "Every product is missing at least one of four details: a barcode, a brand, a product code or a photo",
   A2: "Every product page shows a different price or stock than the product has",
   A3: "Every product shares its search title or description with another product",
   A4: "Every product changed address, and none of the old ones forwards",
@@ -883,4 +883,75 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   B30: "No blog post links to a product or a collection",
   B31: "The main product photo waits before it loads, on every page",
   B32: "Code your product page loads, by source",
+};
+
+/**
+ * Whether the fix for a finding is one act for the whole shop, or one act per
+ * product.
+ *
+ * It exists because the shop-wide card was gluing "One setting, and it applies
+ * to every product page" onto rows whose own instruction tells the merchant to
+ * open each product and fill a field: a barcode is one field per product, and
+ * calling that a setting tells the reader the job is a minute when it is an
+ * afternoon. A finding is listed on that card because it is true of every
+ * product, which says nothing about how many times the fix has to be made.
+ *
+ * A theme change and something for this app to put right are both
+ * `onceForTheShop`: they are made in one place and every page gets them. The
+ * distinction only ever changes the sentence on a merchant-owned row, but the
+ * record is total so a check added tomorrow has to answer the question.
+ */
+export type FixShape = "onceForTheShop" | "perProduct";
+
+export const FIX_SHAPE: Record<FindingCode, FixShape> = {
+  // Every one of these ends "Shopify, Products, open one" or its equivalent.
+  A1: "perProduct",
+  A3: "perProduct",
+  A4: "perProduct",
+  A5: "perProduct",
+  A6: "perProduct",
+  A7: "perProduct",
+  A10: "perProduct",
+  A11: "perProduct",
+  A12: "perProduct",
+  A13: "perProduct",
+  A15: "perProduct",
+  A16: "perProduct",
+  B5: "perProduct",
+  B10: "perProduct",
+  B11: "perProduct",
+  B16: "perProduct",
+  B17: "perProduct",
+  B18: "perProduct",
+  B19: "perProduct",
+  B21: "perProduct",
+  B28: "perProduct",
+  B30: "perProduct",
+  // A switch in the theme editor and a setting in Shopify Markets: one act.
+  B4: "onceForTheShop",
+  B9: "onceForTheShop",
+  // Theme changes: one file, one visit, every page.
+  A2: "onceForTheShop",
+  B1: "onceForTheShop",
+  B2: "onceForTheShop",
+  B3: "onceForTheShop",
+  B8: "onceForTheShop",
+  B12: "onceForTheShop",
+  B13: "onceForTheShop",
+  B14: "onceForTheShop",
+  B20: "onceForTheShop",
+  B22: "onceForTheShop",
+  B23: "onceForTheShop",
+  B24: "onceForTheShop",
+  B25: "onceForTheShop",
+  B26: "onceForTheShop",
+  B31: "onceForTheShop",
+  // Ours to put right, once.
+  B6: "onceForTheShop",
+  B7: "onceForTheShop",
+  B15: "onceForTheShop",
+  // These two state a count and no verdict, so they never reach a card that
+  // asks how a fix is made. They carry a value because the record is total.
+  B29: "onceForTheShop",
+  B32: "onceForTheShop",
 };

@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 
 import { aggregateFindings, themeNodeAggregate, type ScanRowLike } from "../seo-aggregate";
 import { readinessOf } from "../seo-readiness";
+import { FINDING_OWNER } from "../seo-findings";
 import { csvCell, csvRows } from "../report-metrics";
 import type { FactsRow } from "../seo-since";
 import {
@@ -292,11 +293,35 @@ describe("the findings export", () => {
   });
 
   it("uses the merchant vocabulary and never a check code", () => {
-    const text = findingsCsv(source(oneEightyNine()), NOW);
+    // Every code in the vocabulary, so every plain label is actually written
+    // into the file. The record is read as OWNER_LABEL with no fallback: the
+    // `?? row.label` that used to sit there could not fire on a total record
+    // and could only ever have leaked the operator's wording into a merchant's
+    // spreadsheet.
+    const rows: ScanRowLike[] = [];
+    const codes = Object.keys(FINDING_OWNER);
+    for (let i = 0; i < 12; i += 1) {
+      rows.push(row(i, i === 0 ? codes : codes.filter((_, n) => n % 3 === i % 3)));
+    }
+    const text = findingsCsv(source(rows), NOW);
     expect(text).not.toMatch(/\b[AB]\d{1,2}\b/);
     expect(text).toContain("Whose it is");
-    for (const word of ["canonical", "hreflang", "JSON-LD", "H1", "noindex"]) {
-      expect(text.toLowerCase()).not.toContain(word.toLowerCase());
+    for (const pattern of [
+      /\bcanonical\b/i,
+      /\bhreflang\b/i,
+      /\bJSON-LD\b/i,
+      /\bh1\b/i,
+      /\bnoindex\b/i,
+      /\bopen graph\b/i,
+      /\bschema\b/i,
+      /\bgtin\b/i,
+      /\blazy[- ]?load/i,
+      /\bmeta\b/i,
+      /\bnodes?\b/i,
+      /\bstructured data\b/i,
+    ]) {
+      const hit = text.match(pattern);
+      expect(hit === null, `the findings file says "${hit?.[0]}"`).toBe(true);
     }
   });
 

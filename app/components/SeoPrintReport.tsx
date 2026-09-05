@@ -42,18 +42,20 @@ import {
   type Readiness,
 } from "../services/seo-readiness";
 import {
+  BASIS_WORD,
   dashboardDerived,
   keyFigures,
   reportHeading,
+  rowScopeNote,
   LISTING_UNMEASURED_SENTENCE,
   type DashboardSource,
 } from "../services/seo-report";
 import type { CheckRow } from "../services/seo-aggregate";
+import { OWNER_LABEL } from "../services/seo-findings";
 import {
   differenceLabel,
   figure,
   formatDay,
-  ownerFigureLabel,
   ownerSinceRows,
   sinceHeading,
   sinceMethodLine,
@@ -92,11 +94,27 @@ const CSS = `
 .avp .figrow { display: flex; flex-wrap: wrap; gap: 16px; }
 .avp .figrow > div { flex: 1 1 200px; }
 .avp .noprint { margin: 0 0 12px; }
-@page { margin: 14mm; }
+.avp .lead { margin: 0 0 8px; }
+@page { margin: 12mm; }
 @media print {
-  .avp { max-width: none; padding: 0; font-size: 11px; }
+  /* Tighter on paper than on screen, and each section its own unsplittable
+     unit. Nothing splits; what changed is that the units are small enough to
+     pack two or three to a page instead of one. */
+  .avp { max-width: none; padding: 0; font-size: 9.5pt; line-height: 1.3; }
   .avp .noprint { display: none !important; }
-  .avp section { border: 1px solid #999; }
+  .avp h1 { font-size: 15pt; }
+  .avp h2, .avp h3 { font-size: 10.5pt; margin: 0 0 4px; }
+  .avp p { margin: 0 0 4px; }
+  .avp .method { font-size: 8pt; }
+  .avp .fig { font-size: 16pt; }
+  .avp table { font-size: 8.5pt; }
+  .avp th, .avp td { padding: 2px 4px; }
+  .avp section { border: 1px solid #999; padding: 7px; margin: 0 0 7px; }
+  /* A heading may not be the last thing on a page, and a paragraph may not
+     leave one line behind. Neither rule splits a card; both stop a page
+     ending on something that reads as an accident. */
+  .avp h1, .avp h2, .avp h3 { break-after: avoid; page-break-after: avoid; }
+  .avp p { orphans: 2; widows: 2; }
 }
 `;
 
@@ -122,7 +140,7 @@ function Figures({ data }: { data: DashboardSource }) {
   const figures = keyFigures(data, derived);
   return (
     <section>
-      <h2>Where this shop stands</h2>
+      <h2>Where this shop stands today</h2>
       <div className="figrow">
         {figures.slice(0, 4).map((f) => (
           <div key={f.key}>
@@ -139,14 +157,18 @@ function Figures({ data }: { data: DashboardSource }) {
 
 function Groups({ readiness }: { readiness: Readiness }) {
   return (
-    <section>
-      <h2>What to do, by who does it</h2>
-      <p className="sub">
-        Every group is open here; on the screen they fold away. A product is counted once, under
-        the owner of its most immediate problem.
+    <>
+      <p className="lead">
+        <b>What to do, and who does it.</b> Every group is open here; on the screen they fold
+        away. A product is counted once, under the owner of its most immediate problem.
       </p>
       {readiness.groups.map((group) => (
-        <div key={group.group}>
+        // One section per group rather than one section around all four. The
+        // rule that a card is never split down the middle is right and stays,
+        // but a single unsplittable block the height of four groups cannot
+        // share a page with anything, so it takes a fresh page and leaves
+        // whatever was above it half empty. Smaller unsplittable units pack.
+        <section key={group.group}>
           <h3>
             {group.title} - {group.count} of {group.denominator}
           </h3>
@@ -157,7 +179,7 @@ function Groups({ readiness }: { readiness: Readiness }) {
                 <tr>
                   <th>What we found</th>
                   <th className="num">Products</th>
-                  <th>Whose it is</th>
+                  <th>Who does it</th>
                   <th>Why it matters, and where it is done</th>
                 </tr>
               </thead>
@@ -177,10 +199,11 @@ function Groups({ readiness }: { readiness: Readiness }) {
               </tbody>
             </table>
           )}
+          {group.scope ? <p className="method">{group.scope}</p> : null}
           {group.foot ? <p className="method">{group.foot}</p> : null}
-        </div>
+        </section>
       ))}
-    </section>
+    </>
   );
 }
 
@@ -194,7 +217,7 @@ function ShopWide({ data }: { data: DashboardSource }) {
         <thead>
           <tr>
             <th>The fix</th>
-            <th>Whose it is</th>
+            <th>Who does it</th>
             <th>Why it matters, why it is happening, and where it is done</th>
             <th>What it covers</th>
           </tr>
@@ -239,7 +262,7 @@ function Listing({ data }: { data: DashboardSource }) {
         <thead>
           <tr>
             <th>What Google asks for</th>
-            <th>How much it asks</th>
+            <th>How strongly Google asks for it</th>
             <th className="num">Products that have it</th>
             <th>Where the figure comes from</th>
           </tr>
@@ -254,7 +277,11 @@ function Listing({ data }: { data: DashboardSource }) {
                   ? (p.note ?? "Not counted yet")
                   : `${p.have}${p.of === null ? "" : ` of ${p.of}`}`}
               </td>
-              <td>{p.basis === "measured" ? "Counted from your catalogue" : p.basis}</td>
+              {/* BASIS_WORD is a Record over the basis union, so a value it
+                  does not cover fails typecheck. This cell printed
+                  "byConstruction" and "notPublished" because it translated one
+                  value and passed the rest through. */}
+              <td>{BASIS_WORD[p.basis]}</td>
             </tr>
           ))}
         </tbody>
@@ -293,7 +320,7 @@ function Since({ before, today }: { before: FactsRow | null; today: FactsRow | n
           <tbody>
             {rows.map((row) => (
               <tr key={row.key}>
-                <td>{ownerFigureLabel(row)}</td>
+                <td>{row.ownerLabel}</td>
                 <td className="num">{figure(row.before, row.beforeDenominator)}</td>
                 <td className="num">
                   {row.today === null ? "not read" : figure(row.today, row.todayDenominator)}
@@ -306,6 +333,15 @@ function Since({ before, today }: { before: FactsRow | null; today: FactsRow | n
       )}
     </section>
   );
+}
+
+/**
+ * What the rows in one column are normally counted against: the catalogue read
+ * for the admin side, the pages that answered for the page side. A row whose
+ * own denominator differs says so on its own line - see rowScopeNote.
+ */
+function columnDenominator(source: "A" | "B", data: DashboardSource): number {
+  return source === "A" ? data.findings.bulkRead : data.findings.pagesRead;
 }
 
 /** The two columns of the findings card, as one table each, with the accounting. */
@@ -327,8 +363,11 @@ function Checks({ data }: { data: DashboardSource }) {
     },
   ];
   return (
-    <section>
-      <h2>The detail behind those products</h2>
+    <>
+      <p className="lead">
+        <b>Every check, and what it found.</b> Two reads, counted apart: what your Shopify admin
+        holds, and what a crawler sees when it opens a page.
+      </p>
       {sides.map((side) => {
         const account = columnAccount({
           source: side.source,
@@ -337,7 +376,7 @@ function Checks({ data }: { data: DashboardSource }) {
           shopWideCodes: data.readiness.shopWideCodes,
         });
         return (
-          <div key={side.source}>
+          <section key={side.source}>
             <h3>{side.title}</h3>
             {side.rows.length === 0 ? null : (
               <table>
@@ -345,13 +384,19 @@ function Checks({ data }: { data: DashboardSource }) {
                   <tr>
                     <th>What we looked for</th>
                     <th className="num">Products affected</th>
-                    <th>Whose it is</th>
+                    <th>Who does it</th>
                   </tr>
                 </thead>
                 <tbody>
                   {side.rows.map((row) => (
                     <tr key={row.code}>
-                      <td>{row.label}</td>
+                      {/* OWNER_LABEL, never row.label. row.label is
+                          CHECK_LABEL, the operator's wording, and this table
+                          printed "Open Graph tags absent" and "The first image
+                          on the page is lazy-loaded" on a document a merchant
+                          hands to a client. The group tables above always read
+                          this record; this one did not. */}
+                      <td>{OWNER_LABEL[row.code]}</td>
                       <td className="num">
                         {row.count} of {row.denominator}
                       </td>
@@ -361,15 +406,23 @@ function Checks({ data }: { data: DashboardSource }) {
                 </tbody>
               </table>
             )}
+            {side.rows
+              .map((row) => rowScopeNote(row, columnDenominator(side.source, data)))
+              .filter((note): note is string => note !== null)
+              .map((note) => (
+                <p key={note} className="method">
+                  {note}
+                </p>
+              ))}
             {account.lines.map((line) => (
               <p key={line} className="method">
                 {line}
               </p>
             ))}
-          </div>
+          </section>
         );
       })}
-    </section>
+    </>
   );
 }
 

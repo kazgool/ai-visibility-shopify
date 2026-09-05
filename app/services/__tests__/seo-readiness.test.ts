@@ -150,8 +150,11 @@ describe("the four groups partition the read set", () => {
       const readiness = readinessOf(store.rows);
       for (const group of readiness.groups) {
         expect(Number.isFinite(group.percent)).toBe(true);
-        expect(group.denominator).toBe(readiness.readSet);
-        if (readiness.readSet === 0) expect(group.percent).toBe(0);
+        // The catalogue, and the same denominator the headline KPI prints
+        // beside the same number. They used to differ: the card said "0 of 50"
+        // and the group beneath it said "Nothing to fix - 0 of 46".
+        expect(group.denominator).toBe(readiness.products);
+        if (readiness.products === 0) expect(group.percent).toBe(0);
       }
     });
   }
@@ -309,6 +312,9 @@ describe("the fixes that cover the whole shop", () => {
       deliveryStated: false,
       returnsStated: false,
       barcode: { have: 0, of: 189 },
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 189,
       publishedReasons: null,
     });
@@ -322,6 +328,9 @@ describe("the fixes that cover the whole shop", () => {
       deliveryStated: null,
       returnsStated: null,
       barcode: null,
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 189,
       publishedReasons: null,
     });
@@ -333,6 +342,9 @@ describe("the fixes that cover the whole shop", () => {
       deliveryStated: true,
       returnsStated: true,
       barcode: { have: 4, of: 189 },
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 189,
       publishedReasons: null,
     });
@@ -344,6 +356,9 @@ describe("the fixes that cover the whole shop", () => {
       deliveryStated: true,
       returnsStated: true,
       barcode: null,
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 189,
       publishedReasons: null,
     });
@@ -492,6 +507,9 @@ describe("the shop-wide card", () => {
     deliveryStated: false,
     returnsStated: false,
     barcode: { have: 0, of: 355 },
+    brand: null,
+    productCode: null,
+    photo: null,
     catalogue: 355,
     publishedReasons: null,
   });
@@ -534,6 +552,9 @@ describe("the row that says this app is not working", () => {
       deliveryStated: true,
       returnsStated: true,
       barcode: null,
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 20,
       publishedReasons: [
         { nodeType: "Product", emitted: false, reason: "The app embed is not active in the theme." },
@@ -552,6 +573,9 @@ describe("the row that says this app is not working", () => {
       deliveryStated: true,
       returnsStated: true,
       barcode: null,
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 20,
       publishedReasons: null,
     });
@@ -642,6 +666,9 @@ describe("the language rule of the merchant dashboard", () => {
       deliveryStated: false,
       returnsStated: false,
       barcode: { have: 0, of: 189 },
+      brand: null,
+      productCode: null,
+      photo: null,
       catalogue: 189,
       publishedReasons: [
         { nodeType: "Product", emitted: false, reason: "The app embed is not active in the theme." },
@@ -674,7 +701,7 @@ describe("the language rule of the merchant dashboard", () => {
       for (const word of FORBIDDEN) {
         expect(word.pattern.test(text), `"${word.name}" in: ${text}`).toBe(false);
       }
-      expect(/[AB]\d{1,2}/.test(text), `a check code in: ${text}`).toBe(false);
+      expect(/\b[AB]\d{1,2}\b/.test(text), `a check code in: ${text}`).toBe(false);
     }
   });
 
@@ -694,6 +721,9 @@ describe("the language rule of the merchant dashboard", () => {
         deliveryStated: false,
         returnsStated: false,
         barcode: { have: 0, of: 189 },
+        brand: null,
+        productCode: null,
+        photo: null,
         catalogue: 189,
         publishedReasons: null,
       }).flatMap((i) => [i.title, i.what, i.where, i.appliesTo, i.ownerNote]),

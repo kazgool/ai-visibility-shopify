@@ -35,6 +35,7 @@ import {
   listingReadiness,
   shopWideItems,
   shopWideMethod,
+  type ListingBasis,
   type ListingReadiness,
   type Readiness,
   type ShopWideItem,
@@ -96,7 +97,13 @@ export function dashboardDerived(data: DashboardSource): DashboardDerived {
   const wide = shopWideItems(data.readiness, {
     deliveryStated: data.business ? data.business.deliveryStated : null,
     returnsStated: data.business ? data.business.returnsStated : null,
+    // The four details A1 asks about, all four from the same catalogue read, so
+    // the shop-wide row can name which of them is actually absent instead of
+    // reading as a claim about all four.
     barcode: today ? { have: today.withBarcode, of: today.products } : null,
+    brand: today ? { have: today.withVendor, of: today.products } : null,
+    productCode: today ? { have: today.withSku, of: today.products } : null,
+    photo: today ? { have: today.withImage, of: today.products } : null,
     catalogue: today ? today.products : data.findings.bulkRead > 0 ? data.findings.bulkRead : null,
     publishedReasons: data.published.reasons.length > 0 ? data.published.reasons : null,
   });
@@ -316,7 +323,10 @@ export function findingsCsv(data: DashboardSource, now: Date): string {
   const body = rows.map((row) => {
     const steps = OWNER_STEPS[row.code];
     return [
-      OWNER_LABEL[row.code] ?? row.label,
+      // Never `?? row.label`: row.label is the operator's wording, the record is
+      // total over FindingCode, and a fallback that cannot fire is a fallback
+      // that only leaks the technical label if the type ever loosens.
+      OWNER_LABEL[row.code],
       groupWordFor(row.code),
       sideWord(row),
       countCell(row),
@@ -396,7 +406,16 @@ const LISTING_HEADER = [
   "Where the figure comes from",
 ];
 
-const BASIS_WORD: Record<string, string> = {
+/**
+ * Where a row's figure comes from, in words.
+ *
+ * Typed as a Record over the basis union rather than over string, so a basis
+ * added tomorrow fails typecheck instead of printing its own identifier. The
+ * report printed "byConstruction", "notPublished" and "fromBusiness" in a
+ * column a merchant reads because the print component translated only
+ * "measured" and passed the rest through.
+ */
+export const BASIS_WORD: Record<ListingBasis, string> = {
   measured: "Counted from your catalogue",
   byConstruction: "Shopify holds this on every product",
   fromBusiness: "Taken from your Business screen",
@@ -411,7 +430,7 @@ export function listingCsv(data: DashboardSource, derived: DashboardDerived, now
     // spreadsheet that renders both as 0 has lost the difference for good.
     const have = p.have === null ? (p.note ?? "Not counted yet") : String(p.have);
     const of = p.of === null ? "" : String(p.of);
-    return [p.label, p.requirement, have, of, BASIS_WORD[p.basis] ?? p.basis] as (string | number)[];
+    return [p.label, p.requirement, have, of, BASIS_WORD[p.basis]] as (string | number)[];
   });
   return csvRows([
     [reportHeading(data, now)],
@@ -420,6 +439,29 @@ export function listingCsv(data: DashboardSource, derived: DashboardDerived, now
     LISTING_HEADER,
     ...body,
   ]);
+}
+
+
+/**
+ * The line a check needs when its own denominator is not the one at the top of
+ * its column.
+ *
+ * B5 is the only one: it is the check about pages that did not answer, so
+ * counting it over the pages that did answer would subtract from its
+ * denominator exactly the pages it fires on (seo-aggregate.ts says so at
+ * CheckBasis). It is therefore counted over every page whose address answered
+ * anything, which on a shop with unread pages is a larger number than every
+ * other row in its column - and a table where one row silently counts out of
+ * 50 while the rest count out of 46 is a table a reader has to distrust
+ * entirely. Null for every row that shares its column's denominator.
+ */
+export function rowScopeNote(row: CheckRow, columnDenominator: number): string | null {
+  if (row.denominator === columnDenominator || row.denominator === 0) return null;
+  return (
+    `${OWNER_LABEL[row.code]} is counted out of ${row.denominator}, not ${columnDenominator}: ` +
+    "it is the check about pages that did not answer, so the pages that did answer are not the " +
+    "right total to measure it against."
+  );
 }
 
 // ---------------------------------------------------------------------------

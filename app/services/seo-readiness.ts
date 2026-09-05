@@ -39,12 +39,14 @@
 import { CHECKS, wasRead, type CheckRow, type CheckSource, type ScanRowLike } from "./seo-aggregate";
 import {
   FINDING_OWNER,
+  FIX_SHAPE,
   OWNER_LABEL,
   OWNER_STEPS,
   SHOP_WIDE_LABEL,
   findingsOf,
   type FindingCode,
   type FindingOwner,
+  type FixShape,
 } from "./seo-findings";
 
 /** The fourth group is "nothing to fix"; the other three are the owners. */
@@ -192,6 +194,12 @@ export type GroupView = {
   title: string;
   /** The closed state's own line, so a merchant who never opens it still knows what it is. */
   summary: string;
+  /**
+   * Why the group's own figure and the figures in its rows are counted against
+   * different totals. Empty on a group with no rows, because there is then no
+   * second figure to reconcile.
+   */
+  scope: string;
   rows: GroupRow[];
   /** The paragraph under the rows. Empty for the group with no rows. */
   foot: string;
@@ -250,6 +258,25 @@ const GROUP_FOOT: Record<ReadinessGroup, string> = {
 /** "6 kinds of gap" - the closed state has to carry this, not only the count. */
 function kinds(n: number): string {
   return `${n} kind${n === 1 ? "" : "s"} of gap`;
+}
+
+/**
+ * The sentence that reconciles the two figures on a group.
+ *
+ * A group counts products, once each, under the owner of whatever they most
+ * immediately need. A row counts every product the check fired on, whoever
+ * else has a claim on it. So a group of 4 can hold a row of 45, and both
+ * numbers are right. Printed inside every group, because the reader who needs
+ * it is the one who started reading at that group.
+ */
+function scopeNote(count: number, products: number, readSet: number): string {
+  return (
+    `The ${count} above is products, counted once each out of your ${products}, under whoever ` +
+    `has to move first. The figures in the rows are different: each one counts every product ` +
+    `that check found something on, out of the ${readSet} we have fully checked, whether or not ` +
+    `this group is the one that product is counted in. That is why a group of ${count} can hold ` +
+    `a row with a larger figure.`
+  );
 }
 
 function summaryFor(group: ReadinessGroup, count: number, rowCount: number): string {
@@ -326,11 +353,23 @@ export function buildReadiness(counters: ReadinessCounters): Readiness {
     return {
       group,
       count,
-      percent: readSet > 0 ? Math.round((count / readSet) * 100) : 0,
-      denominator: readSet,
+      // The catalogue, not the read set, and the same denominator the headline
+      // KPI prints beside the same number. The two used to differ - the card
+      // said "0 of 50" and the group beneath it said "Nothing to fix - 0 of
+      // 46" - which is one number under two denominators on one page. The four
+      // group counts still partition the read set; what they are stated
+      // against is the catalogue, with the unchecked products as the fifth
+      // band, exactly as the dial above them is drawn.
+      percent: counters.products > 0 ? Math.round((count / counters.products) * 100) : 0,
+      denominator: counters.products,
       title: GROUP_TITLE[group],
       summary: summaryFor(group, count, rows.length),
       rows,
+      // The two scopes on one card, stated in every group rather than under
+      // the first one only. A reader who starts at the theme group used to see
+      // a group of 4 containing a row that had hit 45, with the sentence that
+      // explains it two cards up.
+      scope: rows.length > 0 ? scopeNote(count, counters.products, readSet) : "",
       foot: count > 0 ? GROUP_FOOT[group] : "",
     };
   });
@@ -422,6 +461,15 @@ export type ShopWideFacts = {
   returnsStated: boolean | null;
   barcode: { have: number; of: number } | null;
   /**
+   * The other three details A1 asks about, from the same catalogue read as the
+   * barcode. They are here so the A1 row can name which of its four is
+   * actually absent; without them the row reads as a claim about all four, and
+   * the Google card two cards later contradicts it.
+   */
+  brand: { have: number; of: number } | null;
+  productCode: { have: number; of: number } | null;
+  photo: { have: number; of: number } | null;
+  /**
    * Products in the catalogue, from the same source the rest of the screen
    * counts from. The card used to state one blanket denominator - the read set
    * - under every row, which is wrong for two of the three: a blank return
@@ -495,6 +543,68 @@ function whyNothingIsArriving(
   return `${which}${distinct.length === 1 ? "The reason we recorded" : "The reasons we recorded"}: ${distinct.join(" ")}`;
 }
 
+/** "Found on all 46 products whose page we have read." */
+function everyRead(readSet: number): string {
+  return `Found on all ${readSet} products whose page we have read.`;
+}
+
+/**
+ * What it takes to put right, in the merchant's terms. See FIX_SHAPE in
+ * seo-findings.ts for why the shape is a property of the check and not of the
+ * owner: two merchant-owned findings can need one switch and four hundred
+ * fields respectively.
+ */
+function fixSentence(owner: FindingOwner, shape: FixShape, readSet: number): string {
+  if (owner === "theme") {
+    return "One change to the theme, and it applies to every product page.";
+  }
+  if (owner === "app") {
+    return `One thing for us to put right, not ${readSet}.`;
+  }
+  return shape === "perProduct"
+    ? `The fix itself is one field per product, so it is ${readSet} of them, not one.`
+    : "One setting, and it applies to every product page.";
+}
+
+/**
+ * Which of the four details A1 asks about are actually absent, as counts.
+ *
+ * Null when the catalogue read that produces them has not happened, and then
+ * the row says nothing rather than guessing - the same rule as everywhere
+ * else: a figure that was never measured is a sentence, never a zero.
+ */
+function identifierCounts(facts: ShopWideFacts): string | null {
+  const four: [string, { have: number; of: number } | null][] = [
+    ["a barcode", facts.barcode],
+    ["a brand", facts.brand],
+    ["a product code", facts.productCode],
+    ["a photo", facts.photo],
+  ];
+  const known = four.filter(([, value]) => value !== null && value.of > 0) as [
+    string,
+    { have: number; of: number },
+  ][];
+  if (known.length === 0) return null;
+  const missing = known.filter(([, v]) => v.have < v.of);
+  const complete = known.filter(([, v]) => v.have === v.of);
+  const parts: string[] = [];
+  if (missing.length > 0) {
+    parts.push(
+      "Missing on some products: " +
+        missing.map(([name, v]) => `${name}, on ${v.of - v.have} of ${v.of}`).join("; ") + ".",
+    );
+  }
+  if (complete.length > 0) {
+    parts.push(
+      "Already on every product: " + complete.map(([name]) => name).join(", ") + ".",
+    );
+  }
+  if (known.length < 4) {
+    parts.push("The rest we have not counted yet.");
+  }
+  return parts.join(" ");
+}
+
 export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopWideItem[] {
   const items: ShopWideItem[] = [];
   const catalogue = facts.catalogue;
@@ -547,10 +657,18 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
   for (const code of readiness.shopWideCodes) {
     const owner = FINDING_OWNER[code];
     const why = code === "B6" ? whyNothingIsArriving(facts.publishedReasons) : null;
+    // A1 fires when any one of four details is absent, and its sentence reads
+    // like a claim about all four. The counts are on hand from the same
+    // catalogue read the Google card uses, so the row says which of the four
+    // are actually missing instead of leaving a merchant to disprove it from
+    // another page: on the store this was read from, the Google table two
+    // pages later said Brand was 50 of 50.
+    const identifiers = code === "A1" ? identifierCounts(facts) : null;
     items.push({
       key: code,
       title: SHOP_WIDE_LABEL[code],
       what: OWNER_STEPS[code].what,
+      ...(identifiers ? { why: identifiers } : {}),
       ...(code === "B6"
         ? {
             why:
@@ -565,19 +683,22 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
         code === "B6"
           ? "Diagnostics in this app re-reads one of your pages and shows the same reasons again."
           : OWNER_STEPS[code].where,
-      appliesTo:
-        owner === "theme"
-          ? `Found on all ${readiness.readSet} products whose page we have read. One change to the theme, and it applies to every product page.`
-          : owner === "app"
-            ? `Found on all ${readiness.readSet} products whose page we have read. One thing for us to put right, not ${readiness.readSet}.`
-            : `Found on all ${readiness.readSet} products whose page we have read. One setting, and it applies to every product page.`,
+      // The second sentence states the shape of the fix, not the shape of the
+      // finding. Everything on this card is true of every product; that is why
+      // it is here. It does not follow that the fix is made once - a barcode is
+      // one field per product - and the card used to say "One setting, and it
+      // applies to every product page" on rows whose own instruction column
+      // told the merchant to open each product.
+      appliesTo: `${everyRead(readiness.readSet)} ${fixSentence(owner, FIX_SHAPE[code], readiness.readSet)}`,
       owner,
       ownerNote:
         owner === "theme"
           ? "Your theme, one change, all pages"
           : owner === "app"
             ? "Us, once you have read it"
-            : `${OWNER_NOTE[owner]}, one change, all products`,
+            : FIX_SHAPE[code] === "perProduct"
+              ? `${OWNER_NOTE[owner]}, one field per product`
+              : `${OWNER_NOTE[owner]}, one change, all products`,
     });
   }
 

@@ -296,6 +296,11 @@ export function differenceLabel(row: SinceRow): string {
 
 // --- "Written by this app since then" --------------------------------------
 
+// Operator vocabulary, read by /app/seo and the CSV export. It keeps
+// Record<string, string> and its `??` fallback below, because the keys come
+// from a JSON column and an operator is better served by a raw key than by a
+// dropped row. The merchant equivalents are OWNER_WRITTEN_LABEL, which are
+// typed and never fall back.
 export const WRITTEN_LABEL: Record<string, string> = {
   seo_title: "Meta titles",
   seo_description: "Meta descriptions",
@@ -315,7 +320,7 @@ export const WRITTEN_LABEL: Record<string, string> = {
  * FIGURES keys and total over them, so a new figure that forgets a plain label
  * fails typecheck rather than shipping jargon.
  */
-export const OWNER_FIGURE_LABEL: Record<string, string> = {
+export const OWNER_FIGURE_LABEL: Record<OwnerFigureKey, string> = {
   products: "Products in your catalogue",
   metaTitleSet: "Products with a title for Google",
   metaTitleOurs: "Titles for Google written by this app",
@@ -330,8 +335,37 @@ export const OWNER_FIGURE_LABEL: Record<string, string> = {
   productNodeNone: "Pages that describe no product to search engines",
 };
 
+/**
+ * The keys the merchant dashboard has a plain word for. Written as a union
+ * rather than left as `string`, so the two records below are total over it and
+ * a figure added tomorrow that forgets a plain label fails typecheck - which
+ * the comment above used to claim while the type said `Record<string, string>`
+ * and let anything through.
+ */
+export type OwnerFigureKey =
+  | "products"
+  | "metaTitleSet"
+  | "metaTitleOurs"
+  | "metaDescriptionSet"
+  | "metaDescriptionOurs"
+  | "withBarcode"
+  | "withVendor"
+  | "withSku"
+  | "withImage"
+  | "pagesRead"
+  | "productNodeTheme"
+  | "productNodeNone";
+
+export type OwnerWrittenKey =
+  | "seo_title"
+  | "seo_description"
+  | "questions"
+  | "facts"
+  | "summary"
+  | "fit_for";
+
 /** The same for the "written by this app since then" block. */
-export const OWNER_WRITTEN_LABEL: Record<string, string> = {
+export const OWNER_WRITTEN_LABEL: Record<OwnerWrittenKey, string> = {
   seo_title: "Titles for Google",
   seo_description: "Descriptions for Google",
   questions: "Buyer questions",
@@ -349,13 +383,39 @@ export const OWNER_WRITTEN_LABEL: Record<string, string> = {
  * shows what moved in the shop's own fields; what each check found is the
  * findings card's business, with its own denominators.
  */
-export function ownerSinceRows(table: SinceTable): SinceRow[] {
-  return table.rows.filter((row) => !row.key.startsWith("finding:"));
+export function ownerSinceRows(table: SinceTable): NamedSinceRow[] {
+  return table.rows
+    .filter((row) => !row.key.startsWith("finding:"))
+    .map((row) => ({ row, ownerLabel: ownerFigureLabel(row) }))
+    // A figure this release has no plain word for is dropped here rather than
+    // shown under `row.label`, which carries the operator's wording. The
+    // caller then gets rows whose label is a plain `string`, so no renderer
+    // has a null to decide about and none can reach for the technical name.
+    .filter((r): r is { row: SinceRow; ownerLabel: string } => r.ownerLabel !== null)
+    .map(({ row, ownerLabel }) => ({ ...row, ownerLabel }));
 }
 
-/** A plain label for a row of `ownerSinceRows`, or its own if none is defined. */
-export function ownerFigureLabel(row: SinceRow): string {
-  return OWNER_FIGURE_LABEL[row.key] ?? row.label;
+/** A row of `ownerSinceRows`: a since row that is certain to have a plain label. */
+export type NamedSinceRow = SinceRow & { ownerLabel: string };
+
+/**
+ * A plain label for a row of `ownerSinceRows`, or null when this release has
+ * none.
+ *
+ * Null rather than `row.label`: that field carries the operator's wording -
+ * "Meta titles", "Products with a vendor (brand)" - and falling back to it
+ * puts the vocabulary a merchant would have to look up on the one screen
+ * written to keep it out. A row nobody can name in plain words has nothing to
+ * tell a merchant, so the caller drops it. The key comes out of a JSON column,
+ * so the lookup can genuinely miss and the type says so.
+ */
+export function ownerFigureLabel(row: SinceRow): string | null {
+  return OWNER_FIGURE_LABEL[row.key as OwnerFigureKey] ?? null;
+}
+
+/** The same, for a row of `writtenRows`, and null for the same reason. */
+export function ownerWrittenLabel(row: WrittenRow): string | null {
+  return OWNER_WRITTEN_LABEL[row.key as OwnerWrittenKey] ?? null;
 }
 
 export type WrittenRow = {

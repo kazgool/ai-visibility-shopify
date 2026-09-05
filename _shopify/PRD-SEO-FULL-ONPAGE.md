@@ -521,13 +521,18 @@ Run, not described: `findingsCsv`, `shopWideCsv`, `listingCsv` and
 `productFindingsCsv` over the five shapes of 4.2, counting data rows. An empty
 table with only its headings is a correct answer; a fabricated zero row is not.
 
-| Store | Report heading | findings | shopwide | listing | products |
-|---|---|---|---|---|---|
-| 50 products, every page read | `50 of 50 products fully checked` | 40 rows | 0 rows, "Nothing affects every product the same way" | 10 rows | 32 rows |
-| 189 products | `189 of 189 products fully checked` | 40 rows | 2 rows, each with its own scope | 10 rows | 275 rows |
-| 20,000 products | `500 of 20000 products fully checked` | 40 rows | 0 rows | 10 rows | 19,620 rows |
-| Empty store | `0 products in the catalogue` | 40 rows, every one "Not checked yet" with a sentence for its denominator | 0 rows | 10 rows, every figure a sentence | 0 rows, "No product carries a finding, so this file has no rows. That is the answer, not a failure." |
-| Pages never read | `120 products in the catalogue` | 40 rows: the 13 catalogue checks counted, the 31 page checks each "Not checked yet / No product page has been read yet" | 0 rows | 10 rows | 120 rows |
+| Store | Report heading | Group headings | findings | shopwide | listing | products |
+|---|---|---|---|---|---|---|
+| 50 products, every page read | `50 of 50 products fully checked` | 26, 12, 8, 4, each of 50 | 40 rows + accounting | 0 rows, "Nothing affects every product the same way" | 10 rows | 32 rows |
+| 189 products | `189 of 189 products fully checked` | 126, 38, 14, 11, each of 189 | 40 rows + accounting | 2 rows, each with its own scope and its own fix shape | 10 rows | 275 rows |
+| 20,000 products | `500 of 20000 products fully checked` | 380, 120, 0, 0, each of 20000 | 40 rows + accounting | 0 rows | 10 rows | 19,620 rows |
+| Empty store | `0 products in the catalogue` | 0, 0, 0, 0, each of 0 | 40 rows, every one "Not checked yet" with a sentence for its denominator | 0 rows | 10 rows, every figure a sentence | 0 rows, "No product carries a finding, so this file has no rows. That is the answer, not a failure." |
+| Pages never read | `120 products in the catalogue` | 0, 0, 0, 0, each of 120 | 40 rows: the 13 catalogue checks counted, the 31 page checks each "Not checked yet / No product page has been read yet" | 0 rows | 10 rows | 120 rows |
+
+Every group heading is now stated against the catalogue, the same denominator
+the headline KPI prints beside the same number. It used to be the read set, so
+the card said "0 of 50" and the group beneath it said "Nothing to fix - 0 of
+46".
 
 Three things this table is the evidence for. The empty store's `findings` file
 is 40 sentences and not 40 zeros. The pages-never-read store's page checks are
@@ -539,12 +544,12 @@ with its own denominator, and none of the four is a row with the products
 denominator over it.
 
 The headline figures on the same five, from `keyFigures`, are what both the
-screen and the report print: 50 products `clean=26, needSomething=24,
-shopWide=0, listing=4 of 10`; 189 products `126, 63, 2, 5 of 10`; 20,000
-`380, 120, 0, 4 of 10`; empty store, no headline figure at all beyond the four
-group counts, all zero; pages never read, `listing=4 of 10` and four zero group
-counts, with the report heading saying the catalogue size rather than a share
-of it.
+screen and the report print: 50 products `clean=26 of 50, needSomething=24 of
+50, shopWide=0, listing=4 of 10`; 189 products `126 of 189, 63 of 189, 2, 5 of
+10`; 20,000 `380 of 20000, 120 of 20000, 0, 4 of 10`; empty store, no headline
+figure at all beyond the four group counts, all zero of zero; pages never read,
+`listing=4 of 10` and four zero group counts of 120, with the report heading
+saying the catalogue size rather than a share of it.
 
 #### Every route that reaches this data, and its gate
 
@@ -626,6 +631,14 @@ storefront password, and the same will be true of most of these.
 | An empty store exports headings and a sentence, never a fabricated row | unit on the empty store and the no-findings store, per file | - |
 | Filenames carry the shop and the date and cannot break the header they sit in | unit on `exportFilename`, including a domain containing a quote | - |
 | Every new route carries `isSeoUnlocked` in its own loader | the table in 4.3, and the gate is read in each route file | Marius: type a print URL on a shop without the key |
+| No merchant screen renders the operator's vocabulary or a check code | the guard renders SeoPrintReport and SeoDashboardScreen to markup on six stores, including one carrying every code in the vocabulary at once, and matches the banned words against the text | - |
+| The Google table prints no raw basis identifier | `BASIS_WORD` is a Record over the basis union, so a missing value fails typecheck; the render test asserts the three identifiers are absent | - |
+| Every group states why its own figure and its rows' figures have different totals | unit on `scope`, and the render test asserts the sentence appears inside every group that has rows | - |
+| One number never carries two denominators | the group denominator equals `readiness.products`, asserted on five stores, and against the KPI's own `of` string | - |
+| A shop-wide row states the true shape of its fix | unit: A1 says "one field per product" and never "One setting"; B25 says "One change to the theme" | - |
+| The four-identifier row names which of the four is absent | unit on the counts, and the rendered report | - |
+| A row counted against a different total says so on its own line | unit on a store with 46 pages read of 50 tried: "is counted out of 50, not 46" | - |
+| The report fits on fewer pages without splitting a card | not tested: page count needs a browser | Marius: print it again and say how many pages |
 
 ---
 

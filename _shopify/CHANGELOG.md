@@ -16,6 +16,110 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The printed report, read on paper (5 September 2026)
+
+Ten defects, found by printing the report from the dev store and reading it.
+Server only; nothing in an extension changed.
+
+**The detail table printed the operator's vocabulary.** "Open Graph tags
+absent", "Title tag absent, or a length that a phone result often cuts", "The
+first image on the page is lazy-loaded", on a document a merchant hands to a
+client. The component rendered `row.label`, which is `CHECK_LABEL`; the group
+tables above it had always read `OWNER_LABEL`. One line, and it now reads the
+same record as everything else.
+
+**Why that shipped matters more than the bug, and the guard is rewritten.** The
+vocabulary guard asserted the banned words against the label records, not
+against what a component renders, so a component that reaches for a different
+field passed it. It now renders both `SeoPrintReport` and `SeoDashboardScreen`
+to markup and matches the banned words and the check-code pattern against the
+text, on six stores: the five fixtures plus one purpose-built store carrying
+every code in the vocabulary at once, so every label is actually on a page the
+guard reads. Reintroducing `row.label` fails it on five of the six.
+
+**A second guard had never been able to fail.** The check-code assertion at
+`seo-readiness.test.ts` line 701 held two literal backspace characters where
+the word-boundary escapes were meant, so the pattern matched nothing at all and
+the assertion has been dead since it was committed in 9133581. Every touched file is now
+scanned for control characters as part of this pass, and two were found and
+repaired.
+
+**The Google table printed raw identifiers**: `byConstruction`, `notPublished`,
+`fromBusiness`. The component translated `measured` and passed everything else
+through. `BASIS_WORD` is now exported and typed `Record<ListingBasis, string>`,
+so a basis added tomorrow fails typecheck rather than printing its own name,
+and the component reads it with no conditional.
+
+**A fallback that could not fire and could only leak.**
+`OWNER_LABEL[row.code] ?? row.label` in the findings export: on a Record total
+over `FindingCode` the right-hand side is unreachable, and its only possible
+effect was to put the technical label in a merchant's spreadsheet. Removed, and
+the repo was grepped for the same shape. Three more were found on merchant
+paths, all in `seo-since.ts`: `OWNER_FIGURE_LABEL` and `OWNER_WRITTEN_LABEL`
+were typed `Record<string, string>` - one of them under a comment claiming they
+were total - and both were read with `?? row.label`, where `row.label` is
+"Meta titles". Both are now typed over a key union, both accessors return null
+rather than the operator's wording, and `ownerSinceRows` returns rows that
+carry a plain label, so no renderer has a null to decide about. Five more were
+left deliberately: `app.products._index`, `describeFinding`, the per-code since
+row and two operator scripts all index a `Record<string, string>` with a code
+that comes from a URL or a JSON column, where the fallback can genuinely fire
+and the reader is an operator who is better served by a raw code than by a
+dropped row. `WRITTEN_LABEL` keeps its fallback for the same reason and now
+says so.
+
+**A group of 4 held a row of 45, with no explanation in sight.** Both figures
+are right - a group counts products once each under their most immediate owner,
+a row counts every product the check fired on - but the sentence that says so
+sat under the first group only, and a reader who starts at the theme group
+sees a contradiction. `GroupView` gains `scope`, printed inside every group
+that has rows.
+
+**One number, two denominators.** "Products with nothing of their own to fix"
+was "0 of 50" on the summary card and "Nothing to fix - 0 of 46" on the next
+one. The group denominator is now the catalogue, the same one the headline KPI
+prints, and the same one the dial is drawn against. The four group counts still
+partition the read set; what they are stated against is the catalogue, with the
+unchecked products as the fifth band, which is the decision recorded for the
+headline on 4 September applied to the card below it.
+
+**The shop-wide card sold per-product work as a setting.** "One setting, and it
+applies to every product page" appeared on rows whose own instruction column
+tells the merchant to open each product. Being on this card means the finding
+is true of every product; it says nothing about how many times the fix is made.
+`FIX_SHAPE` in `seo-findings.ts` is a new typed record over every code, so a
+check added tomorrow has to answer the question, and the sentence is chosen
+from the owner and the shape: a theme change and something for us are made
+once, a barcode is one field per product and the row now says so.
+
+**"Every product is missing a barcode, a brand, a product code or a photo"
+read as a claim about all four.** It fires when any one is absent, and the
+Google table two pages later said Brand was 50 of 50. The row is reworded to
+"at least one of four details", and it now names which: `ShopWideFacts` carries
+all four counts from the same catalogue read, and the row says what is missing
+on how many and what is already on every product.
+
+**A row counted against a different total, silently.** In a table where every
+other row counts out of 46, one read "4 of 50" - B5, the check about pages that
+did not answer, whose denominator is every page whose address answered anything
+and cannot be the pages that did answer without subtracting exactly the pages it
+fires on. It now carries its own line saying so, on the report and on the
+screen.
+
+**English.** "What to do, by who does it" is now "What to do, and who does it";
+"How much it asks" is "How strongly Google asks for it"; "Whose it is" is "Who
+does it"; "The detail behind those products" is "Every check, and what it
+found".
+
+**Five pages, half of each one blank.** Cards were never split, which is right
+and stays. The cause was that all four readiness groups sat inside one section
+and both findings columns inside another, so each was an unsplittable block
+taller than most of a page and could share a page with nothing. Each group and
+each column is now its own section, the print stylesheet is tighter (9.5pt
+body, 8pt method lines, 7px padding, 12mm margins), and headings may not be the
+last thing on a page. **The page count was not measured**: it needs a browser,
+and the acceptance table says so rather than claiming three pages.
+
 ### The printable report and the spreadsheets (5 September 2026)
 
 `PRD-SEO-FULL-ONPAGE.md` section 4.3, build step 5's two deliberately omitted

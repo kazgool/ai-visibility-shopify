@@ -63,14 +63,13 @@ import {
 } from "../services/seo-readiness";
 import {
   NO_SNAPSHOT_SENTENCE,
-  OWNER_WRITTEN_LABEL,
+  ownerWrittenLabel,
   OWNER_WRITTEN_OMISSION_SENTENCE,
   WRITTEN_EMPTY_SENTENCE,
   WRITTEN_NOT_YET_SENTENCE,
   differenceLabel,
   figure,
   formatDay,
-  ownerFigureLabel,
   ownerSinceRows,
   sinceHeading,
   sinceMethodLine,
@@ -1146,7 +1145,7 @@ function SinceCard({
                 <InlineStack key={row.key} align="space-between" blockAlign="start" gap="200" wrap>
                   <div style={{ flex: "1 1 180px", minWidth: 0 }}>
                     <Text as="span" variant="bodySm">
-                      {ownerFigureLabel(row)}
+                      {row.ownerLabel}
                     </Text>
                   </div>
                   <InlineStack gap="300" blockAlign="center">
@@ -1188,10 +1187,16 @@ function SinceCard({
                 {WRITTEN_EMPTY_SENTENCE}
               </Text>
             ) : (
-              written.map((row) => (
+              // A row this release has no plain word for is dropped rather than
+              // shown under the operator's wording: `row.label` is "Meta
+              // titles", which is exactly the vocabulary this screen exists to
+              // keep out.
+              written.map((row) => ({ row, label: ownerWrittenLabel(row) }))
+                .filter((r): r is { row: typeof written[number]; label: string } => r.label !== null)
+                .map(({ row, label }) => (
                 <InlineStack key={row.key} align="space-between" blockAlign="center" gap="200">
                   <Text as="span" variant="bodySm">
-                    {OWNER_WRITTEN_LABEL[row.key] ?? row.label}
+                    {label}
                   </Text>
                   <Text as="span" variant="bodySm" numeric>
                     {row.count}
