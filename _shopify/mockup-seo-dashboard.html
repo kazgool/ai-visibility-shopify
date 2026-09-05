@@ -138,7 +138,17 @@
   .note{color:var(--faint);font-size:11.5px;padding:11px 0 0;border-top:1px solid #f2f2f2;
         margin-top:2px;line-height:1.65}
 
-  /* gauges */
+  .kpi.kpib{display:block}
+  .kpi.kpib .val{font-size:22px;font-weight:700}
+  .kpi.kpib .val .den{font-size:11.5px;font-weight:400;color:var(--sub)}
+  .kpi.kpib .lab{margin:2px 0 8px}
+  .kpi.kpib .track{height:10px}
+  .listing .frow .lab span:first-child{min-width:0}
+  .frow .lab .c i.who{font-style:normal;color:var(--faint);font-size:11px;margin-right:6px}
+  .listing{display:grid;grid-template-columns:1fr 1fr;gap:0 26px}
+  @media(max-width:940px){.listing{grid-template-columns:1fr}}
+
+  /* gauges (no longer used on this screen; kept for the notes below) */
   .gauges{display:grid;grid-template-columns:repeat(5,1fr);gap:10px 6px}
   @media(max-width:860px){.gauges{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:520px){.gauges{grid-template-columns:repeat(2,1fr)}}
@@ -183,48 +193,34 @@
 </div>
 
 <!-- KPI STRIP -->
+<!-- Bullet bars, not rings (fix 8, 4 September 2026). NN/g: gauges take a lot
+     of space and are harder to read than a linear graph, and the range must be
+     shown, so the track is always the full denominator. The hero dial below is
+     the one circle left on the screen. -->
 <div class="kpis">
 
-  <div class="kpi">
-    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
-      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
-      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--good)" stroke-width="6"
-        stroke-linecap="round" stroke-dasharray="66.7 106.8" transform="rotate(-90 21 21)"/>
-      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">62%</text>
-    </svg>
-    <div class="txt"><div class="val num">118</div>
-      <div class="lab">products with nothing of their own to fix</div><div class="den">of 189</div></div>
+  <div class="kpi kpib">
+    <div class="txt"><div class="val num">118 <span class="den">of 189 in your catalogue (62%)</span></div>
+      <div class="lab">products with nothing of their own to fix</div>
+      <div class="track"><i style="width:62%;background:var(--good)"></i></div></div>
   </div>
 
-  <div class="kpi">
-    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
-      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
-      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--att)" stroke-width="6"
-        stroke-linecap="round" stroke-dasharray="40.1 106.8" transform="rotate(-90 21 21)"/>
-      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">38%</text>
-    </svg>
-    <div class="txt"><div class="val num">71</div>
-      <div class="lab">products needing something specific</div><div class="den">of 189</div></div>
+  <div class="kpi kpib">
+    <div class="txt"><div class="val num">71 <span class="den">of 189 in your catalogue (38%)</span></div>
+      <div class="lab">products needing something specific</div>
+      <div class="track"><i style="width:38%;background:var(--att)"></i></div></div>
   </div>
 
-  <div class="kpi">
-    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
-      <circle cx="21" cy="21" r="15" fill="none" stroke="var(--att-l)" stroke-width="7"/>
-      <text x="21" y="25" text-anchor="middle" font-size="15" font-weight="700" fill="#7a4a08">5</text>
-    </svg>
-    <div class="txt"><div class="val num">5</div>
-      <div class="lab">fixes that cover the whole shop</div><div class="den">done once each</div></div>
+  <div class="kpi kpib">
+    <div class="txt"><div class="val num">5 <span class="den">listed once, not per product</span></div>
+      <div class="lab">fixes that cover the whole shop</div>
+      <div class="track"><i style="width:100%;background:var(--att-l)"></i></div></div>
   </div>
 
-  <div class="kpi">
-    <svg width="54" height="54" viewBox="0 0 42 42" aria-hidden="true">
-      <circle cx="21" cy="21" r="17" fill="none" stroke="#eee" stroke-width="6"/>
-      <circle cx="21" cy="21" r="17" fill="none" stroke="var(--good)" stroke-width="6"
-        stroke-linecap="round" stroke-dasharray="74.8 106.8" transform="rotate(-90 21 21)"/>
-      <text x="21" y="24.5" text-anchor="middle" font-size="11" font-weight="700" fill="#1f1f1f">70%</text>
-    </svg>
-    <div class="txt"><div class="val num">7</div>
-      <div class="lab">details Google asks for, in place</div><div class="den">of 10</div></div>
+  <div class="kpi kpib">
+    <div class="txt"><div class="val num">7 <span class="den">of 10 (70%)</span></div>
+      <div class="lab">details Google asks for, in place</div>
+      <div class="track"><i style="width:70%;background:var(--good)"></i></div></div>
   </div>
 
 </div>
@@ -365,7 +361,7 @@
 <!-- SHOP WIDE -->
 <div class="card">
   <div class="hd"><strong>Five fixes that cover the whole shop</strong>
-    <span class="sub">Each one is done once and applies to all 189 products</span></div>
+    <span class="sub">Each of these affects every product the same way; each row says what it applies to</span></div>
   <div class="bd">
     <div class="wide">
 
@@ -386,7 +382,7 @@
       <div class="w"><span class="idx">3</span>
         <div><strong>Every page's main heading is your logo, not the product</strong>
           <p>The largest heading on a product page should name the product. On your theme it names
-            the shop, on all 189 pages, so every page looks like the same page.</p></div>
+            the shop, so every page looks like the same page. Found on all 189 products whose page we read; one change to the theme applies to every product page.</p></div>
         <div class="owner">Your theme<br>one change, all pages</div></div>
 
       <div class="w"><span class="idx">4</span>
@@ -414,41 +410,16 @@
     <span class="sub">We wrote down the starting point on 5 September. Today is 26 September.</span></div>
   <div class="split">
     <div>
-      <p class="colhead">Products with each field filled in, week by week</p>
-      <svg viewBox="0 0 560 244" width="100%" role="img" aria-label="Three rising lines over four weeks">
-        <g stroke="var(--grid)" stroke-width="1">
-          <line x1="42" y1="20"  x2="548" y2="20"/>
-          <line x1="42" y1="65"  x2="548" y2="65"/>
-          <line x1="42" y1="110" x2="548" y2="110"/>
-          <line x1="42" y1="155" x2="548" y2="155"/>
-          <line x1="42" y1="200" x2="548" y2="200"/>
-        </g>
-        <g font-size="10.5" fill="#9a9a9a" text-anchor="end">
-          <text x="35" y="24">189</text><text x="35" y="69">140</text>
-          <text x="35" y="114">95</text><text x="35" y="159">48</text><text x="35" y="204">0</text>
-        </g>
-        <g font-size="10.5" fill="#9a9a9a" text-anchor="middle">
-          <text x="60" y="222">5 Sep</text><text x="217" y="222">12 Sep</text>
-          <text x="374" y="222">19 Sep</text><text x="524" y="222">26 Sep</text>
-        </g>
-        <polyline fill="none" stroke="var(--good)" stroke-width="2.5" stroke-linejoin="round"
-          points="60,161 217,109 374,56 524,20"/>
-        <g fill="var(--good)"><circle cx="60" cy="161" r="3.5"/><circle cx="217" cy="109" r="3.5"/>
-          <circle cx="374" cy="56" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
-        <polyline fill="none" stroke="var(--theme)" stroke-width="2.5" stroke-linejoin="round"
-          points="60,141 217,88 374,42 524,20"/>
-        <g fill="var(--theme)"><circle cx="60" cy="141" r="3.5"/><circle cx="217" cy="88" r="3.5"/>
-          <circle cx="374" cy="42" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
-        <polyline fill="none" stroke="var(--app)" stroke-width="2.5" stroke-linejoin="round"
-          points="60,200 217,20 374,20 524,20"/>
-        <g fill="var(--app)"><circle cx="60" cy="200" r="3.5"/><circle cx="217" cy="20" r="3.5"/>
-          <circle cx="374" cy="20" r="3.5"/><circle cx="524" cy="20" r="4.5"/></g>
-      </svg>
-      <div class="legend" style="margin-top:8px">
-        <div><i style="background:var(--good)"></i><span>Google description</span></div>
-        <div><i style="background:var(--theme)"></i><span>Google title</span></div>
-        <div><i style="background:var(--app)"></i><span>Details AI can read</span></div>
-      </div>
+      <p class="colhead">Designed, and deliberately not built</p>
+      <p style="color:var(--sub);font-size:12.4px;line-height:1.6;margin:0">
+        A week-by-week line chart of the same figures was drawn here and dropped during build
+        step 5. The database holds one starting row and one current row per shop, and no history
+        at all, so the series could only have been fabricated. Building it needs a table with one
+        row per shop per week, written by the nightly pass, and a migration with its down path.
+        Until that exists this card is the table beside it and nothing more.
+        <br><br>
+        This is the record of a design that was refused, not a plan. Nobody should read it as
+        pending work without deciding the migration first.</p>
     </div>
     <div>
       <p class="colhead">Then and now</p>
@@ -480,78 +451,72 @@
 <!-- FINDINGS -->
 <div class="card">
   <div class="hd"><strong>The detail behind those 71 products</strong>
-    <span class="sub">Bar colour matches the group above: you, your theme, or us</span></div>
+    <span class="sub">Every row says whose it is - you, your theme, or us - and the colour repeats it</span></div>
   <div class="checks">
 
     <div>
-      <p class="colhead">Found in your Shopify admin &mdash; 189 products, 11 collections</p>
+      <p class="colhead">Found in your Shopify admin - 189 products, 11 collections</p>
 
       <div class="frow">
         <div class="lab"><a href="#">Products with very little text on the page</a>
-          <span class="c"><b>38</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:20.1%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>38</b> of 189</span></div><div class="track"><i class="you" style="width:20.1%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Products with no title or description for Google</a>
-          <span class="c"><b>23</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:12.2%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>23</b> of 189</span></div><div class="track"><i class="you" style="width:12.2%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Products with no photo at all</a>
-          <span class="c"><b>18</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:9.5%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>18</b> of 189</span></div><div class="track"><i class="you" style="width:9.5%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Products sharing the same description word for word</a>
-          <span class="c"><b>9</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:4.8%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>9</b> of 189</span></div><div class="track"><i class="you" style="width:4.8%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Collections with little or no description</a>
-          <span class="c"><b>8</b> of 11</span></div>
-        <div class="track"><i class="you" style="width:72.7%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>8</b> of 11</span></div><div class="track"><i class="you" style="width:72.7%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Photos still named the way the camera saved them</a>
-          <span class="c"><b>6</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:3.2%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>6</b> of 189</span></div><div class="track"><i class="you" style="width:3.2%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Old product links that drop visitors on your home page</a>
-          <span class="c"><b>3</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:1.6%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>3</b> of 189</span></div><div class="track"><i class="you" style="width:1.6%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Collections holding one product, or none</a>
-          <span class="c"><b>1</b> of 11</span></div>
-        <div class="track"><i class="you" style="width:9.1%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>1</b> of 11</span></div><div class="track"><i class="you" style="width:9.1%"></i></div></div>
 
-      <p class="note">Three more checks found nothing at all here, so there is nothing to show.<br>
-        One check could not run: we could not read your sitemap.</p>
+      <p class="note">Three more checks found nothing at all on 189 products, so there is nothing
+        to show.<br>
+        One check could not run: we could not read your sitemap.<br>
+        One check flagged every product we read, so it is in the shop-wide card above rather than
+        counted here.<br>
+        Three checks count your collections rather than your products, so they carry their own
+        total above.<br>
+        That is all 13 checks on this side: 7 shown above, 6 in the lines here.</p>
     </div>
 
     <div>
-      <p class="colhead">Found on the live page &mdash; 189 pages opened</p>
+      <p class="colhead">Found on the live page - 189 pages opened</p>
 
       <div class="frow">
         <div class="lab"><a href="#">Products whose main address nothing links to</a>
-          <span class="c"><b>14</b> of 189</span></div>
-        <div class="track"><i class="thm" style="width:7.4%"></i></div></div>
+          <span class="c"><i class="who">Your theme</i> <b>14</b> of 189</span></div><div class="track"><i class="thm" style="width:7.4%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Products telling Google the wrong main address</a>
-          <span class="c"><b>12</b> of 189</span></div>
-        <div class="track"><i class="thm" style="width:6.3%"></i></div></div>
+          <span class="c"><i class="who">Your theme</i> <b>12</b> of 189</span></div><div class="track"><i class="thm" style="width:6.3%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Photos with no description of what is in them</a>
-          <span class="c"><b>11</b> of 189</span></div>
-        <div class="track"><i class="us" style="width:5.8%"></i></div></div>
+          <span class="c"><i class="who">Us</i> <b>11</b> of 189</span></div><div class="track"><i class="us" style="width:5.8%"></i></div></div>
 
       <div class="frow">
         <div class="lab"><a href="#">Titles that get cut off in a search result on a phone</a>
-          <span class="c"><b>7</b> of 189</span></div>
-        <div class="track"><i class="you" style="width:3.7%"></i></div></div>
+          <span class="c"><i class="who">You</i> <b>7</b> of 189</span></div><div class="track"><i class="you" style="width:3.7%"></i></div></div>
 
       <div class="frow na">
         <div class="lab"><a href="#">Products more than three clicks from your home page</a>
@@ -563,14 +528,24 @@
           <span class="c">does not apply</span></div>
         <div class="track off"></div></div>
 
-      <p class="note">Nine more checks found nothing at all here, so there is nothing to show.<br>
+      <p class="note">Nine more checks found nothing at all on 189 pages, so there is nothing to
+        show.<br>
         Two could not run: no blog post to read, and we have not followed your old links yet.<br>
-        One needs a permission your shop has not approved yet.</p>
+        One needs a permission your shop has not approved yet.<br>
+        Three checks flagged every product we read, so they are in the shop-wide card above rather
+        than counted here.<br>
+        Two checks count something and state no verdict, so they are at the foot of this screen
+        instead.<br>
+        One check counts your blog posts rather than your product pages, so it carries its own
+        total above.<br>
+        That is all 31 checks on this side: 13 shown above, 18 in the lines here.</p>
     </div>
   </div>
   <p class="method">Each bar is measured against the group named at the top of its column, never the
-    other one, so a row counting collections says so in its own figure. The four problems that
-    affect all 189 products are not repeated here; they are the five shop-wide fixes above.
+    other one, so a row counting collections says so in its own figure. The shop-wide card above
+    carries 5 fixes, 4 of them from checks that each flagged all 189 products whose page we read;
+    those are not counted again here. Every check in the vocabulary is accounted for, in a bar or
+    in a sentence.
     <b>A check that could not run says so and never shows as a clean zero.</b></p>
 </div>
 
@@ -579,75 +554,46 @@
   <div class="hd"><strong>Ready for Google's free product listings</strong>
     <span class="sub">The details Google asks a shop to publish about each product</span></div>
   <div class="bd">
-    <div class="gauges">
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">Product name</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">Price</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">Currency</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">Brand</div><div class="tag">required</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--att)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="90.4 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">90%</text></svg>
-        <div class="gl">Photo</div><div class="tag">required</div><div class="gn">171 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">In stock or not</div><div class="tag">recommended</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <circle cx="21" cy="21" r="16" fill="none" stroke="var(--good)" stroke-width="5"
-          stroke-linecap="round" stroke-dasharray="100.5 100.5" transform="rotate(-90 21 21)"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700">100%</text></svg>
-        <div class="gl">New or used</div><div class="tag">recommended</div><div class="gn">189 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
-        <div class="gl">Delivery cost and time</div><div class="tag">recommended</div><div class="gn">0 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
-        <div class="gl">Return window</div><div class="tag">recommended</div><div class="gn">0 of 189</div></div>
-
-      <div class="g"><svg width="70" height="70" viewBox="0 0 42 42" aria-hidden="true">
-        <circle cx="21" cy="21" r="16" fill="none" stroke="#f0f0f0" stroke-width="5"/>
-        <text x="21" y="24" text-anchor="middle" font-size="9.5" font-weight="700" fill="#b3b3b3">0%</text></svg>
-        <div class="gl">Barcode</div><div class="tag">strongly asked</div><div class="gn">0 of 189</div></div>
-
+    <div class="listing">
+      <div class="frow"><div class="lab"><span>Product name</span>
+        <span class="c"><i class="who">required</i> <b>189 of 189</b></span></div>
+        <div class="track"><i style="width:100%;background:var(--good)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Price</span>
+        <span class="c"><i class="who">required</i> <b>189 of 189</b></span></div>
+        <div class="track"><i style="width:100%;background:var(--good)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Currency</span>
+        <span class="c"><i class="who">required</i> <b>189 of 189</b></span></div>
+        <div class="track"><i style="width:100%;background:var(--good)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Brand</span>
+        <span class="c"><i class="who">required</i> <b>189 of 189</b></span></div>
+        <div class="track"><i style="width:100%;background:var(--good)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Photo</span>
+        <span class="c"><i class="who">required</i> <b>171 of 189</b></span></div>
+        <div class="track"><i style="width:90%;background:var(--att)"></i></div></div>
+      <div class="frow"><div class="lab"><span>In stock or not</span>
+        <span class="c"><i class="who">recommended</i> <b>189 of 189</b></span></div>
+        <div class="track"><i style="width:100%;background:var(--good)"></i></div></div>
+      <div class="frow"><div class="lab"><span>New or used</span>
+        <span class="c"><i class="who">recommended</i> <b>not published</b></span></div>
+        <div class="track"><i style="width:0%;background:var(--att)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Delivery cost and time</span>
+        <span class="c"><i class="who">recommended</i> <b>0 of 189</b></span></div>
+        <div class="track"><i style="width:0%;background:var(--att)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Return window</span>
+        <span class="c"><i class="who">recommended</i> <b>0 of 189</b></span></div>
+        <div class="track"><i style="width:0%;background:var(--att)"></i></div></div>
+      <div class="frow"><div class="lab"><span>Barcode</span>
+        <span class="c"><i class="who">strongly asked</i> <b>0 of 189</b></span></div>
+        <div class="track"><i style="width:0%;background:var(--att)"></i></div></div>
     </div>
   </div>
-  <p class="method">Required and recommended exactly as Google states them. The three empty ones are
+  <p class="note" style="padding:14px 18px 0">New or used: not published, on purpose. Shopify has no
+    field saying whether a product is new, refurbished or second hand, so stating "new" on every
+    product would be a claim you never made. Nothing here is invented.</p>
+  <p class="method">Required and recommended exactly as Google states them. Shopify supplies the
+    product name, its price, your currency and whether it is in stock on every product it holds, so
+    those 4 are in place on all 189 of your products and are counted in the 7 of 10 above - the
+    sentence and the count are computed from the same rows and cannot disagree. The empty ones are
     fixes 1 and 2 above. <b>A barcode is your data and this app will never invent one</b> - a
     made-up barcode would point Google at somebody else's product.</p>
 </div>
@@ -776,6 +722,54 @@
       untouched.</li>
     <li>Charts are hand-drawn SVG or Polaris Viz. No chart library from a CDN: this app ships no
       third-party script and this screen is not where that changes.</li>
+    <li><b>Amended 4 September 2026, after the built screen was read on a dev store, and approved
+      by Marius.</b> Eleven fixes; the three that change this design are 8, 9 and 10.
+      <ol>
+        <li>One source for "have your products been read": the scan rows, which the header and
+          the findings columns already count from. The Google card was answering it from whether a
+          snapshot row existed and contradicted the rest of the screen.</li>
+        <li>The Google card's count and its method line are computed from the same rows, so
+          "0 of 10 in place" can never sit under a sentence saying four of them are complete by
+          construction.</li>
+        <li>Any sentence pointing at the shop-wide card counts the rows that card renders, not the
+          checks behind some of them. Two of the five come from the Business screen and from the
+          catalogue, and are not checks at all.</li>
+        <li>Each shop-wide row carries its own denominator. A blank return window and a missing
+          barcode are facts about every product in the catalogue; only the rows that came from a
+          check are counted over the pages read.</li>
+        <li><code>SHOP_WIDE_LABEL</code>, typed by <code>FindingCode</code> like the other three,
+          holds the sentence a merchant reads when a finding covers the whole shop. No title on
+          that card ends with ", on all N": that is a bar label with a count glued on.</li>
+        <li>The row saying this app's own details are not arriving names the cause on the card,
+          from the reasons the page read recorded. If it cannot, it says what it does not know and
+          what would settle it. A paid screen does not raise an alarm and send the reader
+          elsewhere for the explanation.</li>
+        <li>A sentence that applies to the whole card is printed once, not once per row.</li>
+        <li><b>Design.</b> Every circular gauge becomes a horizontal bullet bar with the raw count
+          beside it and the full range as its track. NN/g: gauges that mimic a car dashboard
+          "consume a lot of precious space on a dashboard and are also harder to interpret than
+          linear graphs", donut charts are "notoriously poor at most information-communication
+          tasks", and most bullet charts wrongly hide the overall range. Exactly one circle is left
+          on the screen - the hero dial, which carries a single share and is the visual anchor.
+          Source: nngroup.com/articles/dashboards-preattentive/</li>
+        <li><b>Design.</b> Mobile, against Built for Shopify 4.1.2. Every multi-column block
+          stacks, the collapsible groups stay operable at 375 wide, and no block holds a fixed
+          width that cannot shrink. Breakpoints are chosen against the admin iframe, which is
+          roughly 250 to 300 px narrower than the browser window - so two columns arrive at
+          <code>lg</code> and not at <code>md</code>.</li>
+        <li><b>Design.</b> Colour reinforces and never carries. Up to 8 percent of men have some
+          form of colour blindness, so every bar prints its group in words as well as in hue, and
+          a test asserts it.</li>
+        <li>The headline figure must not be able to read as complete while products remain
+          unexamined. The dial's denominator is the catalogue, the products nobody has fully
+          checked are the fifth band of the bar, and the four groups plus that band partition the
+          catalogue exactly - asserted beside the four-way partition on all five stores.</li>
+      </ol>
+    </li>
+    <li>Every check in the vocabulary is accounted for in its column, in a bar or in a sentence,
+      and the column prints its own arithmetic. A card that showed 8 bars and 28 clean checks out
+      of 44 codes had silently dropped six, and a merchant reading it could not tell whether they
+      were fine or never asked.</li>
     <li>Bar order is by count descending within each column, computed at render. Bar colour is the
       owning group, so it matches the readiness bar above without a second legend.</li>
     <li>Checks that found nothing collapse into one sentence per column, with no codes and no count.

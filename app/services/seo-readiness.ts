@@ -36,11 +36,12 @@
 // as `awaitingPage`, and the screen says so in a sentence rather than folding
 // them into a group.
 
-import { CHECKS, wasRead, type ScanRowLike } from "./seo-aggregate";
+import { CHECKS, wasRead, type CheckRow, type CheckSource, type ScanRowLike } from "./seo-aggregate";
 import {
   FINDING_OWNER,
   OWNER_LABEL,
   OWNER_STEPS,
+  SHOP_WIDE_LABEL,
   findingsOf,
   type FindingCode,
   type FindingOwner,
@@ -206,6 +207,14 @@ export type Readiness = {
   merchant: number;
   theme: number;
   app: number;
+  /**
+   * Products in the catalogue that are not in the read set, so they are in
+   * none of the four groups. This is the fifth segment of the headline, and it
+   * exists because the headline must not be able to read as complete while
+   * products remain unexamined: on a shop with 12 pages read out of 50, "12 of
+   * 12" is arithmetically true and says the shop is finished.
+   */
+  notChecked: number;
   /** merchant + theme + app: products with something of their own to fix. */
   needSomething: number;
   groups: GroupView[];
@@ -336,6 +345,7 @@ export function buildReadiness(counters: ReadinessCounters): Readiness {
     merchant: tally.merchant,
     theme: tally.theme,
     app: tally.app,
+    notChecked: counters.products - readSet,
     needSomething: tally.merchant + tally.theme + tally.app,
     groups,
     shopWideCodes,
@@ -352,6 +362,43 @@ export function buildReadiness(counters: ReadinessCounters): Readiness {
  */
 export function groupsPartitionReadSet(readiness: Readiness): boolean {
   return readiness.clean + readiness.merchant + readiness.theme + readiness.app === readiness.readSet;
+}
+
+/**
+ * The same partition one level out, and the one the headline is drawn against:
+ * the four groups plus the products nobody has fully checked yet add up to the
+ * catalogue. Asserted beside the other on all five fixture stores.
+ */
+export function groupsPartitionCatalogue(readiness: Readiness): boolean {
+  return (
+    readiness.clean +
+      readiness.merchant +
+      readiness.theme +
+      readiness.app +
+      readiness.notChecked ===
+    readiness.products
+  );
+}
+
+/**
+ * The group in words, for the rows and segments that are also drawn in colour.
+ *
+ * Colour reinforces; it never carries. Up to 8 percent of men have some form
+ * of colour blindness, and a bar whose only statement of ownership is its hue
+ * says nothing at all to them - so every row that has a colour also prints
+ * this. (NN/g, dashboard design.)
+ */
+export const GROUP_WORD: Record<ReadinessGroup, string> = {
+  clean: "Nothing to fix",
+  merchant: "You",
+  theme: "Your theme",
+  app: "Us",
+};
+
+/** The group word for a code, for a bar rendered outside the four panels. */
+export function groupWordFor(code: string): string {
+  const owner = FINDING_OWNER[code as FindingCode] as FindingOwner | undefined;
+  return owner ? GROUP_WORD[owner] : GROUP_WORD.theme;
 }
 
 // --- fixes that cover the whole shop ---------------------------------------
@@ -374,13 +421,39 @@ export type ShopWideFacts = {
   deliveryStated: boolean | null;
   returnsStated: boolean | null;
   barcode: { have: number; of: number } | null;
+  /**
+   * Products in the catalogue, from the same source the rest of the screen
+   * counts from. The card used to state one blanket denominator - the read set
+   * - under every row, which is wrong for two of the three: a blank return
+   * window and a missing barcode are facts about every product in the
+   * catalogue, not only about the ones whose page a crawler has opened.
+   * Null when nothing has read the catalogue, and then no row claims a figure.
+   */
+  catalogue: number | null;
+  /**
+   * What the last page read found about the details this app publishes, and
+   * why each one is missing. This is what turns the app-owned shop-wide row
+   * from an alarm into an explanation: a screen the merchant pays for does not
+   * say "something we should be doing is not happening, go and look elsewhere
+   * to find out why".
+   */
+  publishedReasons: { nodeType: string; emitted: boolean; reason: string | null }[] | null;
 };
 
 export type ShopWideItem = {
   key: string;
+  /**
+   * A sentence. Never a bar label with a count glued to the end: this card
+   * exists because the fix is one decision rather than N of them, so a title
+   * ending ", on all 12" is a count that has lost its subject.
+   */
   title: string;
   what: string;
+  /** Named on this card when the app can name it, rather than sent elsewhere. */
+  why?: string;
   where: string;
+  /** What this one row covers, with its own denominator. Never the card's. */
+  appliesTo: string;
   owner: FindingOwner;
   /** The short tag on the right of the card: who, and how often it is done. */
   ownerNote: string;
@@ -398,8 +471,37 @@ const OWNER_NOTE: Record<FindingOwner, string> = {
  * and applies to every product, which is the whole reason they are not counted
  * against individual products.
  */
+/**
+ * The cause behind the app-owned shop-wide row, in the merchant's words.
+ *
+ * Null when the app genuinely cannot name it, and then the row says what it
+ * does not know and what would settle it - which is the honest version of the
+ * same sentence, and still better than a link to another screen.
+ */
+function whyNothingIsArriving(
+  reasons: { nodeType: string; emitted: boolean; reason: string | null }[] | null,
+): string | null {
+  if (!reasons || reasons.length === 0) return null;
+  const missing = reasons.filter((r) => !r.emitted && (r.reason ?? "").trim() !== "");
+  if (missing.length === 0) return null;
+  const distinct = [...new Set(missing.map((r) => r.reason!.trim()))];
+  const named = missing
+    .map((r) => PUBLISHED_LABEL[r.nodeType])
+    .filter((label): label is string => Boolean(label));
+  const which =
+    named.length > 0
+      ? `What is missing: ${named.join(", ")}. `
+      : "";
+  return `${which}${distinct.length === 1 ? "The reason we recorded" : "The reasons we recorded"}: ${distinct.join(" ")}`;
+}
+
 export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopWideItem[] {
   const items: ShopWideItem[] = [];
+  const catalogue = facts.catalogue;
+  const everyProduct =
+    catalogue !== null && catalogue > 0
+      ? `all ${catalogue} products in your catalogue`
+      : "every product in your catalogue";
 
   if (facts.deliveryStated === false || facts.returnsStated === false) {
     const both = facts.deliveryStated === false && facts.returnsStated === false;
@@ -418,6 +520,7 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
         "for on product listings. " +
         (both ? "Two fields, one screen." : "One field, one screen."),
       where: "Open the Business screen in this app and save.",
+      appliesTo: `Filled in once, on one screen, and it applies to ${everyProduct}.`,
       owner: "merchant",
       ownerNote: "You, Business screen",
     });
@@ -426,13 +529,16 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
   if (facts.barcode && facts.barcode.of > 0 && facts.barcode.have === 0) {
     items.push({
       key: "barcode",
-      title: `No product has a barcode, on all ${facts.barcode.of}`,
+      title: "No product in your catalogue carries a barcode",
       what:
         "Google strongly asks for the manufacturer's barcode where one exists, because it is " +
         "how it matches your product to the same product elsewhere. It is a field in Shopify, " +
         "under each product's variant. We will not make one up: a wrong barcode points Google " +
         "at somebody else's product.",
       where: "Shopify, Products, open one, the variant row.",
+      appliesTo:
+        `Not one of your ${facts.barcode.of} products carries one, which is why it is here ` +
+        "rather than against individual products. The fix itself is one field per product.",
       owner: "merchant",
       ownerNote: "You, Shopify, per product",
     });
@@ -440,11 +546,31 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
 
   for (const code of readiness.shopWideCodes) {
     const owner = FINDING_OWNER[code];
+    const why = code === "B6" ? whyNothingIsArriving(facts.publishedReasons) : null;
     items.push({
       key: code,
-      title: `${OWNER_LABEL[code]}, on all ${readiness.readSet}`,
+      title: SHOP_WIDE_LABEL[code],
       what: OWNER_STEPS[code].what,
-      where: OWNER_STEPS[code].where,
+      ...(code === "B6"
+        ? {
+            why:
+              why ??
+              "We cannot say which of them or why from here: the reasons are recorded when a " +
+                "page of yours is read, and the last read of your published theme carries none. " +
+                "The next nightly page read settles it, and the Diagnostics screen re-reads a " +
+                "page now if you would rather not wait.",
+          }
+        : {}),
+      where:
+        code === "B6"
+          ? "Diagnostics in this app re-reads one of your pages and shows the same reasons again."
+          : OWNER_STEPS[code].where,
+      appliesTo:
+        owner === "theme"
+          ? `Found on all ${readiness.readSet} products whose page we have read. One change to the theme, and it applies to every product page.`
+          : owner === "app"
+            ? `Found on all ${readiness.readSet} products whose page we have read. One thing for us to put right, not ${readiness.readSet}.`
+            : `Found on all ${readiness.readSet} products whose page we have read. One setting, and it applies to every product page.`,
       owner,
       ownerNote:
         owner === "theme"
@@ -467,14 +593,45 @@ export function shopWideMethod(readiness: Readiness, items: ShopWideItem[]): str
     );
   }
   const fromChecks = readiness.shopWideCodes.length;
+  const rest = items.length - fromChecks;
   const threshold =
     fromChecks > 0
-      ? ` ${fromChecks} of ${items.length} came from a check that flagged all ${readiness.readSet} of the products read, which is exactly 100 percent and therefore a fact rather than a judgement.`
+      ? ` ${fromChecks} of the ${items.length} came from a check that flagged all ${readiness.readSet} of the products whose page we read, which is exactly 100 percent and therefore a fact rather than a judgement.`
+      : "";
+  const others =
+    rest > 0
+      ? ` The other ${rest === 1 ? "one is a fact" : `${rest} are facts`} about the shop that no product row carries: a field on the Business screen, or a field that not one product in your catalogue fills in.`
       : "";
   return (
     "Something is listed here rather than against individual products when it affects every " +
-    `product the same way.${threshold} Fixing all ${items.length} would move ${readiness.readSet} ` +
-    "products at once, which is why they sit above the per-product list."
+    `product the same way.${threshold}${others} Each row states what it applies to and the ` +
+    "number it was counted over, because those numbers are not all the same one."
+  );
+}
+
+/**
+ * The sentence that names the shop-wide card from another card.
+ *
+ * It counts the rows the card actually renders, which is the bug this replaced:
+ * the method line printed `shopWideCodes.length` (2) while the card below
+ * listed 3, because one of the rows comes from the Business screen and is not
+ * a check at all. Two numbers, both true, contradicting each other on one
+ * screen.
+ */
+export function shopWideCrossReference(
+  readiness: Readiness,
+  items: ShopWideItem[],
+  where: "above" | "below",
+): string {
+  if (items.length === 0) return "";
+  const fromChecks = readiness.shopWideCodes.length;
+  const card = `The shop-wide card ${where} carries ${items.length} ${items.length === 1 ? "fix" : "fixes"}`;
+  if (fromChecks === 0) {
+    return `${card}, and no check flagged every product, so nothing was moved out of the counts here.`;
+  }
+  return (
+    `${card}, ${fromChecks} of ${fromChecks === 1 ? "them from a check that flagged" : "them from checks that each flagged"} ` +
+    `all ${readiness.readSet} products whose page we read. ${fromChecks === 1 ? "That one is" : "Those are"} not counted again here.`
   );
 }
 
@@ -506,14 +663,24 @@ export function shopWideMethod(readiness: Readiness, items: ShopWideItem[]): str
  */
 export type ListingRequirement = "required" | "recommended" | "strongly asked";
 
+/**
+ * Where a row's figure comes from. `byConstruction` is the one that had to be
+ * named: those four are in place on every product Shopify holds, and a card
+ * whose method line said so while its own count said "0 of 10" was stating two
+ * different answers to one question. `listingMethod` is computed from these,
+ * so the sentence and the count cannot drift apart again.
+ */
+export type ListingBasis = "measured" | "byConstruction" | "fromBusiness" | "notPublished";
+
 export type ListingProperty = {
   key: string;
   label: string;
   requirement: ListingRequirement;
+  basis: ListingBasis;
   /** Null when nothing has measured this, or when it is not published at all. */
   have: number | null;
   of: number | null;
-  /** The sentence that replaces a gauge. Set only when `have` is null. */
+  /** The sentence that replaces a bar. Set only when `have` is null. */
   note?: string;
 };
 
@@ -523,7 +690,16 @@ export type ListingReadiness = {
   inPlace: number;
   /** Every property on the card, in place or not. */
   total: number;
-  /** True when the catalogue has never been read, so the card is a sentence. */
+  /**
+   * True when the catalogue has never been read, so the card is a sentence.
+   *
+   * Read from `catalogueRead`, which is the SeoScan row count the header, the
+   * findings columns and the readiness dial all count from - not from whether
+   * a snapshot row happens to exist. The two are different questions and the
+   * card was answering the second one, so a shop with 50 rows read and no
+   * snapshot yet was told in one card that its catalogue had been read and in
+   * the next that it had not.
+   */
   unmeasured: boolean;
 };
 
@@ -535,8 +711,18 @@ export function listingReadiness(
     withBarcode: number;
   } | null,
   business: { deliveryStated: boolean; returnsStated: boolean } | null,
+  /** Products source A has read, from the same source as the rest of the screen. */
+  catalogueRead: number,
 ): ListingReadiness {
-  const of = facts ? facts.products : null;
+  // The counted fields live in the rolling snapshot row; the catalogue size is
+  // known from either. When the rows are read but the snapshot has not been
+  // written yet, the card still renders - the four that Shopify supplies are
+  // in place, and the three that are counted say they have not been counted
+  // yet rather than showing a zero.
+  const of = facts ? facts.products : catalogueRead > 0 ? catalogueRead : null;
+  const NOT_COUNTED_YET =
+    "Not counted yet. Your products have been read, and this figure is written by the next " +
+    "catalogue pass; until then it is not a zero.";
   const all = (have: number | null): number | null => (of === null ? null : have);
   const fromBusiness = (stated: boolean | null): number | null => {
     if (of === null || stated === null) return null;
@@ -548,54 +734,61 @@ export function listingReadiness(
       key: "name",
       label: "Product name",
       requirement: "required",
+      basis: "byConstruction",
       have: all(of),
       of,
-      ...(of === null ? { note: "The catalogue has not been read yet." } : {}),
+      ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
       key: "price",
       label: "Price",
       requirement: "required",
+      basis: "byConstruction",
       have: all(of),
       of,
-      ...(of === null ? { note: "The catalogue has not been read yet." } : {}),
+      ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
       key: "currency",
       label: "Currency",
       requirement: "required",
+      basis: "byConstruction",
       have: all(of),
       of,
-      ...(of === null ? { note: "The catalogue has not been read yet." } : {}),
+      ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
       key: "brand",
       label: "Brand",
       requirement: "required",
+      basis: "measured",
       have: facts ? facts.withVendor : null,
       of,
-      ...(facts ? {} : { note: "The catalogue has not been read yet." }),
+      ...(facts ? {} : { note: of === null ? "Your products have not been read yet." : NOT_COUNTED_YET }),
     },
     {
       key: "photo",
       label: "Photo",
       requirement: "required",
+      basis: "measured",
       have: facts ? facts.withImage : null,
       of,
-      ...(facts ? {} : { note: "The catalogue has not been read yet." }),
+      ...(facts ? {} : { note: of === null ? "Your products have not been read yet." : NOT_COUNTED_YET }),
     },
     {
       key: "availability",
       label: "In stock or not",
       requirement: "recommended",
+      basis: "byConstruction",
       have: all(of),
       of,
-      ...(of === null ? { note: "The catalogue has not been read yet." } : {}),
+      ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
       key: "condition",
       label: "New or used",
       requirement: "recommended",
+      basis: "notPublished",
       have: null,
       of,
       note:
@@ -607,6 +800,7 @@ export function listingReadiness(
       key: "delivery",
       label: "Delivery cost and time",
       requirement: "recommended",
+      basis: "fromBusiness",
       have: fromBusiness(business ? business.deliveryStated : null),
       of,
       ...(business && of !== null
@@ -617,6 +811,7 @@ export function listingReadiness(
       key: "returns",
       label: "Return window",
       requirement: "recommended",
+      basis: "fromBusiness",
       have: fromBusiness(business ? business.returnsStated : null),
       of,
       ...(business && of !== null
@@ -627,9 +822,10 @@ export function listingReadiness(
       key: "barcode",
       label: "Barcode",
       requirement: "strongly asked",
+      basis: "measured",
       have: facts ? facts.withBarcode : null,
       of,
-      ...(facts ? {} : { note: "The catalogue has not been read yet." }),
+      ...(facts ? {} : { note: of === null ? "Your products have not been read yet." : NOT_COUNTED_YET }),
     },
   ];
 
@@ -638,17 +834,53 @@ export function listingReadiness(
     inPlace: properties.filter((p) => p.have !== null && p.of !== null && p.of > 0 && p.have === p.of)
       .length,
     total: properties.length,
-    unmeasured: facts === null,
+    unmeasured: catalogueRead === 0,
   };
 }
 
-export const LISTING_METHOD =
-  "Required and recommended exactly as Google states them for free product listings. " +
-  "Product name, price, currency and stock status come from Shopify on every product it holds, " +
-  "so those four are complete by construction and the figure beside them is your catalogue " +
-  "size rather than a separate measurement. Brand, photo and barcode are counted from the last " +
-  "catalogue read. A barcode is your data and this app will never invent one: a made-up barcode " +
-  "would point Google at somebody else's product.";
+/**
+ * The method line, computed from the same object the headline count is, so the
+ * two cannot say different things.
+ *
+ * The card used to carry a constant sentence saying four of these were
+ * "complete by construction" above a count that read "0 of 10". Both were
+ * printed on one screen. Whatever the true number is, it is now arithmetic
+ * from the rows.
+ */
+export function listingMethod(listing: ListingReadiness): string {
+  const byConstruction = listing.properties.filter((p) => p.basis === "byConstruction");
+  const inPlaceByConstruction = byConstruction.filter(
+    (p) => p.have !== null && p.of !== null && p.of > 0 && p.have === p.of,
+  );
+  const head =
+    "Required and recommended exactly as Google states them for free product listings. ";
+  // Read as a phrase rather than as a label, so the sentence is a sentence.
+  const PHRASE: Record<string, string> = {
+    name: "the product name",
+    price: "its price",
+    currency: "your currency",
+    availability: "whether it is in stock",
+  };
+  const phrases = inPlaceByConstruction.map((p) => PHRASE[p.key] ?? p.label.toLowerCase());
+  const listed =
+    phrases.length <= 1
+      ? phrases.join("")
+      : `${phrases.slice(0, -1).join(", ")} and ${phrases[phrases.length - 1]}`;
+  const construction =
+    inPlaceByConstruction.length > 0
+      ? `Shopify supplies ${listed} on every product it holds, so those ` +
+        `${inPlaceByConstruction.length} are in place on all ${inPlaceByConstruction[0].of} of ` +
+        `your products and are counted in the ${listing.inPlace} of ${listing.total} above. `
+      : listing.unmeasured
+        ? "Your products have not been read yet, so nothing here has been counted and none of the " +
+          "ten is claimed either way. "
+        : "";
+  const measured =
+    "Brand, photo and barcode are counted from the last catalogue read. A barcode is your data " +
+    "and this app will never invent one: a made-up barcode would point Google at somebody " +
+    "else's product.";
+  return head + construction + measured;
+}
 
 // --- what a page publishes about the product -------------------------------
 
@@ -669,3 +901,149 @@ export const PUBLISHED_LABEL: Record<string, string> = {
   CollectionPage: "The category page",
   FAQPage: "The questions block",
 };
+
+// --- every check on the screen accounted for --------------------------------
+
+/**
+ * The four codes that are not in the CHECKS table, and where each is counted
+ * instead.
+ *
+ * CHECKS holds the checks whose denominator is products or product pages. A6,
+ * A10 and A11 count collections and B30 counts blog posts, so none of them may
+ * borrow this aggregate's denominator (CheckBasis says why), and each is
+ * rendered from its own pass's report with its own total. They are listed here
+ * because a column that says "8 found, 28 found nothing" on a vocabulary of 44
+ * has silently dropped six codes, and a merchant reading it has no way to know
+ * whether the missing ones were fine or never asked.
+ */
+const OFF_TABLE_SOURCE: Partial<Record<FindingCode, CheckSource>> = {
+  A6: "A",
+  A10: "A",
+  A11: "A",
+  B30: "B",
+};
+
+const CHECK_SOURCE = new Map<string, CheckSource>(CHECKS.map((c) => [String(c.code), c.source]));
+
+/** Which column a code belongs to, whether or not it is in the CHECKS table. */
+export function codeSource(code: FindingCode): CheckSource {
+  return CHECK_SOURCE.get(code) ?? OFF_TABLE_SOURCE[code] ?? "A";
+}
+
+export type ColumnAccount = {
+  source: CheckSource;
+  /** Every code in the vocabulary that belongs to this column. */
+  total: number;
+  /** Codes rendered as a bar in this column. */
+  bars: number;
+  shopWide: number;
+  clean: number;
+  notYetRead: number;
+  couldNotRun: number;
+  notApplicable: number;
+  counted: number;
+  /** Codes counted against collections or blog posts, with their own totals. */
+  offTable: number;
+  /** The sentences under the bars, in reading order. */
+  lines: string[];
+  /** bars + everything in a sentence adds to total. False is a bug, not a state. */
+  balanced: boolean;
+};
+
+/**
+ * What became of every check on one side of the findings card.
+ *
+ * The rule this enforces is the card's own: a check that could not run is a
+ * sentence and never a zero. The corollary, which the card was missing, is
+ * that a check nobody can see at all is worse than a zero - so each column now
+ * ends with its own arithmetic, and `balanced` is asserted in the tests.
+ */
+export function columnAccount(input: {
+  source: CheckSource;
+  rows: CheckRow[];
+  clean: CheckRow[];
+  shopWideCodes: FindingCode[];
+}): ColumnAccount {
+  const { source, shopWideCodes } = input;
+  const wide = new Set<string>(shopWideCodes);
+  const mine = input.rows.filter((r) => r.source === source);
+  const mineClean = input.clean.filter((r) => r.source === source);
+  const found = mine.filter((r) => r.state === "found");
+  const shopWide = found.filter((r) => wide.has(r.code)).length;
+  const bars = found.length - shopWide;
+  const notYetRead = mine.filter((r) => r.state === "notYetRead").length;
+  const couldNotRun = mine.filter((r) => r.state === "couldNotRun").length;
+  const notApplicable = mine.filter((r) => r.state === "notApplicable").length;
+  const counted = mine.filter((r) => r.state === "counted").length;
+  const offTable = (Object.keys(OFF_TABLE_SOURCE) as FindingCode[]).filter(
+    (code) => OFF_TABLE_SOURCE[code] === source,
+  ).length;
+  const total = (Object.keys(FINDING_OWNER) as FindingCode[]).filter(
+    (code) => codeSource(code) === source,
+  ).length;
+
+  const thing = source === "A" ? "product" : "page";
+  // "more" only makes sense when something was shown above it.
+  const more = bars > 0 ? "more " : "";
+  const lines: string[] = [];
+
+  if (mineClean.length > 0) {
+    const of = mineClean[0].denominator;
+    lines.push(
+      `${mineClean.length} ${more}${mineClean.length === 1 ? "check" : "checks"} found nothing at all on ${of} ${thing}${of === 1 ? "" : "s"}, so there is nothing to show.`,
+    );
+  }
+  if (shopWide > 0) {
+    lines.push(
+      `${shopWide} ${shopWide === 1 ? "check flagged" : "checks flagged"} every product we read, so ${shopWide === 1 ? "it is" : "they are"} in the shop-wide card above rather than counted here.`,
+    );
+  }
+  if (notYetRead > 0) {
+    lines.push(
+      `${notYetRead} ${more}${notYetRead === 1 ? "check has" : "checks have"} nothing to read yet, so ${notYetRead === 1 ? "it says" : "they say"} nothing rather than zero.`,
+    );
+  }
+  if (couldNotRun > 0) {
+    lines.push(
+      `${couldNotRun} ${couldNotRun === 1 ? "check needs" : "checks need"} a permission your shop has not approved yet.`,
+    );
+  }
+  if (notApplicable > 0) {
+    lines.push(
+      `${notApplicable} ${notApplicable === 1 ? "check does" : "checks do"} not apply to a shop set up like yours.`,
+    );
+  }
+  if (counted > 0) {
+    lines.push(
+      `${counted} ${counted === 1 ? "check counts" : "checks count"} something and state no verdict, so ${counted === 1 ? "it is" : "they are"} at the foot of this screen instead.`,
+    );
+  }
+  if (offTable > 0) {
+    lines.push(
+      source === "A"
+        ? `${offTable} ${offTable === 1 ? "check counts your collections" : "checks count your collections"} rather than your products, so ${offTable === 1 ? "it carries its" : "they carry their"} own total above.`
+        : `${offTable} ${offTable === 1 ? "check counts your blog posts" : "checks count your blog posts"} rather than your product pages, so ${offTable === 1 ? "it carries its" : "they carry their"} own total above.`,
+    );
+  }
+
+  const accounted =
+    bars + shopWide + mineClean.length + notYetRead + couldNotRun + notApplicable + counted + offTable;
+  lines.push(
+    `That is all ${total} checks on this side: ${bars} shown above, ${total - bars} in the ${lines.length === 1 ? "line" : "lines"} here.`,
+  );
+
+  return {
+    source,
+    total,
+    bars,
+    shopWide,
+    clean: mineClean.length,
+    notYetRead,
+    couldNotRun,
+    notApplicable,
+    counted,
+    offTable,
+    lines,
+    balanced: accounted === total,
+  };
+}

@@ -387,6 +387,46 @@ declares one owner - `merchant`, `app` or `theme` - and a product goes in the
 group of its most immediate owner, in that order. The four numbers sum to the
 denominator, and a test asserts that on all five fixture stores.
 
+#### Second amendment to 4.1, approved by Marius 4 September 2026
+
+Written after the built screen was read on the dev store, and amending three
+things the mockup specified. The mockup was updated at the same time, so the
+two do not disagree.
+
+**Amendment 3: no circular gauge except the hero dial.** Every other gauge is
+a horizontal bullet bar with the raw count beside it and the full range as its
+track. Nielsen Norman Group's dashboard research states that gauges mimicking
+a car dashboard "consume a lot of precious space on a dashboard and are also
+harder to interpret than linear graphs", that donut charts are "notoriously
+poor at most information-communication tasks", and that the named replacement
+for a value on a range is the bullet chart - adding that most bullet charts
+wrongly hide the overall range, which is why ours always draws the
+denominator. One circle is kept, because the screen needs one anchor.
+
+**Amendment 4: the layout is chosen against the admin iframe.** Built for
+Shopify requirement 4.1.2 fails a two-column layout that does not stack and a
+section that is collapsed with no way to expand it. The app renders inside an
+iframe roughly 250 to 300 px narrower than the browser window, so two-column
+blocks arrive at `lg` and not at `md`, and no element on the screen declares a
+width that cannot shrink.
+
+**Amendment 5: colour reinforces and never carries.** Up to 8 percent of men
+have some form of colour blindness. Every bar prints its group in words as
+well as in hue, and a test asserts that every rendered row carries it.
+
+**Consequence for the headline, stated here so it is not inferred.** The
+readiness dial is drawn against the catalogue and not against the read set.
+On a 50-product shop with 12 pages read, a dial denominated in the read set
+reads "12 of 12" and "100 percent" - true arithmetic that says the shop is
+finished. The four groups plus the products nobody has fully checked partition
+the catalogue exactly, and a second test asserts that partition beside the
+four-way one, on all five fixture stores.
+
+**Consequence for the findings card.** Every code in the vocabulary is
+accounted for in its column, in a bar or in a sentence, and each column prints
+its own arithmetic. A column that showed some bars and one clean line
+accounted for 38 of 44 codes and said nothing about the other six.
+
 ### 4.2 Design rules, taken from the Report screen and held here
 
 Tabular figures everywhere. Bars in one neutral colour with a second only

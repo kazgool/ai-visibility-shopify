@@ -16,6 +16,94 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The merchant SEO dashboard, second pass (4 September 2026)
+
+Eleven fixes, from reading the built screen on the dev store (50 products, 12
+pages read) and from Shopify's and Nielsen Norman Group's published guidance.
+Three of them change the approved design and are approved by Marius; the
+mockup `_shopify/mockup-seo-dashboard.html` and PRD section 4.1 were amended
+at the same time, so neither now disagrees with the code.
+
+**Three contradictions where two cards answered one question differently.**
+The Google listing card said "your catalogue has not been read yet" on a shop
+whose header said 38 of 50 products had been read from it: the card was
+answering from whether a rolling snapshot row existed, and every other figure
+on the screen counts scan rows. It now takes the same number the rest of the
+screen takes, and a test asserts that the two can never disagree on any of the
+five stores. The same card printed "0 of 10 details in place" above a method
+line saying four of them were complete by construction; the sentence is now
+computed from the same rows as the count, and a test asserts the two numbers
+are the same numbers. And the readiness method line printed the count of
+shop-wide *checks* while the card below it listed shop-wide *fixes* - two
+correct numbers, 2 and 3, contradicting each other, because two of the rows
+come from the Business screen and from the catalogue and are not checks at
+all. Every cross-reference now counts the rows the card renders.
+
+**A denominator that was wrong for two rows out of three.** The shop-wide card
+stated "applies to all 12 products" under every row. A blank return window and
+a catalogue with no barcodes are facts about all 50 products, not about the 12
+whose page a crawler has opened. Each row now carries its own scope with its
+own denominator, and the card states none of its own.
+
+**`SHOP_WIDE_LABEL`,** typed by `FindingCode` beside the other three, holds the
+sentence a merchant reads when a finding covers the whole shop. `OWNER_LABEL`
+was written as a per-product bar title, so the card was rendering "Products
+missing a barcode, a brand, a product code or a photo, on all 12" - a count
+that has lost its subject. No title on that card ends that way now, and a test
+asserts it.
+
+**The row that says this app is not working now says why.** It read "Product
+details this app should be adding to the page and is not" and sent the
+merchant to another screen to find out which and why. The reasons are already
+recorded by the page read, so the card names them: what is missing, and the
+cause, in the merchant's words. When the app genuinely has no reason recorded
+it says so and says what would settle it. A paid screen does not raise an
+alarm and delegate the explanation.
+
+**Every gauge on the screen except the hero dial is now a bullet bar.** NN/g's
+dashboard research is explicit that gauges mimicking a car dashboard "consume
+a lot of precious space on a dashboard and are also harder to interpret than
+linear graphs", that donut charts are "notoriously poor at most
+information-communication tasks", and that the replacement for a value on a
+range is the bullet chart - noting that most such charts wrongly hide the
+overall range, so ours always draws the full denominator as its track. One
+circle is kept: the hero dial, which carries a single share and anchors the
+screen.
+
+**The headline can no longer read as finished while products are unexamined.**
+On the dev store the dial read "100%" and "12 of 12 products" on a shop of 50.
+The explanation underneath was right and nobody reads it from two metres away.
+The dial is now drawn against the catalogue, the products nobody has fully
+checked are the fifth band of the bar beside it, and `groupsPartitionCatalogue`
+asserts that the four groups plus that band add to the catalogue on all five
+fixture stores - beside the four-way partition, which is unchanged.
+
+**Colour reinforces and never carries.** Up to 8 percent of men have some form
+of colour blindness, and the bar's hue was the only thing on a row saying
+whether the merchant, the theme or this app had to move. Every row and every
+segment now prints its group in words, and a test asserts it on the rendered
+markup.
+
+**Mobile, against Built for Shopify 4.1.2.** Two-column blocks arrive at `lg`
+rather than `md`, because the app renders inside an iframe roughly 250 to 300
+px narrower than the browser window and a breakpoint chosen against the window
+puts four tiles in a frame with room for two. The group headers wrap rather
+than holding one line, so the disclosure button cannot be squeezed off the
+edge - a collapsed section with no way to expand it is one of the three
+conditions that requirement fails. A test renders all five stores and asserts
+that nothing on the screen declares a width that cannot shrink.
+
+**Every check in the vocabulary is accounted for.** The findings card showed 8
+bars and 28 clean checks on a vocabulary of 44 codes and said nothing at all
+about the other six: two that state a count and no verdict and are rendered at
+the foot of the screen, three that count collections, one that counts blog
+posts, and the ones moved to the shop-wide card. Each column now names all of
+them and prints its own arithmetic, and `columnAccount` is asserted to balance
+on both sides of all five stores.
+
+**Said once, not eleven times.** The Google card printed "the catalogue has not
+been read yet" as a blanket line and again under each of its ten rows.
+
 ### The merchant SEO dashboard (4 September 2026)
 
 `PRD-SEO-FULL-ONPAGE.md` section 4.1, build step 5. Server only; nothing in an

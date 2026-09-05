@@ -819,3 +819,68 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
     where: "Nothing to do. It is on the screen so you can see when it changes.",
   },
 };
+
+/**
+ * The same row, written as the sentence a merchant reads when the finding
+ * covers the whole shop.
+ *
+ * OWNER_LABEL is a per-product row title: it is a noun phrase counting
+ * products ("Products with very little text on the page") and it is rendered
+ * with "12 of 50" beside it. On the shop-wide card there is no per-product
+ * count to put beside it, because the whole point of that card is that the
+ * fix is one decision rather than N of them - so the label was being rendered
+ * as a bar title with ", on all 12" glued to the end, which is not a sentence
+ * and reads as a count that has lost its subject.
+ *
+ * Typed by FindingCode like the other three, so a check added tomorrow that
+ * forgets its shop-wide sentence fails typecheck rather than falling back to
+ * the glued form. Two codes here can never appear on that card - the ones that
+ * state a count and no verdict - and they carry a sentence anyway so the
+ * record stays total.
+ */
+export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
+  A1: "Every product is missing a barcode, a brand, a product code or a photo",
+  A2: "Every product page shows a different price or stock than the product has",
+  A3: "Every product shares its search title or description with another product",
+  A4: "Every product changed address, and none of the old ones forwards",
+  A5: "No product has a title or description for Google",
+  A6: "No collection has a title or description for Google",
+  A7: "No product appears in your sitemap, the list of pages you hand search engines",
+  A10: "Every collection has little or no description",
+  A11: "Every collection holds one product, or none",
+  A12: "Every product repeats another product's description word for word",
+  A13: "Every old product link drops visitors on your home page",
+  A15: "Every photo is still named the way the camera saved it",
+  A16: "No product is in a collection or in a menu",
+  B1: "Your product pages describe no product to search engines, or describe two",
+  B2: "Every product tells Google the wrong main address",
+  B3: "Every product page tells search engines not to list it",
+  B4: "This app's block was not found on any page we read",
+  B5: "No page could be read the way a search engine reads it",
+  B6: "The product details this app adds for search engines are reaching none of your pages",
+  B7: "Every page carries this app's own details twice",
+  B8: "Every product states a main address that is not the plain product address",
+  B9: "No page carries the country and language links a shop selling abroad needs",
+  B10: "Every title is missing, or gets cut off in a search result on a phone",
+  B11: "Every description is missing, or gets cut off in a search result on a phone",
+  B12: "No product page uses the product as its largest heading",
+  B13: "No product shows a preview when someone shares it",
+  B14: "No product shows a preview card on X",
+  B15: "No photo has a description of what is in it",
+  B16: "Every product page carries links that lead nowhere",
+  B17: "Every product has very little text on its page",
+  B18: "Every product address carries characters that do not belong in a web address",
+  B19: "Every product address bounces through more than one stop",
+  B20: "Every page loads something over an unsecured connection",
+  B21: "Every page carries the same search title as another page",
+  B22: "Every page carries extra details that Google no longer shows",
+  B23: "The file that tells search engines where they may go has been edited",
+  B24: "Every page carries a list of keywords that Google ignores",
+  B25: "Nothing on your shop links to any product's main address",
+  B26: "Every product is hidden from search only because it is out of stock",
+  B28: "Every product is more than three clicks from your home page",
+  B29: "Links on a product page, by kind",
+  B30: "No blog post links to a product or a collection",
+  B31: "The main product photo waits before it loads, on every page",
+  B32: "Code your product page loads, by source",
+};

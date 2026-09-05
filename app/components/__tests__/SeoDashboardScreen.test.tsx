@@ -200,13 +200,19 @@ describe("a 189-product shop with one problem on every product", () => {
 
   it("moves the problem that flags every product into the shop-wide card", () => {
     expect(text).toContain("fixes that cover the whole shop");
-    expect(text).toContain("Pages whose largest heading is not the product, on all 189");
+    // A sentence, not a bar label with a count glued on the end.
+    expect(text).toContain("No product page uses the product as its largest heading");
+    expect(text).not.toMatch(/, on all \d+/);
     expect(text).toContain("100 percent");
   });
 
   it("lists the two shop-wide facts that no product row carries", () => {
     expect(text).toContain("Your delivery time and return window are blank");
-    expect(text).toContain("No product has a barcode, on all 189");
+    expect(text).toContain("No product in your catalogue carries a barcode");
+    // The scope of each row is its own, and two of the three are the whole
+    // catalogue rather than the products whose page was read.
+    expect(text).toContain("it applies to all 189 products in your catalogue");
+    expect(text).toContain("Not one of your 189 products carries one");
   });
 
   it("counts the checks that found nothing per column, against that column's own denominator", () => {
@@ -223,9 +229,25 @@ describe("a 189-product shop with one problem on every product", () => {
     expect(text).toContain("Change");
   });
 
-  it("says one problem is not repeated below, in the singular", () => {
-    expect(text).toContain("one of them is in the shop-wide card below");
-    expect(text).toContain("is not repeated here; it is in the shop-wide card above");
+  it("counts the rows the shop-wide card renders, not the checks behind some of them", () => {
+    // The card lists three: two facts about the shop and one check. A method
+    // line saying "2" beside a card showing 3 is two true numbers
+    // contradicting each other on one screen.
+    expect(text).toContain("The shop-wide card below carries 3 fixes");
+    expect(text).toContain("The shop-wide card above carries 3 fixes");
+    expect(text).toContain("1 of them from a check that flagged all 189 products");
+  });
+
+  it("names the group of every row in words and not only in colour", () => {
+    // One row per group, each carrying its owner as a word.
+    expect(text).toContain("Products with very little text on the page You");
+    expect(text).toContain("Products whose main address nothing links to Your theme");
+    expect(text).toContain("Photos with no description of what is in them Us");
+  });
+
+  it("accounts for every check in the vocabulary, on both sides", () => {
+    expect(text).toContain("That is all 13 checks on this side");
+    expect(text).toContain("That is all 31 checks on this side");
   });
 
   it("shows what moved since the snapshot, in plain words", () => {
@@ -241,7 +263,11 @@ describe("a 20,000-product store part-way through its first page read", () => {
   it("counts against the pages actually read and says how many are waiting", () => {
     expect(text).toContain("500 of 20000 products fully checked");
     expect(text).toContain("19500 of 20000 products have been read from your catalogue");
-    expect(text).toContain("of 500 products");
+    // The headline is drawn against the catalogue, so it cannot read as
+    // complete while 19,500 products have never been examined.
+    expect(text).toContain("of 20000 products");
+    expect(text).toContain("Not checked yet 19500 of 20000");
+    expect(text).not.toContain("380 of 380");
   });
 
   it("never claims a product nobody read is clean", () => {
@@ -260,8 +286,13 @@ describe("an empty store", () => {
     expect(text).not.toContain("0 of 0");
   });
 
-  it("says the catalogue has not been read instead of drawing ten empty gauges", () => {
-    expect(text).toContain("Your catalogue has not been read yet");
+  it("says the products have not been read instead of drawing ten empty bars", () => {
+    expect(text).toContain("Your products have not been read yet");
+  });
+
+  it("says it once, and not once per row", () => {
+    const said = text.split("Your products have not been read yet").length - 1;
+    expect(said).toBe(2); // the card's own sentence, and the method line under it
   });
 });
 
@@ -309,5 +340,55 @@ describe("the counts that state no verdict", () => {
     expect(text).toContain("nobody credible states a target");
     // And it never turns into a finding: the product carrying them is clean.
     expect(readinessOf(rows).clean).toBe(2);
+  });
+});
+
+describe("the layout the admin iframe has room for", () => {
+  // Built for Shopify 4.1.2 fails a screen whose columns do not stack and a
+  // section that is collapsed with no way to expand it. Neither can be proved
+  // without a browser, so what is proved here is the mechanical half: nothing
+  // on the screen declares a width that cannot shrink, so nothing can push the
+  // page wider than the frame it is in. The iframe is roughly 250 to 300 px
+  // narrower than the browser window, which is why the two-column breakpoints
+  // in this screen are lg and not md.
+  const stores: [string, SeoDashboardData][] = [
+    ["50 products", data(fiftyProducts())],
+    ["189 products", data(oneEightyNine(), { business: { deliveryStated: false, returnsStated: false } })],
+    ["20,000 products", data(twentyThousand())],
+    ["empty", data([])],
+    ["page read never ran", data(pageReadNeverRan())],
+  ];
+
+  for (const [name, value] of stores) {
+    it(`declares no unshrinkable width on ${name}`, () => {
+      const html = renderToStaticMarkup(
+        <AppProvider i18n={{}}>
+          <SeoDashboardScreen data={value} />
+        </AppProvider>,
+      );
+      // The hero dial's max-width is the one documented fixed measurement.
+      const widths = [...html.matchAll(/(?<!max-)width:\s*(\d+)px/g)].map((m) => Number(m[1]));
+      const tooWide = widths.filter((w) => w > 250);
+      expect(tooWide, `fixed widths over 250px: ${tooWide.join(", ")}`).toEqual([]);
+      const minWidths = [...html.matchAll(/min-width:\s*(\d+)px/g)].map((m) => Number(m[1]));
+      expect(minWidths.filter((w) => w > 220)).toEqual([]);
+      expect(html).not.toContain("white-space:nowrap");
+      // Polaris's own cards set overflow-x:clip, which is the opposite
+      // problem. What must not appear is a box that scrolls sideways.
+      expect(html).not.toContain("overflow-x:scroll");
+      expect(html).not.toContain("overflow-x:auto");
+    });
+  }
+
+  it("keeps every collapsed group openable", () => {
+    const html = renderToStaticMarkup(
+      <AppProvider i18n={{}}>
+        <SeoDashboardScreen data={data(fiftyProducts())} />
+      </AppProvider>,
+    );
+    const readiness = readinessOf(fiftyProducts());
+    const withSteps = readiness.groups.filter((g) => g.rows.length > 0).length;
+    expect((html.match(/aria-expanded="false"/g) ?? []).length).toBe(withSteps);
+    expect(html).toContain("What to do");
   });
 });
