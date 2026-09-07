@@ -457,8 +457,9 @@ and before the 04:00 weekly watch.
 - Respects the shop's own robots.txt for the app's user agent; a Disallow
   that covers `/products/` stops the scan and is itself finding B5.
 - Sends the storefront password when the shop has entered one, exactly as
-  `scanPage` does today. On `mrdigital-dev` that password is `massive`
-  (Marius, 3 September 2026); a dev store cannot have it turned off, so every
+  `scanPage` does today. On `mrdigital-dev` that password is kept in
+  `.env.local` as `DEV_STORE_STOREFRONT_PASSWORD` and is never written down
+  here (Marius, 3 September 2026); a dev store cannot have it turned off, so every
   source B run against the dev store goes through it and a source B that
   cannot handle it can only ever be tested against a paying client's live
   store. It refuses to record a row for a page that

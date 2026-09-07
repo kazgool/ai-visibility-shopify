@@ -145,6 +145,20 @@ export const PRESETS: Record<string, { label: string; lines: string[] }> = {
       "Occasion: wedding, civil ceremony, engagement, christening, party, evening, cocktail, everyday, office",
     ],
   },
+  clothing: {
+    label: "Clothing (everyday)",
+    lines: [
+      "Material: cotton, organic cotton, polyester, viscose, linen, wool, denim, leather, faux leather, fleece, knit, jersey, elastane, nylon",
+      "Fit: slim fit, regular fit, relaxed fit, straight fit, oversized, skinny, tapered, loose",
+      "Size range: XS, S, M, L, XL, XXL, one size",
+      "Sleeve: short sleeve, long sleeve, sleeveless, 3/4 sleeve",
+      "Closure: zip, buttons, drawstring, elastic waist, pullover, snap buttons",
+      "Pattern: plain, striped, checked, floral, printed, colour block",
+      "Season: summer, winter, spring, autumn, all season, all year",
+      "Care: machine washable, hand wash, dry clean only, tumble dry, do not tumble dry, wash cold",
+      "Colour: white, black, grey, navy, beige, red, green, blue, brown, pink, yellow, khaki, maroon",
+    ],
+  },
   furniture: {
     label: "Furniture and interiors",
     lines: [
@@ -159,16 +173,51 @@ export const PRESETS: Record<string, { label: string; lines: string[] }> = {
       "Room: living room, bedroom, kitchen, dining room, office, hallway, bathroom, terrace, kids room",
     ],
   },
+  // Units are "* unit" wildcards, not bare literals: a bare "GB" publishes
+  // "GB" with no number. Plain "RAM" and "SSD" stay literal, being kinds
+  // rather than quantities.
   electronics: {
     label: "Electronics",
     lines: [
-      "Screen: screen *, display *, resolution *, OLED, AMOLED, LCD, IPS, retina, touchscreen, refresh rate *",
-      "Processor: processor *, chipset *, cores *, GHz",
-      "Memory: RAM *, storage *, GB, TB, SSD, HDD, expandable, microSD",
-      "Battery: battery *, mAh, battery life *, fast charging, wireless charging",
-      "Connectivity: Wi-Fi, Bluetooth, USB-C, HDMI, ethernet, jack, 5G, LTE, NFC",
-      "Camera: camera *, megapixels, MP, optical stabilisation, ultrawide, telephoto, front camera",
-      "Warranty: warranty *, years, months",
+      "Screen: * inch, OLED, AMOLED, LCD, IPS, retina, touchscreen, * Hz",
+      "Processor: processor *, chipset *, * cores, quad core, dual core, octa core, * GHz",
+      "Memory: * GB, * TB, RAM, SSD, HDD, expandable, microSD",
+      "Battery: * mAh, * hours, fast charging, wireless charging",
+      "Connectivity: Wi-Fi, wifi, Bluetooth, USB-C, USB-A, HDMI, ethernet, jack, 5G, 4G, LTE, NFC",
+      "Camera: * megapixels, * MP, optical stabilisation, ultrawide, telephoto, front camera",
+      "Durability: water resistant, waterproof, IP68, IP67, IPX7, IPX5, IPX8, shockproof",
+      "Warranty: * years, * year, * months, * month, warranty *",
+    ],
+  },
+  phones: {
+    label: "Mobile phones",
+    lines: [
+      "Screen: * inch, OLED, AMOLED, LCD, Super Retina, touchscreen, * Hz",
+      "Chipset: chipset *, processor *, * cores, * GHz",
+      "Memory: * GB, * TB, RAM, expandable storage, microSD",
+      "Camera: * megapixels, * MP, triple camera, dual camera, single camera, optical zoom, night mode, ultrawide, telephoto",
+      "Battery: * mAh, fast charging, wireless charging, reverse charging",
+      "Connectivity: 5G, 4G, LTE, Wi-Fi, wifi, Bluetooth, NFC, USB-C, dual SIM, eSIM",
+      "Durability: water resistant, IP68, IP67, IPX8, Gorilla Glass, shockproof",
+      "Colour: black, white, blue, green, gold, silver, midnight, starlight, graphite",
+      "Included: charger, cable, case, screen protector, SIM tool",
+      "Warranty: * years, * year, * months, warranty *",
+    ],
+  },
+  laptops: {
+    label: "Laptops and computers",
+    lines: [
+      "Screen: * inch, FHD, QHD, 4K, HD, touchscreen, matte, glossy, * Hz",
+      "Processor: processor *, CPU *, * cores, quad core, dual core, octa core, * GHz, * generation",
+      "Memory: * GB, RAM, upgradable, soldered",
+      "Storage: SSD, HDD, NVMe, * TB",
+      "Graphics: integrated graphics, dedicated graphics, GPU *, VRAM",
+      "Battery: * hours, * hrs, * mAh, fast charging",
+      "Connectivity: Wi-Fi, wifi, Bluetooth, USB-C, USB-A, HDMI, Thunderbolt, ethernet, SD card reader",
+      "Operating system: Windows, macOS, ChromeOS, Linux, no OS",
+      "Weight: #size",
+      "Included: charger, sleeve",
+      "Warranty: * years, * year, * months, warranty *",
     ],
   },
   services: {
@@ -201,6 +250,20 @@ export const PRESETS: Record<string, { label: string; lines: string[] }> = {
       "Diet: vegan, vegetarian, gluten free, lactose free, sugar free, non-GMO, halal, kosher",
       "Suited to: adults, children, athletes, pregnancy, seniors",
       "Certification: GMP, ISO, organic, third-party tested, lab tested",
+    ],
+  },
+  medical: {
+    label: "Medical and health devices",
+    lines: [
+      "Device type: thermometer, blood pressure monitor, pulse oximeter, nebulizer, glucometer, TENS unit, knee brace, brace, support, inhaler, humidifier",
+      "Material: silicone, latex free, medical grade plastic, medical grade steel, neoprene, nylon, cotton, elastic, hypoallergenic",
+      "Measurement range: * mmHg, * bpm, * percent, * degrees",
+      "Power: * AA batteries, * AAA batteries, button battery, rechargeable, mains powered, USB, * mAh",
+      "Certification: CE, CE marked, FDA, ISO 13485, MDR, clinically tested, dermatologically tested",
+      "Use: home use, clinical use, single use, reusable, adult, adults, paediatric, kids",
+      "Size: #size, one size, adjustable",
+      "Included: carrying case, case, batteries, manual, lanyard, pouch",
+      "Warranty: * years, * year, * months, * month, warranty *",
     ],
   },
   telco: {

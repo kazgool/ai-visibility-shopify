@@ -108,7 +108,7 @@ beforeEach(() => {
   mockAdminGraphql.mockResolvedValue(graphql);
   graphql.mockResolvedValue({ shop: { url: "https://nordwood.example" } });
   mockDailyBudget.mockResolvedValue(500);
-  mockSettingFindUnique.mockResolvedValue({ value: "massive" });
+  mockSettingFindUnique.mockResolvedValue({ value: "test-storefront-password" });
   mockJobRunCreate.mockResolvedValue({ id: "job1" });
   mockScanShopPages.mockResolvedValue(REPORT);
 });
@@ -149,7 +149,7 @@ describe("seo_scan_products", () => {
     expect(mockScanShopPages.mock.calls[0][0]).toMatchObject({
       shopId: "shop1",
       origin: "https://nordwood.example",
-      password: "massive",
+      password: "test-storefront-password",
       budget: 500,
     });
   });

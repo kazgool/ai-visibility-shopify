@@ -16,6 +16,129 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Meta titles that Shopify keeps, glued units, four presets (6 September 2026)
+
+Server only; nothing in an extension changed.
+
+**The bulk pass reported 35 meta titles written and Shopify kept none.**
+Found on the dev store after importing 35 test products. `buildMetaTitle`
+returned the product title unchanged for any title under 60 characters, and
+Shopify keeps `seo.title` as an override of the product title: one that
+equals it is not stored. Two independent write paths proved it - the app's
+`productUpdate` and Shopify's own CSV importer (the import file carried the
+title in its SEO Title column) both left the field empty, while meta
+descriptions written by the same mutation in the same pass all persisted
+(85 of 85). The screen said "Written: 35"; the store said "not set".
+
+Fixed in three places, each guarded:
+- `buildMetaTitle` (`app/engine/meta.ts`) never returns the bare title. For
+  a title within target it appends the merchant's own extracted facts, one
+  value at a time, as many as fit 60 characters: "Miere de salcam - 950 g,
+  ecologic". Which values, settled by running the client's live catalogue
+  (189 products, Audit B): values carrying a number first, since "500 g",
+  "60 capsule", "128 GB" are what a searcher types and never a false claim;
+  never a lone word of three letters or fewer with no digit ("bio", "vnr",
+  "RAM" alone say nothing the title did not, and were most of what a noisy
+  dictionary term put into a title - "eBook - bio"); never a value that
+  opens with a connector ("with your own doctor" is a clause, not a
+  detail); never a value already in the title as a whole word, checked per
+  value and not per group, so "Warm Fleece Hoodie" does not get "cotton,
+  fleece" back. With nothing to add it returns "" and nothing is proposed;
+  on the client's catalogue that is 12 of the 25 short titles, and the
+  count sentence says so. The 31 August rule stands: no vendor, no shop
+  name, ever. A title over 60 characters is cut at a word as before, and
+  the cut is now tidied: no trailing comma, colon, dash or connector word,
+  no unclosed bracket - 164 of the client's 189 titles take that path and
+  91 of them ended in "," or "(" before. `meta.test.ts` 27 tests.
+- `writeSeo` (`app/services/seo.server.ts`) refuses a `seo_title` equal to
+  `cleanOutput(product.title)` and counts it under `unchanged`, so the
+  counter can no longer report a write the store will not keep.
+  `MetaFieldOwner` gained an optional `title`; both product writers pass it
+  (the bulk pass through `ProductInput`, the product page from its query).
+- `buildSeoQueue` and `buildCollectionSeoQueue` return `titleNothingToAdd`
+  and the operator sentences say so, so "35 have no meta title" and the
+  number of rows beneath it agree again. Collections have no facts, so a
+  collection title within its 50-character target now gets no title
+  proposal at all; inferred from the product evidence (same SEO object),
+  not observed on a collection. Four collection tests that asserted the
+  bare-title proposal were rewritten with this reason.
+
+**Numbers glued to units: tried, measured, reverted the same day.** A shop
+owner writes "128gb", "3000mah"; `counted()` requires a space and drops
+them. Letting a plain integer touch its unit read the synthetic test store
+well and left the furniture catalogue byte-identical (355 products, 676
+facts). Audit B then ran it on the client's live catalogue, 189 products
+with their own dictionary: 2576 facts became 2644, and the pack-weight
+family `Gramaj` went from 69 lines with two or more values to 164, filled
+from nutrition tables written glued - "per 100g", "Proteine 22g", "Grasimi
+12g" - with the four-value cap evicting the real pack weight. A per-100 g
+figure published as a pack weight is the false fact this engine exists to
+never write, so the space stays mandatory, `counts.ts` is back at HEAD
+with the reason in its comment, and `units.test.ts` guards the space with
+the nutrition-table case. The right fix is a rule that recognises a
+nutrition table, later. Kept from that work: the per-group dedupe ignores
+the gap between a number and its unit, so a group carrying both `#size`
+and `* cm` cannot list "45cm, 45 cm" (`capture-stops.test.ts`).
+
+**CAPTURE_STOPS**: English determiners and pronouns added, "a" and "an"
+deliberately not ("an" is Romanian for year). The first version of the
+comment claimed this stopped "with your own doctor"; Audit A showed the
+list is consulted from the second captured word on, so it cuts "contains
+magnesium your body" to "contains magnesium" and leaves a capture that
+starts with "your" alone. Comment corrected to what the code does;
+`capture-stops.test.ts` asserts exactly that scope.
+
+**Presets** (`app/engine/dictionary.ts`): `electronics` rewritten so units
+are `* GB`, `* mAh`, `* MP` wildcards - a bare `GB` matched the word and
+published "GB" with no number. With the space mandatory again these read
+"128 GB" and not "128gb"; that is the trade recorded above. New: `phones`, `laptops`, `medical`,
+`clothing` (everyday; `fashion` stays bridal). None uses an open connector
+wildcard (`for *`, `with *`). `* in` for inches was drafted and removed:
+it claimed "3 in stock" as a screen size. Known and left: the English
+`supplements` preset's `with *` still captures prose ("with your own
+doctor") when no literal term stands beside it; the shipped client
+dictionary (Romanian) has no such wildcard.
+
+**B23 verified, not changed.** Shopify's new default robots.txt (agents.md,
+UCP/MCP endpoints) was suspected of tripping "robots.txt has been edited"
+on every store. `reviewRobots` run on the live file from the dev store and
+from republicabio.ro: 40 Disallow lines each, 40 recognised, 0 custom, B23
+does not fire. The new text is comments; the baseline already covered the
+rules.
+
+**Storefront password scrubbed** from four documents and four test
+fixtures after a GitGuardian alert; the app reads it from the per-shop
+`Setting` row, never from code, so nothing moved to an env variable. The
+value remains in git history; it opens the dev store's password page and
+nothing else.
+
+Scripts: `scripts/test-catalog-gap.ts <csv>` runs the engine over a Shopify
+CSV export with one preset per tag; `scripts/build-test-catalog.ts` writes
+the 35-product test catalogue.
+
+Two independent audits, blind to each other. Audit A (correctness):
+mutation-checked the meta tests, found five BROKEN - four collection tests
+asserting the bare-title proposal, no guard test for either engine change,
+a CAPTURE_STOPS comment claiming a first-word effect the code does not
+have, "45cm, 45 cm" duplicates, and the product-page writer not passing
+`title` - all fixed above. Audit B (client-install readiness): ran the
+client's live catalogue and found the glued-units regression (reverted),
+the per-group "already in title" check, and the proposals a merchant would
+refuse ("eBook - bio", "- vnr", "with any supplement really", cuts ending
+in "," or "(") - all fixed above. Known and left, recorded by B: the
+English `supplements` preset reads "Suited to: children" from "not
+suitable for children" and "D 3" from "D3" (pre-existing, identical at
+HEAD); two products with the same long prefix get the same cut title (B21
+already reports the duplicate).
+
+Runs: engine suite 17 files, 226 tests; `seo-queue`, `seo.server`,
+`seo-collections`, `SeoPrintReport`, `SeoDashboardScreen` 168 tests green;
+`seo-page`, `seo-scan-task` green; `tsc --noEmit` exit 0; furniture 676
+facts identical; client catalogue 2576 facts identical to HEAD, 0
+proposals over 60, 0 ending in a separator. Run under Linux with an
+isolated vitest because the repo's node_modules is Windows-built;
+`check.bat` on Windows is the gate before commit.
+
 ### Two QA rounds on the merchant dashboard, adjudicated and fixed (5 September 2026)
 
 `QA-SEO-DASHBOARD-R1.md` and `QA-SEO-DASHBOARD-R2.md`, read independently and
@@ -797,7 +920,7 @@ every page that answered. Two tests said `toEqual([])` and now say
 
 **Verified on the dev store, 4 September 2026**, read-only:
 `npx tsx scripts/read-onpage-checks.ts https://mrdigital-dev.myshopify.com
---limit 10 --password massive` reads the 2 collection pages, finds 0
+--limit 10 --password "$DEV_STORE_STOREFRONT_PASSWORD"` reads the 2 collection pages, finds 0
 collection-prefixed product links and 80 plain ones, so B25 is silent on all 10
 products - a real clean result and the evidence that the check reads the right
 markup. B29 and B32 report on all 10 (0 breadcrumb, 0 related, 4 collection

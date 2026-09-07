@@ -462,7 +462,13 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
       ...metafields.filter((m) => m.key !== "state"),
       { key: "state", value: JSON.stringify(stateForWrite) },
     ];
-    const productLike = { id, metafields: metafieldsForWrite, seo: productData?.seo ?? null };
+    // title rides along so writeSeo can refuse a meta title equal to it.
+    const productLike = {
+      id,
+      title: productData?.title,
+      metafields: metafieldsForWrite,
+      seo: productData?.seo ?? null,
+    };
 
     const title = String(form.get("title") ?? "").trim();
     const description = String(form.get("description") ?? "").trim();

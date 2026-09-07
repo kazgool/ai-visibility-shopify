@@ -114,6 +114,23 @@ describe("counted", () => {
     expect(counted("7.000 mg", "mg")).toEqual(["7.000 mg"]);
   });
 
+  // 6 September 2026. Reading a plain integer glued to its unit ("128gb")
+  // was tried and reverted the same day: on a real food shop's catalogue it
+  // pulled nutrition-table figures ("per 100g", "Proteine 22g") into the
+  // pack-weight family on 122 of 179 lines. The space is the merchant's own
+  // separation of a pack weight from a table cell, and it stays mandatory.
+  // Loosening counts.ts to `\s*` makes this test fail.
+  it("needs the space between number and unit, glued or not, integer or not", () => {
+    expect(counted("Proteine 22g per 100g, pachet 250 g", "g")).toEqual(["250 g"]);
+    expect(counted("128gb storage", "gb")).toEqual([]);
+    expect(counted("128 gb storage", "gb")).toEqual(["128 gb"]);
+    expect(counted("29,7g", "g")).toEqual([]);
+  });
+
+  it("does not claim a unit that is only the start of a longer word", () => {
+    expect(counted("5 mah battery", "m")).toEqual([]);
+  });
+
   it("still reads a plain count", () => {
     expect(counted("60 capsule", "capsule")).toEqual(["60 capsule"]);
   });

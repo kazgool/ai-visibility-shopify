@@ -822,7 +822,7 @@ describe("the nightly pass", () => {
     await scanShopPages({
       shopId: "shop1",
       origin: ORIGIN,
-      password: "massive",
+      password: "test-storefront-password",
       budget: 500,
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });
@@ -1754,7 +1754,7 @@ describe("A7 on a shop with a storefront password", () => {
     const report = await scanShopPages({
       shopId: "shop1",
       origin: ORIGIN,
-      password: "massive",
+      password: "test-storefront-password",
       budget: 500,
       deps: { fetchImpl: impl as any, sleep: noSleep },
     });

@@ -18,6 +18,7 @@ import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE, ENGINE_VERSION, parseState, type ProductState } from "./facts.server";
 import type { Fact } from "../engine";
 import { buildMetaTitle, buildMetaDescription, type MetaInput } from "../engine/meta";
+import { cleanOutput } from "../engine/normalize";
 import { computeTermGap, type TermGapRow } from "../engine/term-gap";
 import type { MetaFieldStatus, MetaColumnState } from "./meta-column";
 
@@ -53,6 +54,8 @@ export type MetaFieldOwner = {
   id: string;
   metafields?: { key: string; value: string }[];
   seo?: { title: string | null; description: string | null } | null;
+  /** Optional; when present, writeSeo refuses a meta title equal to it. */
+  title?: string;
 };
 
 /** The name every existing product-side caller uses. Same type. */
@@ -191,6 +194,18 @@ export async function writeSeo(
     const current = key === "seo_title" ? currentTitle : currentDescription;
     // Never write an identical value - see the file header.
     if (field.value === current) {
+      outcome.unchanged.push(key);
+      continue;
+    }
+
+    // seo.title is an override of the product title and Shopify does not
+    // store one that matches it, even while seo.title itself reads null.
+    // Counting such a write would report a change the store never made.
+    if (
+      key === "seo_title" &&
+      typeof product.title === "string" &&
+      field.value.trim() === cleanOutput(product.title).trim()
+    ) {
       outcome.unchanged.push(key);
       continue;
     }
@@ -364,6 +379,12 @@ export type SeoQueue = {
    * second bulk fetch. Not a keyword tool - see engine/term-gap.ts.
    */
   termGap: TermGapRow[];
+  /**
+   * Products with no meta title and nothing to propose, because the only
+   * title available would repeat the product title. Counted so the "N have
+   * no meta title" sentence and the rows beneath it agree.
+   */
+  titleNothingToAdd: number;
 };
 
 export function buildSeoQueue(
@@ -377,6 +398,7 @@ export function buildSeoQueue(
   let missingDescription = 0;
   let outsideApp = 0;
   let editedByYou = 0;
+  let titleNothingToAdd = 0;
 
   for (const product of products) {
     const seoLike: ProductSeoInput = {
@@ -444,6 +466,7 @@ export function buildSeoQueue(
     };
 
     const titleSuggestion = canProposeTitle ? buildMetaTitle(metaInput) || null : null;
+    if (canProposeTitle && !titleSuggestion) titleNothingToAdd += 1;
     const descriptionSuggestion = canProposeDescription
       ? buildMetaDescription(metaInput) || null
       : null;
@@ -481,5 +504,6 @@ export function buildSeoQueue(
     rows,
     protectedRows,
     termGap,
+    titleNothingToAdd,
   };
 }

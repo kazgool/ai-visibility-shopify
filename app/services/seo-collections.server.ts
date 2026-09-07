@@ -174,6 +174,12 @@ export type CollectionSeoQueue = {
    */
   thinDescription: CollectionCheck[];
   thinMembership: CollectionCheck[];
+  /**
+   * Collections with no meta title and nothing to propose: with no facts to
+   * draw on, the only title available repeats the collection title, which
+   * Shopify does not store. Counted so the sentence and the rows agree.
+   */
+  titleNothingToAdd: number;
 };
 
 /**
@@ -193,6 +199,7 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
   let outsideApp = 0;
   let editedByYou = 0;
   let writtenByApp = 0;
+  let titleNothingToAdd = 0;
 
   for (const collection of collections) {
     const owner = ownerOf(collection);
@@ -261,6 +268,7 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
     const titleSuggestion = canProposeTitle
       ? buildMetaTitle(input, COLLECTION_TITLE_TARGET) || null
       : null;
+    if (canProposeTitle && !titleSuggestion) titleNothingToAdd += 1;
 
     // A collection with no description of its own gets no description
     // proposal, and this is the line the product draws for itself: the writer
@@ -303,6 +311,7 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
     findings,
     thinDescription,
     thinMembership,
+    titleNothingToAdd,
   };
 }
 

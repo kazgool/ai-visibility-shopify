@@ -1324,6 +1324,9 @@ function SeoListingsCard({
         {report ? (
           <Text as="p" variant="bodySm" tone="subdued">
             {`${report.checked} products checked. ${report.missingTitle} have no meta title, ${report.missingDescription} have no meta description. ${report.outsideApp} field${report.outsideApp === 1 ? "" : "s"} set outside this app; ${report.editedByYou} field${report.editedByYou === 1 ? "" : "s"} edited by you here; neither is ever touched by a bulk pass.`}
+            {report.titleNothingToAdd > 0
+              ? ` ${report.titleNothingToAdd} of the missing titles ${report.titleNothingToAdd === 1 ? "has" : "have"} nothing this app can add: a meta title that only repeats the product title is not stored by Shopify, so none is proposed until the description carries a detail worth naming.`
+              : ""}
           </Text>
         ) : queueStale ? (
           <Banner tone="info">

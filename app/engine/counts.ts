@@ -9,6 +9,10 @@ export function counted(text: string, base: string): string[] {
   // 29,7 g pack, and the lookbehind is what stops the match from starting in
   // the middle of a number - that is where the "0 mg" values came from.
   // The separator is kept exactly as written; we do not reformat numbers.
+  //
+  // The space between number and unit is required, deliberately. Without it
+  // every figure in a nutrition table ("per 100g", "Proteine 22g") joins the
+  // pack-weight family and the per-group cap evicts the real pack weight.
   const pattern = new RegExp(
     `(?<![\\p{L}\\p{N}.,])(\\d+(?:[.,]\\d+)*)\\s+${diacriticPattern(base)}(?![\\p{L}\\p{N}])`,
     "gu",

@@ -1305,7 +1305,7 @@ a row because the row states no verdict.
 ### 10.5 What these checks find on the dev store, 4 September 2026
 
 `npx tsx scripts/read-onpage-checks.ts https://mrdigital-dev.myshopify.com
---limit 10 --password massive` (read-only, spends no budget):
+--limit 10 --password "$DEV_STORE_STOREFRONT_PASSWORD"` (read-only, spends no budget):
 
 ```
 Collection pages: 2 in the sitemap, 2 read; 0 collection-prefixed product links, 80 plain.

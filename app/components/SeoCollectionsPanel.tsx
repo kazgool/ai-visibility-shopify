@@ -59,7 +59,10 @@ export function collectionFindingSentence(report: CollectionSeoQueue | null): st
     `${report.missingTitle} have no meta title, ${report.missingDescription} have no meta description. ` +
     `${report.outsideApp} field${report.outsideApp === 1 ? "" : "s"} set outside this app; ` +
     `${report.editedByYou} edited by you here; ` +
-    `${report.writtenByApp} written by this app. Neither of the first two is ever touched by a bulk pass.`
+    `${report.writtenByApp} written by this app. Neither of the first two is ever touched by a bulk pass.` +
+    (report.titleNothingToAdd > 0
+      ? ` ${report.titleNothingToAdd} of the missing titles ${report.titleNothingToAdd === 1 ? "has" : "have"} nothing this app can add: a meta title that only repeats the collection title is not stored by Shopify, so none is proposed.`
+      : "")
   );
 }
 

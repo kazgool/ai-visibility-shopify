@@ -439,6 +439,7 @@ function collectionsQueue(): CollectionSeoQueue {
     findings: [],
     thinDescription: [],
     thinMembership: [],
+    titleNothingToAdd: 0,
   };
 }
 

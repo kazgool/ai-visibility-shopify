@@ -162,6 +162,13 @@ function isTailOfTerm(
  */
 const CAPTURE_STOPS = new Set([
   "per", "cu", "si", "sau", "pentru", "la", "for", "with", "and", "or",
+  // English determiners and pronouns. Consulted from the second captured
+  // word on, so they cut a capture short rather than reject one: "contains
+  // magnesium your body needs" ends at "magnesium". "a" and "an" are absent
+  // on purpose: "an" is the Romanian word for year and would truncate a
+  // real warranty value.
+  "your", "my", "our", "their", "his", "her", "its", "this", "that",
+  "these", "those", "any", "some", "the", "you", "we", "they", "it",
 ]);
 
 /**
@@ -419,10 +426,12 @@ export function extractFromText(
     }
 
     // Unique on the normalized form, so "piele ecologica" and "piele
-    // ecologică" do not both end up in the same list.
+    // ecologică" do not both end up in the same list. The key also ignores
+    // the gap between a number and its unit, so a group carrying both #size
+    // and "* cm" cannot list "45cm" and "45 cm" as two facts.
     const seen = new Map<string, string>();
     for (const hit of hits) {
-      const key = normalize(hit);
+      const key = normalize(hit).replace(/(\d)\s+(?=\p{L})/gu, "$1");
       if (key === "" || seen.has(key)) continue;
       seen.set(key, hit);
     }

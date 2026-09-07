@@ -13,7 +13,13 @@ function product(overrides: Partial<SeoQueueProduct> = {}): SeoQueueProduct {
     vendor: "Acme",
     metafields: [],
     seo: { title: null, description: null },
-    facts: [{ k: "Material", v: "oak" }],
+    // "oak" already sits in the title, so it alone would give the meta title
+    // nothing to add (6 September 2026: the bare title is not a proposal,
+    // Shopify does not store it). The second fact is what the title carries.
+    facts: [
+      { k: "Material", v: "oak" },
+      { k: "Seats", v: "6 people" },
+    ],
     ...overrides,
   };
 }
@@ -29,7 +35,24 @@ describe("buildSeoQueue", () => {
     expect(queue.editedByYou).toBe(0);
     expect(queue.protectedRows).toEqual([]);
     expect(queue.rows).toHaveLength(1);
-    expect(queue.rows[0].titleSuggestion).toBeTruthy();
+    expect(queue.rows[0].titleSuggestion).toBe("Oak Dining Table - 6 people");
+    expect(queue.rows[0].descriptionSuggestion).toBeTruthy();
+    expect(queue.titleNothingToAdd).toBe(0);
+  });
+
+  it("counts a product whose title nothing can be added to, and proposes no title for it", () => {
+    // Only fact is already in the title: the bare title would be the
+    // proposal, and Shopify does not store it. The description is still
+    // proposed, so the row exists, and the count says why the title is absent.
+    const queue = buildSeoQueue(
+      [product({ facts: [{ k: "Material", v: "oak" }] })],
+      "Acme Store",
+      stopwords,
+    );
+    expect(queue.missingTitle).toBe(1);
+    expect(queue.titleNothingToAdd).toBe(1);
+    expect(queue.rows).toHaveLength(1);
+    expect(queue.rows[0].titleSuggestion).toBeNull();
     expect(queue.rows[0].descriptionSuggestion).toBeTruthy();
   });
 

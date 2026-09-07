@@ -149,7 +149,14 @@ describe("the collections queue", () => {
     const queue = buildCollectionSeoQueue([collection()]);
     const row = queue.rows[0];
 
-    expect(row.titleSuggestion).toBe("Mese de sufragerie");
+    // No title proposal (6 September 2026): a collection has no extracted
+    // facts, so the only title this app could build is the collection title
+    // itself, and Shopify keeps seo.title as an override it does not store
+    // when it equals the title (observed on 35 products through two write
+    // paths; the same SEO object on collections). Proposing it would report
+    // a write the store never keeps. The count says so instead.
+    expect(row.titleSuggestion).toBeNull();
+    expect(queue.titleNothingToAdd).toBe(1);
     // Its own opening sentence, and no attribute clauses: a collection has no
     // facts, so there is nothing else to condense.
     expect(row.descriptionSuggestion).toBe(
@@ -180,21 +187,27 @@ describe("the collections queue", () => {
     const queue = buildCollectionSeoQueue([
       collection({ title: "Sofas", handle: "sofas", descriptionHtml: "" }),
     ]);
-    const row = queue.rows[0];
 
-    expect(row.titleSuggestion).toBe("Sofas");
-    expect(row.descriptionSuggestion).toBeNull();
-    // And the absent field is still reported: A6 fires on it, so the merchant
-    // is told what is missing even though this app will not fill it.
+    // Nothing to propose on either field, so no row at all: the title would
+    // repeat "Sofas" (not stored by Shopify, see above) and there are no
+    // words for a description. The absent fields are still reported: A6
+    // fires, and the title is counted as one this app cannot add to.
+    expect(queue.rows).toHaveLength(0);
+    expect(queue.titleNothingToAdd).toBe(1);
+    expect(queue.missingTitle).toBe(1);
     expect(queue.missingDescription).toBe(1);
     expect(queue.withFinding).toBe(1);
   });
 
   it("treats a description of only markup as no words at all", () => {
+    // With markup only there are no words for a description, and the title
+    // gets no proposal either (see above), so no row is built; the missing
+    // description is still counted.
     const queue = buildCollectionSeoQueue([
       collection({ descriptionHtml: "<p></p><br>" }),
     ]);
-    expect(queue.rows[0].descriptionSuggestion).toBeNull();
+    expect(queue.rows).toHaveLength(0);
+    expect(queue.missingDescription).toBe(1);
   });
 
   it("proposes nothing at all for an empty shop", () => {
@@ -381,9 +394,12 @@ describe("A10 and A11 on the collections queue", () => {
     expect(queue.thinMembership).toEqual([]);
   });
 
-  it("neither check stops the writer from proposing a meta title", () => {
-    // A collection with one product and no description still gets a proposal.
-    // Whether it should exist at all is the merchant's question, not ours.
+  it("neither check stops the writer from proposing a meta description", () => {
+    // A collection with no products and a thin description still gets a
+    // description proposal from its own words. Whether it should exist at
+    // all is the merchant's question, not ours. (The title gets none, for the
+    // reason given in the queue tests above: it would repeat the collection
+    // title, which Shopify does not store.)
     const queue = buildCollectionSeoQueue([
       collection({
         descriptionHtml: "<p>Our chairs.</p>",
@@ -393,6 +409,7 @@ describe("A10 and A11 on the collections queue", () => {
     ]);
     expect(queue.thinDescription).toHaveLength(1);
     expect(queue.thinMembership).toHaveLength(1);
-    expect(queue.rows[0].titleSuggestion).toBeTruthy();
+    expect(queue.rows[0].descriptionSuggestion).toBeTruthy();
+    expect(queue.rows[0].titleSuggestion).toBeNull();
   });
 });
