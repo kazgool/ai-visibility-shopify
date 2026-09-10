@@ -78,6 +78,39 @@ list does not reach into prose. Engine suite 236 tests green, including the
 three WordPress fixtures, with the new `serving-suggestion.test.ts` carrying
 ten guards.
 
+A third context followed the same day, from the same merchant reading the same
+screen. "Puritate garantata: Testata impotriva adaosurilor de zahar si agenti
+de falsificare (glucoza, faina de cereale, amidon, gelatina si clei)"
+published cereal flour as an ingredient of raw honey - the precise
+adulteration the producer paid a laboratory to disprove, on seven products
+including their whole honey line. The negation machinery cannot reach it: its
+window stops at the comma and at the bracket, and the denied list lives inside
+both. So `ADULTERATION_MARKER` opens a scope from itself to the end of the
+sentence.
+
+The marker is adulteration vocabulary, not testing vocabulary, and the
+catalogue decided that. A marker on "impotriva" alone would have deleted
+"Verificat impotriva pesticidelor", which is the Testare group doing its job
+on 72 sentences of this catalogue; a marker on "adaosuri" alone reaches "Fara
+alergeni si adaosuri: ... poate contine urme de soia" and deletes an allergen
+statement. Narrowed to "impotriva adaosuri" and "falsific", it matches seven
+sentences on seven products in 189 and nothing else: 7 false values removed, 0
+true values lost, the furniture catalogue identical at 1,002.
+
+Worth recording for whoever adds the fourth: there are now four separate
+mechanisms answering one question - is this occurrence inside a region where
+the terms do not describe the product? `isNegated`, `APPEARANCE_QUALIFIER`,
+`inServingSuggestion` and `inAdulterationList`, each with its own splitter,
+window, marker list and two call sites. The fifth should not be written this
+way. It wants one table of contexts, data-driven and extensible per shop
+through the dictionary directives, with the existing four proved unchanged by
+a diff on both catalogues. Guessing which contexts to add does not work: two
+plausible ones, cross-sell and "la cerere", were measured on the furniture
+catalogue and produced no false facts at all. Every context in the engine so
+far came from a merchant looking at their own extraction and saying it was
+wrong, which is an argument for making suppression visible in the app and
+giving that merchant somewhere to say it.
+
 `vitest.config.ts` gained a 20-second `testTimeout` and `hookTimeout` in the
 same pass. The route tests import a Remix route from inside the test body,
 which pulls in Polaris and the whole service tree; with 70 files in parallel
