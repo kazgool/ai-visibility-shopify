@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import { describeGraphqlError } from "../services/graphql-errors";
 import db from "../db.server";
 import { scanThemeForProductLd, recordNarrowThemeScan } from "../services/theme-scan.server";
+import { mayProcessAutomaticallyCached } from "../services/billing.server";
 
 // A theme change can silently introduce or remove a Product node, which is
 // exactly when duplicate structured data appears (PRD §8). Re-scan on publish.
@@ -11,6 +12,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const shopRow = await db.shop.findUnique({ where: { domain: shop } });
   if (!shopRow || !admin) return new Response();
+
+  // The scheduled version of this same write (seo_watch) checks entitlement
+  // first; this webhook was the one automatic write in the app that did not.
+  // The cached form, not the live one: a webhook has no budget for an extra
+  // Admin call, and this is the same choke point extract_product uses.
+  if (!(await mayProcessAutomaticallyCached(shopRow))) return new Response();
 
   const themeId = String((payload as { id?: number })?.id ?? "current");
 

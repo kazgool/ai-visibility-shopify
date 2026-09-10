@@ -11,7 +11,7 @@
 import db from "../db.server";
 import { adminGraphql } from "./admin.server";
 import { fetchAllProducts, fetchProduct, fetchShopInfo } from "./catalogue.server";
-import { catalogueQuery } from "./eligibility";
+import { catalogueQuery, eligibility } from "./eligibility";
 import { prefsFor } from "./eligibility.server";
 import { dictionaryFor, extraStopwordsFor } from "./extract.server";
 import { extractProduct, stopwordSet, type Fact } from "../engine";
@@ -160,6 +160,8 @@ export async function runSeoApply(
     return report;
   }
 
+  const prefs = await prefsFor(shopId);
+
   const byProduct = new Map<string, SeoApplyItem[]>();
   for (const item of items) {
     const list = byProduct.get(item.productId) ?? [];
@@ -176,7 +178,16 @@ export async function runSeoApply(
     // built minutes or hours ago, so mayWriteSeo and the unchanged guard
     // inside writeSeo run against what the product looks like right now.
     const fresh = await fetchProduct(graphql, productId);
-    if (fresh) {
+    // The fresh read is what mayWriteSeo and the unchanged guard run against;
+    // it is also what decides whether this product should be written to at
+    // all. A product drafted, archived or excluded by a toggle between build
+    // and apply is one the merchant has just taken off the storefront, and
+    // the queue was built before that. The collection half of this needs no
+    // equivalent: fetchCollections asks for published collections only, so an
+    // unpublished one is absent from freshById and skipped below.
+    if (fresh && eligibility(fresh, prefs) !== "eligible") {
+      report.skipped += productItems.length;
+    } else if (fresh) {
       const fields: Partial<Record<SeoKey, { value: string; source: "auto" }>> = {};
       for (const item of productItems) {
         fields[item.field] = { value: item.value, source: "auto" };

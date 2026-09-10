@@ -111,6 +111,110 @@ far came from a merchant looking at their own extraction and saying it was
 wrong, which is an argument for making suppression visible in the app and
 giving that merchant somewhere to say it.
 
+### Collections: only published ones, only ones with members (10 September 2026)
+
+The first collections pass on Republica BIO read 2,491 collections and wrote
+capsules on all of them. The store publishes about 250; the rest are drafts,
+tests, campaign copies from 2017 and template fragments, one of which says
+"This collection is not published" in its own description. Thirty of the
+ones on screen had no products at all, and each had received a summary
+reading "X has 0 products", some of them on live pages.
+
+Two gaps, both in `collections.server.ts`. The `collections` query carried no
+publication filter, where the products query has always carried a status
+filter and every product passes through `eligibility()`; collections were
+gated on their members and never on themselves. And a collection with no
+eligible member still produced a capsule and wrote it, because only the
+`table` field had a withdrawal branch; `summary`, `criteria` and `questions`
+were written when non-empty and simply skipped when empty, so a stale one
+was never retracted.
+
+Now the query asks for `published_status:published` only, a collection with
+no eligible member treats every field as empty, and an empty field withdraws
+the auto-written value an earlier pass left, for all four fields. The
+existing withdrawal test still passes unchanged, and a new one pins the case
+that leaked: an empty collection with an auto summary, questions and table
+ends the pass with all three removed, nothing written, and only the state
+metafield set. Eight tests in `collections.eligibility.test.ts`, run.
+
+Metafields written earlier on unpublished collections are not fetched any
+more and so are not withdrawn. Those pages do not render, so nothing reaches
+a reader; they are pollution in the merchant's data, and a one-time sweep is
+the right way to remove them rather than reading 2,491 collections on every
+pass to keep looking for them.
+
+### Two gates the audit found missing (10 September 2026)
+
+From `AUDIT-WRITE-PATHS-2026-09-10.md`, findings 3 and 4. The audit asked one
+question of every write path in the app: which of five gates stands in front
+of it. Both of these were `no` where they should have been `yes`.
+
+`runSeoApply` re-fetches each product immediately before writing, so
+`mayWriteSeo` and the unchanged guard see the current state, but it never
+asked whether the product should still be written to at all. A product
+drafted, archived or excluded by a toggle between "Preview" and "Write" still
+received its meta title and description. Now `eligibility(fresh, prefs)`
+decides, and a product that has left the eligible set is counted as skipped.
+The collection half needs no equivalent: `fetchCollections` asks for
+published collections only as of this same release, so an unpublished one is
+absent from the fresh map and already skipped.
+
+`webhooks/themes/publish` wrote the `theme_scan` metafield on every theme
+publish with no entitlement check, where `seo_watch` doing the same write
+checks first. It was the one automatic write in the app with no gate. Now it
+returns early on `mayProcessAutomaticallyCached`, the cached form rather than
+the live one, because a webhook has no budget for an extra Admin call and
+this is the same choke point `extract_product` uses.
+
+Neither has a unit test of its own, stated plainly. `runSeoApply` imports
+`db.server` and `adminGraphql` at module scope, which is why the suite has no
+seo-bulk test today; both changes are a single call to a function that is
+itself tested (`eligibility`, `collections.eligibility.test.ts`;
+`mayProcessAutomaticallyCached`, `billing-gates.test.ts`), and both typecheck.
+
+### llms.txt links the mirror, and lists collections (10 September 2026)
+
+Every product line in llms.txt linked the store page, `/products/<handle>`,
+though the header comment of `llms-txt.server.ts` said "its mirror URL" and
+the llms.txt proposal exists to link the clean, markdown-shaped version of a
+page, which is what the mirror is. The line now links
+`/apps/ai-visibility/<handle>` and names the store page after a colon, so a
+reader reaches both. The mirror's origin is taken from the store page's own
+URL, not from the shop domain: on a store with its own domain the two differ,
+and the session is keyed by the myshopify one.
+
+Collections were absent from the file. There is no collection mirror, so a
+collection line links the collection page, which carries the capsule through
+the theme block. The collections pass now leaves an index behind in one
+Setting row, `collectionsIndex`: title, handle and the member count the
+table was built from, for published collections with at least one eligible
+member, replaced whole on every pass. llms.txt reads that row on its indexed
+path, so the request path still makes no Admin call. The reader applies the
+same floor, so a stale row cannot publish a collection that says nothing.
+Republica BIO's file listed 189 products, every eligible one - the 97 up to
+the store's 286 are drafts and unpublished, excluded by rule - so "too few"
+was the collections, not the products.
+
+`renderLlmsTxt` and `llmsTxtBody`: 13 tests, run. The index write in
+`bulk_collections` has no unit test; it is the same `db.setting.upsert`
+shape `saveShopInfo` uses, and typechecks.
+
+### The queue after a deploy (10 September 2026)
+
+`scripts/queue-unstick.ts`, read-only by default. A deploy restarts the
+worker, `worker/index.ts` handles no signals, so a job in flight dies holding
+its lock; graphile-worker leaves a locked job alone for four hours, the
+JobRun row stays "running", and the dashboard's one-job-at-a-time guard
+disables every button for those four hours with no way out from inside the
+app. The in-app message meanwhile says the job "runs from where it stopped as
+soon as the worker is back", which is false. This happened on the merchant's
+first day, in the middle of setup, twice. The script lists locked jobs and
+stale runs, and with `--release` clears locks older than ten minutes so the
+worker reruns them. Signal handling in the worker, a sane `maxJobExpiry` and
+an honest message are the fix; the script is what unblocks a store today.
+Until the fix ships, the script's read-only mode is run before any push, so
+a deploy never lands on a job in flight again.
+
 `vitest.config.ts` gained a 20-second `testTimeout` and `hookTimeout` in the
 same pass. The route tests import a Remix route from inside the test body,
 which pulls in Polaris and the whole service tree; with 70 files in parallel

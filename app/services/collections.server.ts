@@ -50,7 +50,7 @@ export const MEMBER_SAMPLE = 60;
 
 const COLLECTIONS = `#graphql
   query CollectionsForCapsule($cursor: String, $members: Int!) {
-    collections(first: 10, after: $cursor, sortKey: UPDATED_AT, reverse: true) {
+    collections(first: 10, after: $cursor, query: "published_status:published", sortKey: UPDATED_AT, reverse: true) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -260,12 +260,24 @@ export async function writeCollections(
       empty: capsule.table.columns.length === 0,
     };
 
-    const candidates = [
-      { key: "summary", type: "multi_line_text_field", value: capsule.summary },
-      { key: "criteria", type: "json", value: JSON.stringify(capsule.criteria) },
-      { key: "questions", type: "json", value: JSON.stringify(capsule.questions) },
-      { key: "table", type: "json", value: JSON.stringify(capsule.table) },
-    ];
+    // A collection with no eligible member has nothing to say about a range:
+    // the capsule for it read "X has 0 products", and that went out as a
+    // summary on thirty empty collections of one store. Every field is
+    // treated as empty, so the withdrawal below retracts what an earlier
+    // pass wrote, and nothing is written until a member appears.
+    const candidates = members === 0
+      ? [
+          { key: "summary", type: "multi_line_text_field", value: "" },
+          { key: "criteria", type: "json", value: "" },
+          { key: "questions", type: "json", value: "" },
+          { key: "table", type: "json", value: "" },
+        ]
+      : [
+          { key: "summary", type: "multi_line_text_field", value: capsule.summary },
+          { key: "criteria", type: "json", value: JSON.stringify(capsule.criteria) },
+          { key: "questions", type: "json", value: JSON.stringify(capsule.questions) },
+          { key: "table", type: "json", value: JSON.stringify(capsule.table) },
+        ];
 
     const state = stateOf(collection);
     const now = new Date().toISOString();
@@ -276,19 +288,22 @@ export async function writeCollections(
         outcome.skipped.push(field.key);
         continue;
       }
-      if (field.value === "" || field.value === "[]" || field.value === "{}") continue;
-      if (field.key === "table" && capsule.table.columns.length === 0) {
-        // The pass produced no table. If a previous pass wrote one, it still
-        // sits in the metafield with a row per member it had then, each row a
-        // link to /products/{handle} - and the reason there is no table now is
-        // usually that those members went draft, archived or unlisted. Left in
-        // place it is a table of links to 404s, which is the leak PRD-PORT-1.7.8
-        // I.5 says this change closes (QA of 3 September 2026, wave fix 1). So
-        // an auto-written table is withdrawn, the way writeFacts withdraws an
-        // auto value the engine no longer produces. mayWrite above already
-        // refused a human-written one.
+      const empty =
+        field.value === "" ||
+        field.value === "[]" ||
+        field.value === "{}" ||
+        (field.key === "table" && capsule.table.columns.length === 0);
+      if (empty) {
+        // The pass produced nothing for this field. If a previous pass wrote
+        // one, it still sits in the metafield: a table with a row per member
+        // it had then, each a link to /products/{handle} that may now 404, or
+        // a summary describing a range that has since emptied. Left in place
+        // it is a claim nobody supports any more, so an auto-written value is
+        // withdrawn, the way writeFacts withdraws a fact the engine no longer
+        // produces. This once covered the table alone; the other three fields
+        // leaked the same way. mayWrite above already refused a human one.
         const current = collection.metafields?.find((m) => m.key === field.key)?.value;
-        if (current && current !== "" && current !== "{}") {
+        if (current && current !== "" && current !== "{}" && current !== "[]") {
           deletions.push({ ownerId: collection.id, namespace: NAMESPACE, key: field.key });
           delete state[field.key];
           outcome.removed.push(field.key);

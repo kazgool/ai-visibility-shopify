@@ -35,6 +35,42 @@ describe("renderLlmsTxt", () => {
     );
   });
 
+  it("links each product to its mirror and names the store page after it", () => {
+    // The llms.txt proposal links to the clean, markdown-shaped version of a
+    // page; that is the mirror. Before this every line linked the store page
+    // and the mirror was never reachable from the index.
+    const out = renderLlmsTxt({
+      ...base,
+      products: [
+        {
+          title: "Gothenburg Dining Table",
+          url: "https://nordwood.myshopify.com/products/gothenburg-dining-table",
+          mirrorUrl: "https://nordwood.myshopify.com/apps/ai-visibility/gothenburg-dining-table",
+        },
+      ],
+    });
+    expect(out).toContain(
+      "- [Gothenburg Dining Table](https://nordwood.myshopify.com/apps/ai-visibility/gothenburg-dining-table): store page https://nordwood.myshopify.com/products/gothenburg-dining-table",
+    );
+  });
+
+  it("publishes a Collections section with the member count, and none when there is no index", () => {
+    const out = renderLlmsTxt({
+      ...base,
+      collections: [
+        { title: "Dining Tables", url: "https://nordwood.myshopify.com/collections/dining-tables", products: 12 },
+        { title: "Single", url: "https://nordwood.myshopify.com/collections/single", products: 1 },
+      ],
+    });
+    expect(out).toContain("## Collections");
+    expect(out).toContain("- [Dining Tables](https://nordwood.myshopify.com/collections/dining-tables): 12 products");
+    expect(out).toContain("- [Single](https://nordwood.myshopify.com/collections/single): 1 product");
+    expect(out.indexOf("## Collections")).toBeLessThan(out.indexOf("## Products"));
+
+    expect(renderLlmsTxt(base)).not.toContain("## Collections");
+    expect(renderLlmsTxt({ ...base, collections: [] })).not.toContain("## Collections");
+  });
+
   it("says plainly when nothing has been processed yet, rather than an empty section", () => {
     const out = renderLlmsTxt({ ...base, products: [] });
     expect(out).toContain("Nothing processed yet.");
@@ -115,6 +151,39 @@ describe("llmsTxtBody", () => {
 
     expect(out).toContain("# Nordwood Furniture");
     expect(out).not.toContain("# nordwood");
+  });
+
+  it("builds the mirror url on the store page's own domain and reads the collections index", async () => {
+    mockMirrorFindMany.mockResolvedValue([
+      {
+        handle: "oak-table",
+        body: 'title: "Oak Table"\nurl: "https://nordwood.com/products/oak-table"\n',
+      },
+    ]);
+    mockSettingFindUnique.mockImplementation(({ where }: any) => {
+      if (where.shopId_key.key === "collectionsIndex") {
+        return Promise.resolve({
+          value: JSON.stringify([
+            { title: "Tables", handle: "tables", members: 4 },
+            { title: "Empty", handle: "empty", members: 0 },
+          ]),
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    const out = await llmsTxtBody("shop1", "nordwood.com");
+
+    // The store runs on its own domain; the mirror follows the store page,
+    // not the myshopify domain the session is keyed by.
+    expect(out).toContain(
+      "- [Oak Table](https://nordwood.com/apps/ai-visibility/oak-table): store page https://nordwood.com/products/oak-table",
+    );
+    expect(out).toContain("- [Tables](https://nordwood.com/collections/tables): 4 products");
+    // The pass writes only collections with members; a zero would be a
+    // page that says nothing. Guarded here too, so a stale index cannot
+    // publish one.
+    expect(out).not.toContain("Empty");
   });
 
   it("falls back to the domain slug when extraction has never run for the shop", async () => {

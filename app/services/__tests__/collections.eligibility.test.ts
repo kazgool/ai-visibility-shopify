@@ -136,6 +136,39 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
     expect(JSON.parse(state.value).table).toBeUndefined();
   });
 
+  it("withdraws every auto field of an empty collection, and writes none", async () => {
+    // 10 September 2026, Republica BIO. The pass read 2,491 collections and
+    // wrote "X has 0 products" as the summary of thirty empty ones, some of
+    // them live pages. The withdrawal above covered the table alone; the
+    // other three fields leaked the same way.
+    const c = collection([member("gone", { status: "DRAFT" })]);
+    c.metafields = [
+      { key: "summary", value: "gone has 0 products." },
+      { key: "questions", value: JSON.stringify([{ q: "x", a: "y" }]) },
+      { key: "table", value: oldTable },
+      {
+        key: "state",
+        value: JSON.stringify({
+          summary: { source: "auto", at: "x", engine: "y" },
+          questions: { source: "auto", at: "x", engine: "y" },
+          table: { source: "auto", at: "x", engine: "y" },
+        }),
+      },
+    ];
+    const { graphql, seen } = calls();
+
+    const [outcome] = await writeCollections(graphql as any, [c], DEFAULT_PREFS);
+
+    expect(outcome.members).toBe(0);
+    expect(outcome.written).toEqual([]);
+    expect(outcome.removed.sort()).toEqual(["questions", "summary", "table"]);
+    const setKeys = seen
+      .filter((s) => s.mutation === "set")
+      .flatMap((s) => s.vars.metafields)
+      .map((m: any) => m.key);
+    expect(setKeys).toEqual(["state"]);
+  });
+
   it("never deletes a table a human wrote", async () => {
     const c = collection([member("gone", { status: "DRAFT" })]);
     c.metafields = [

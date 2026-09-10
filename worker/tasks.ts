@@ -21,6 +21,10 @@ import {
 } from "../app/services/billing.server";
 import { fetchCollections, writeCollections } from "../app/services/collections.server";
 import { pingCollections } from "../app/services/indexnow.server";
+import {
+  COLLECTIONS_INDEX_SETTING_KEY,
+  type CollectionsIndexEntry,
+} from "../app/services/llms-txt.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
 import { refreshCurrentPageFacts } from "../app/services/seo-snapshot.server";
@@ -1264,6 +1268,14 @@ export const seo_collection_apply: Task = async (payload, helpers) => {
  * Deliberately a separate pass from product extraction: it depends on the
  * products' `facts` being written first, and re-running it is cheap.
  */
+function collectionsIndexFrom(
+  outcomes: { title: string; handle: string; members: number }[],
+): CollectionsIndexEntry[] {
+  return outcomes
+    .filter((o) => o.members > 0)
+    .map((o) => ({ title: o.title, handle: o.handle, members: o.members }));
+}
+
 export const bulk_collections: Task = async (payload, helpers) => {
   const { shopId, jobRunId } = payload as { shopId: string; jobRunId?: string };
 
@@ -1317,6 +1329,21 @@ export const bulk_collections: Task = async (payload, helpers) => {
         });
       }
     }
+
+    // The index llms.txt reads on the request path, where no Admin call is
+    // allowed: published collections with at least one eligible member,
+    // title and handle and the member count the table was built from. One
+    // Setting row, replaced whole on every pass, so a collection that
+    // empties or unpublishes leaves the index the next time this runs.
+    await db.setting.upsert({
+      where: { shopId_key: { shopId, key: COLLECTIONS_INDEX_SETTING_KEY } },
+      create: {
+        shopId,
+        key: COLLECTIONS_INDEX_SETTING_KEY,
+        value: JSON.stringify(collectionsIndexFrom(outcomes)),
+      },
+      update: { value: JSON.stringify(collectionsIndexFrom(outcomes)) },
+    });
 
     // Ping IndexNow for collections whose pages actually changed.
     await pingCollections(

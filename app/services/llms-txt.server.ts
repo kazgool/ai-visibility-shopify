@@ -41,14 +41,33 @@ import { SOCIAL_PLATFORMS } from "./social-profiles";
 
 const SHOP_INFO_SETTING_KEY = "shopInfo";
 
-export type LlmsTxtProduct = { title: string; url: string };
+export type LlmsTxtProduct = {
+  title: string;
+  /** The product's own page, the one the mirror stands in for. */
+  url: string;
+  /**
+   * The plain-text mirror under the app proxy. The llms.txt proposal links
+   * to the clean, markdown-shaped version of each page, which is what the
+   * mirror is; the store page is named after it so a reader can reach both.
+   * Optional so a caller with no mirror still gets a valid line.
+   */
+  mirrorUrl?: string;
+};
+
+export type LlmsTxtCollection = { title: string; url: string; products: number };
 
 export type LlmsTxtInput = {
   shopName: string;
   storeUrl: string;
   business?: BusinessRecord | null;
   products: LlmsTxtProduct[];
+  /** Published collections with at least one eligible member, from the
+   * index the collections pass leaves behind. Absent until that pass runs. */
+  collections?: LlmsTxtCollection[];
 };
+
+/** Setting key the collections pass writes its index under. */
+export const COLLECTIONS_INDEX_SETTING_KEY = "collectionsIndex";
 
 export function renderLlmsTxt(input: LlmsTxtInput): string {
   const lines: string[] = [];
@@ -88,11 +107,26 @@ export function renderLlmsTxt(input: LlmsTxtInput): string {
     }
   }
 
+  const collections = input.collections ?? [];
+  if (collections.length > 0) {
+    lines.push("## Collections");
+    lines.push("");
+    for (const c of collections) {
+      const count = `${c.products} ${c.products === 1 ? "product" : "products"}`;
+      lines.push(`- [${cleanOutput(c.title)}](${c.url}): ${count}`);
+    }
+    lines.push("");
+  }
+
   lines.push("## Products");
   lines.push("");
   if (input.products.length > 0) {
     for (const p of input.products) {
-      lines.push(`- [${cleanOutput(p.title)}](${p.url})`);
+      lines.push(
+        p.mirrorUrl
+          ? `- [${cleanOutput(p.title)}](${p.mirrorUrl}): store page ${p.url}`
+          : `- [${cleanOutput(p.title)}](${p.url})`,
+      );
     }
   } else {
     lines.push("Nothing processed yet.");
@@ -131,33 +165,81 @@ async function persistedShopName(shopId: string): Promise<string | null> {
   }
 }
 
+function mirrorUrlFor(storePageUrl: string, handle: string): string | undefined {
+  try {
+    return `${new URL(storePageUrl).origin}/apps/ai-visibility/${handle}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export type CollectionsIndexEntry = { title: string; handle: string; members: number };
+
+/** The index the collections pass persists (worker/tasks.ts bulk_collections):
+ * published collections with at least one eligible member. Empty when the
+ * pass has never run, or when the row is unreadable. */
+async function persistedCollectionsIndex(shopId: string): Promise<CollectionsIndexEntry[]> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: COLLECTIONS_INDEX_SETTING_KEY } },
+  });
+  if (!row?.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    if (!Array.isArray(parsed)) return [];
+    // The pass writes only collections with members; the same floor here
+    // means a stale or hand-edited row cannot publish a page that says
+    // nothing.
+    return parsed.filter(
+      (c): c is CollectionsIndexEntry =>
+        c &&
+        typeof c.title === "string" &&
+        typeof c.handle === "string" &&
+        typeof c.members === "number" &&
+        c.members > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Assembles the content from indexed reads only - no Admin API call on the
  * request path. Three queries, each on its own index (Setting and
  * MirrorCache are both keyed by shopId), run concurrently.
  */
 export async function llmsTxtBody(shopId: string, shopDomain: string): Promise<string> {
-  const [business, mirrors, shopName] = await Promise.all([
+  const [business, mirrors, shopName, collections] = await Promise.all([
     businessFor(shopId),
     db.mirrorCache.findMany({
       where: { shopId },
-      select: { body: true },
+      select: { body: true, handle: true },
       orderBy: { handle: "asc" },
     }),
     persistedShopName(shopId),
+    persistedCollectionsIndex(shopId),
   ]);
 
   const products: LlmsTxtProduct[] = [];
   for (const m of mirrors) {
     const title = frontMatterField(m.body, "title");
     const url = frontMatterField(m.body, "url");
-    if (title && url) products.push({ title, url });
+    if (!title || !url) continue;
+    // The mirror lives under the app proxy on whichever domain the store
+    // page uses, so its origin is taken from that page rather than from the
+    // shop domain: the two differ on a store with its own domain.
+    products.push({ title, url, mirrorUrl: mirrorUrlFor(url, m.handle) });
   }
 
+  const storeUrl = `https://${shopDomain}`;
   return renderLlmsTxt({
     shopName: shopName ?? fallbackShopName(shopDomain),
-    storeUrl: `https://${shopDomain}`,
+    storeUrl,
     business,
     products,
+    collections: collections.map((c) => ({
+      title: c.title,
+      url: `${storeUrl}/collections/${c.handle}`,
+      products: c.members,
+    })),
   });
 }
