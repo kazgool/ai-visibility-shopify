@@ -274,6 +274,7 @@ function prefixCapture(
   const hits: string[] = [];
   for (const match of text.matchAll(pattern)) {
     if (isNegated(text, match.index!, negators, base, terms)) continue;
+    if (inServingSuggestion(text, match.index!)) continue;
 
     const captured = match[1];
     const words = captured.trim().split(/\s+/u);
@@ -328,6 +329,97 @@ function prefixCapture(
 }
 
 /**
+ * Verbs that open an instruction to the buyer rather than a statement about
+ * the product. What follows one is what the buyer is told to do with the
+ * product, so the things named there belong to the buyer's kitchen, not to
+ * the product: "Adauga 1 lingura (10g) in smoothie, iaurt sau suc de fructe"
+ * published "suc de fructe" as an ingredient and "10 g" as a pack weight, and
+ * the merchant's own text says neither.
+ *
+ * Storage and shelf-life verbs are deliberately absent: "Pastreaza la
+ * temperatura camerei" is a real property of the product and belongs to
+ * whichever group the merchant wrote for it.
+ */
+const SERVING_LEADS = new Set([
+  "adauga", "adaugati", "amesteca", "amestecati", "dizolva", "dizolvati",
+  "combina", "combinati", "incorporeaza", "presara", "toarna", "prepara",
+  "preparati", "serveste", "serviti", "consuma", "consumati", "bea", "beti",
+  "administreaza", "administrati", "aplica", "aplicati", "dilueaza",
+  "infuzeaza", "agita", "maseaza", "utilizeaza", "utilizati",
+  "add", "mix", "stir", "blend", "dissolve", "combine", "sprinkle", "pour",
+  "serve", "drink", "enjoy", "take", "apply", "dilute", "steep", "infuse",
+]);
+
+/**
+ * Verbs deliberately left out, each for a reason found on a catalogue rather
+ * than guessed. "foloseste" and "folositi" open a sentence that names the
+ * product itself - "Foloseste pudra de cacao pentru a pregati ciocolata
+ * calda" - so they are not the "adauga in X" shape and they cost two real
+ * ingredients on the Republica BIO catalogue. "shake", "spread", "spray",
+ * "massage", "brew" and "top" are product nouns as often as verbs, and a
+ * protein shake or a chocolate spread would suppress its own description.
+ */
+
+/**
+ * How far into its own sentence a serving verb may stand and still be read as
+ * the instruction's opening. An imperative leads; the same word deeper in a
+ * sentence is prose about something else.
+ */
+const SERVING_LEAD_WINDOW = 3;
+
+/**
+ * Is the occurrence at `index` inside an instruction to the buyer?
+ *
+ * The unit is the sentence, and a colon ends one: "Mod de utilizare: Adauga
+ * ..." puts the label in one unit and the instruction in the next, so a
+ * merchant's own "mod de utilizare *" term still captures. Commas do not end
+ * it, because the vehicles are written as an elided list and the last of them
+ * is the one that names a dictionary term.
+ */
+function inServingSuggestion(text: string, index: number): boolean {
+  const unit = text.slice(0, index).split(/[.!?:;\n•]/u).pop() ?? "";
+  return opensWithServingLead(unit);
+}
+
+function opensWithServingLead(unit: string): boolean {
+  const tokens = normalize(unit).split(" ").filter(Boolean);
+  return tokens
+    .slice(0, SERVING_LEAD_WINDOW)
+    .some((token) => SERVING_LEADS.has(token));
+}
+
+/**
+ * The same text with every serving instruction blanked, offsets intact.
+ *
+ * The numeric wildcard path reads whole strings rather than positions, so it
+ * cannot ask whether one occurrence sits inside an instruction; it is handed
+ * a text where those no longer exist. "Adauga pulberea peste 250 - 300 ml de
+ * apa" published 300 ml as the volume of a collagen powder, and "se consuma 2
+ * capsule zilnic" published a two-capsule pack.
+ */
+function withoutServingSuggestions(text: string): string {
+  return text.replace(/[^.!?:;\n•]+/gu, (unit) =>
+    opensWithServingLead(unit) ? " ".repeat(unit.length) : unit,
+  );
+}
+
+/**
+ * Words that make a term a dose rather than a quantity: a dose is stated in
+ * the instruction and nowhere else, so such a term is the one thing that must
+ * still read there. "* capsule zilnic" is the merchant's own usage term and
+ * matches the same span as "* capsule", which is a pack size and is not.
+ */
+const DOSE_MARKERS = [
+  "zilnic", "zilnica", "zilnice", "pe zi", "pe saptamana", "daily",
+  "per day", "a day", "each day", "per week",
+];
+
+function isDoseTerm(base: string): boolean {
+  const key = ` ${normalize(base)} `;
+  return DOSE_MARKERS.some((marker) => key.includes(` ${marker} `));
+}
+
+/**
  * Words that, immediately before a term, say "looks like" rather than "is":
  * aspect de marmura, tip marmura, imitatie de lemn, efect de catifea.
  * Narrow on purpose (DICTIONARY-PORT §10.1): each entry is an explicit
@@ -364,6 +456,7 @@ export function extractFromText(
 
   if (!text || text.trim() === "") return [];
 
+  const servingFree = withoutServingSuggestions(text);
   const found: Fact[] = [];
 
   for (const group of groups) {
@@ -385,7 +478,7 @@ export function extractFromText(
       if (base === "") continue;
 
       if (isCount) {
-        hits = hits.concat(counted(text, base));
+        hits = hits.concat(counted(isDoseTerm(base) ? text : servingFree, base));
         continue;
       }
 
@@ -416,6 +509,9 @@ export function extractFromText(
         // the next occurrence: a text can deny it in one sentence and state
         // it in another, and only the stated one is ours to publish.
         if (isNegated(text, m.index!, negators, base, terms)) continue;
+        // "Adauga in iaurt" is a serving suggestion; the yoghurt is the
+        // buyer's, not an ingredient of this product.
+        if (inServingSuggestion(text, m.index!)) continue;
         const before = text.slice(Math.max(0, m.index! - 30), m.index!);
         if (APPEARANCE_QUALIFIER.test(before)) continue;
         const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 20);

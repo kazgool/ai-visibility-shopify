@@ -16,6 +16,95 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Serving suggestions are no longer read as product facts (10 September 2026)
+
+Republica BIO went through their own dictionary line by line after install and
+sent back a marked-up copy. Three of their objections were real false facts,
+and one of them named a whole class the engine had never handled: text that
+tells the buyer what to do with the product was being read as a description of
+the product.
+
+"Adauga 1 lingura (10g) in smoothie, iaurt, shake proteic, bautura vegetala sau
+suc de fructe" published fruit juice as an ingredient of a cocoa powder. "Poti
+adauga nuci (fistic, caju, migdale)" published almonds and cashews as the main
+ingredients of a bag of gluten-free oat flakes. "Adauga pulberea peste 250 -
+300 ml de apa plata" made a collagen powder 300 ml. "Se consuma 2 capsule
+zilnic" made a 60-capsule jar a 2-capsule pack. Every one of these is the
+merchant's own text saying something the product is not, which is the class the
+negation guard already exists to prevent, one step along: not a denial, an
+instruction.
+
+The fix mirrors the negation machinery. `SERVING_LEADS` in `extract.ts` lists
+the verbs that open an instruction (adauga, amesteca, dizolva, consuma, add,
+mix, stir, take and so on); an occurrence whose sentence opens with one, inside
+the first three words, is not published. A colon ends the unit, so a merchant's
+own "mod de utilizare *" term still captures on its side of it, and storage
+verbs are deliberately absent because where to keep a product is a real
+property of it.
+
+The numeric wildcard path needed its own handling: `counted()` reads whole
+strings rather than positions, so it cannot ask where a hit sits. It is handed
+a copy of the text with the instructions blanked and the offsets intact. One
+exemption keeps that from eating the dose itself: a term carrying a frequency
+word ("* capsule zilnic", "* pe zi") is a dose term, is stated only inside the
+instruction, and reads the full text. So "Cantitate pachet: 60 capsule, 2
+capsule" becomes "60 capsule" while "Utilizare: 2 capsule zilnic" is untouched.
+
+The verb list carries both languages, and which verbs it carries was settled
+on the catalogues rather than by ear. Two Romanian openers were missing and
+cost real facts: `administreaza` ("Administreaza produsul in prima parte a
+zilei") and `aplica` / `aplicati`, the second on ten hemp-oil products where
+"Aplicati intre 1 si 4 picaturi pe piele sau in crema de ingrijire personala"
+made the oil a cream - the cream is the buyer's own. `foloseste` and
+`folositi` were tried and rejected: they open a sentence that names the
+product itself ("Foloseste pudra de cacao pentru a pregati ciocolata calda"),
+which is not the "adauga in X" shape, and they deleted two true ingredients,
+cocoa powder and Manuka honey, both stated in the product title. `shake`,
+`spread`, `spray`, `massage`, `brew` and `top` are left out for the opposite
+reason: each is a product noun as often as a verb, and a protein shake or a
+chocolate spread would suppress its own description.
+
+Measured on the two catalogues, HEAD against this change, same dictionaries.
+Republica BIO, 189 products: 4,199 values to 4,154, so 45 fewer, every one of
+them read and confirmed false (24 doses counted as pack quantities, 12
+vehicles counted as a form or an ingredient, 9 buyer-supplied extras counted
+as ingredients). One value appears that did not before: a honey suggested to
+mask the taste of a CBD oil, which the engine was already extracting and the
+four-value cap was hiding behind the cream this change removes. It is a false
+fact the sentence shape does not reach, not a new one, and it is left standing
+rather than chased with a wider window. The 355-product furniture catalogue is
+identical, 1,002 values before and after, which is the evidence that the verb
+list does not reach into prose. Engine suite 236 tests green, including the
+three WordPress fixtures, with the new `serving-suggestion.test.ts` carrying
+ten guards.
+
+`vitest.config.ts` gained a 20-second `testTimeout` and `hookTimeout` in the
+same pass. The route tests import a Remix route from inside the test body,
+which pulls in Polaris and the whole service tree; with 70 files in parallel
+that import alone can pass five seconds, the test it is charged to times out,
+and the call it was awaiting lands during a later test and reads there as a
+spy called twice. Three failures, one cause, none of them a defect, and all
+absent when the same files run alone - proven by running those two files at
+HEAD and with this change, 15 tests green either way in the same 2.1 seconds.
+The wait is real work rather than a hang, so the budget was the thing that was
+wrong.
+
+Their other flags were answered rather than coded. `prajit` and `prajite`
+needed nothing: the negation guard already reads "COAPTE, nu prajite" and
+"fara prajire" correctly, and across the 21 products whose text contains
+"praji" the engine published no processing fact at all. `la 100 g` and `la
+100g` are not a duplicate in the output; both spellings sit in the list so the
+text is caught either way, and the group dedup normalizes the gap. `capsule`
+under Forma alongside `* capsule` under Cantitate pachet is intentional: the
+form is capsules and the quantity is sixty, two true facts about one span.
+
+Nine terms came out of their dictionary, on their instruction and ours: `suc
+de *` and `unt` (both real false facts, the second because "unt de cacao" in an
+ingredient list made a chocolate snack a butter), `pachet promotional` under
+Ambalaj (a commercial designation, not a package type, on 39 products), and
+`seva de artar`, `aloe vera`, `prajit`, `prajite`, `fermentat`, `fermentata`,
+which match nothing in their catalogue.
+
 ### Meta titles that Shopify keeps, glued units, four presets (6 September 2026)
 
 Server only; nothing in an extension changed.
