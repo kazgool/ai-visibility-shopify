@@ -275,6 +275,7 @@ function prefixCapture(
   for (const match of text.matchAll(pattern)) {
     if (isNegated(text, match.index!, negators, base, terms)) continue;
     if (inServingSuggestion(text, match.index!)) continue;
+    if (inAdulterationList(text, match.index!)) continue;
 
     const captured = match[1];
     const words = captured.trim().split(/\s+/u);
@@ -420,6 +421,31 @@ function isDoseTerm(base: string): boolean {
 }
 
 /**
+ * A list of what a product was tested NOT to contain reads exactly like a
+ * list of what it does contain. "Testata impotriva adaosurilor de zahar si
+ * agenti de falsificare (glucoza, faina de cereale, amidon, gelatina si
+ * clei)" published cereal flour as an ingredient of raw honey: the precise
+ * adulteration the producer paid a laboratory to disprove.
+ *
+ * The negation machinery cannot reach this one. Its window stops at the comma
+ * and at the bracket, and the denied list lives inside both. So the marker
+ * opens a scope of its own, running from itself to the end of the sentence.
+ *
+ * The vocabulary is adulteration, deliberately, not testing. A marker on
+ * "impotriva" alone would have deleted "Verificat impotriva pesticidelor",
+ * which is the Testare group doing its job on 72 sentences of one catalogue;
+ * a marker on "adaosuri" alone reaches "Fara alergeni si adaosuri: ... poate
+ * contine urme de soia" and deletes an allergen statement.
+ */
+const ADULTERATION_MARKER =
+  /(?:impotriva\s+adaosuri\p{L}*|falsific\p{L}*|adulterat\p{L}*|adulteration|counterfeit)/iu;
+
+function inAdulterationList(text: string, index: number): boolean {
+  const sentence = text.slice(0, index).split(/[.!?\n•]/u).pop() ?? "";
+  return ADULTERATION_MARKER.test(sentence);
+}
+
+/**
  * Words that, immediately before a term, say "looks like" rather than "is":
  * aspect de marmura, tip marmura, imitatie de lemn, efect de catifea.
  * Narrow on purpose (DICTIONARY-PORT §10.1): each entry is an explicit
@@ -512,6 +538,9 @@ export function extractFromText(
         // "Adauga in iaurt" is a serving suggestion; the yoghurt is the
         // buyer's, not an ingredient of this product.
         if (inServingSuggestion(text, m.index!)) continue;
+        // A list of what the product was tested not to contain is not a list
+        // of what it contains.
+        if (inAdulterationList(text, m.index!)) continue;
         const before = text.slice(Math.max(0, m.index! - 30), m.index!);
         if (APPEARANCE_QUALIFIER.test(before)) continue;
         const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 20);
