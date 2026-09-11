@@ -13,6 +13,7 @@ import {
   Banner,
   List,
   Badge,
+  Checkbox,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -25,12 +26,34 @@ import {
   collidingTerms,
 } from "../engine";
 import { hasPaidAccess } from "../services/billing.server";
+import {
+  cleanMappings,
+  dictionaryGroups,
+  normaliseHidden,
+  parseMappings,
+  validateCap,
+  validateMappings,
+  MAX_FAQ_CAP,
+  type MappingError,
+  type Mappings,
+} from "../services/faq-settings";
+import {
+  faqSettingsFor,
+  saveFaqSettings,
+  saveHiddenGroups,
+  savePresetId,
+} from "../services/faq-settings.server";
 
 // The dictionary is the product. This screen is where a merchant decides what
 // "comparable" means for their trade - and, just as importantly, in which
 // language. Terms only match the language the descriptions are written in;
 // the coverage test below makes that obvious in seconds instead of after a
 // disappointing bulk pass.
+//
+// It also holds what is stored with the dictionary (CC-PROMPT-AI-READABILITY-3
+// item 3): the shop's own buyer questions for a description heading or a
+// dictionary group, how many questions a product gets, and which groups the
+// product page's facts list shows.
 
 const SAMPLE = `#graphql
   query SampleProducts {
@@ -48,10 +71,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where: { shopId_key: { shopId: shop.id, key: "dictionary" } },
       })
     : null;
+  const dictionary = setting?.value ?? "";
+  const faq = shop ? await faqSettingsFor(shop.id) : null;
 
   return {
-    dictionary: setting?.value ?? "",
+    dictionary,
     presets: Object.entries(PRESETS).map(([value, p]) => ({ value, label: p.label })),
+    presetId: faq?.presetId ?? null,
+    mappings: faq?.mappings ?? { sections: [], groups: [] },
+    cap: faq?.cap ?? null,
+    hiddenGroups: faq?.hiddenGroups ?? [],
+    // The groups of the saved dictionary: a group typed but not saved yet has
+    // no values on any product, so it is not offered until it is saved.
+    groups: dictionaryGroups(dictionary),
   };
 };
 
@@ -81,7 +113,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       create: { shopId: shop.id, key: "dictionary", value: text },
       update: { value: text },
     });
+    // The preset the text started from decides which preset questions apply.
+    // Nothing picked this time keeps what was recorded before.
+    const preset = String(form.get("preset") ?? "");
+    if (preset && PRESETS[preset]) await savePresetId(shop.id, preset);
     return { saved: true };
+  }
+
+  if (intent === "save_faq") {
+    const mappings = cleanMappings(parseMappings(String(form.get("faq") ?? "")));
+    const capRaw = String(form.get("cap") ?? "");
+    const faqErrors = validateMappings(mappings);
+    const capError = validateCap(capRaw);
+    if (faqErrors.length > 0 || capError) return { faqErrors, capError };
+    await saveFaqSettings(shop.id, mappings, Number(capRaw.trim()));
+    return { faqSaved: true };
+  }
+
+  if (intent === "save_display") {
+    let hidden: string[] = [];
+    try {
+      const raw = JSON.parse(String(form.get("hidden") ?? "[]"));
+      hidden = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+    } catch {
+      return { error: "The list of groups could not be read. Nothing was changed." };
+    }
+    await saveHiddenGroups(shop.id, admin.graphql, normaliseHidden(hidden));
+    return { displaySaved: true };
   }
 
   // Test: run the dictionary in the box - saved or not - against a live
@@ -105,24 +163,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { report, examples, collisions };
 };
 
+function mappingErrorText(e: MappingError): string {
+  const list = e.list === "sections" ? "Heading question" : "Group question";
+  return e.row === 0 ? `${list}s: ${e.message}` : `${list} ${e.row}: ${e.message}`;
+}
+
 export default function DictionaryPage() {
-  const { dictionary, presets } = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>();
+  const { dictionary, presets, groups } = loaded;
   const result = useActionData<typeof action>() as any;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
   const [text, setText] = useState(dictionary || DEFAULT_DICTIONARY);
   const [preset, setPreset] = useState("");
+  const [mappings, setMappings] = useState<Mappings>(loaded.mappings);
+  const [cap, setCap] = useState(String(loaded.cap ?? 8));
+  const [hidden, setHidden] = useState<string[]>(loaded.hiddenGroups);
 
   function loadPreset(value: string) {
     setPreset(value);
     if (value) setText(presetText(value));
   }
 
+  const setSection = (i: number, field: "heading" | "question", value: string) =>
+    setMappings((m) => ({ ...m, sections: m.sections.map((s, j) => (j === i ? { ...s, [field]: value } : s)) }));
+  const setGroup = (i: number, field: "group" | "question", value: string) =>
+    setMappings((m) => ({ ...m, groups: m.groups.map((g, j) => (j === i ? { ...g, [field]: value } : g)) }));
+
+  const groupOptions = [{ label: "Choose a group...", value: "" }, ...groups.map((g) => ({ label: g, value: g }))];
+
   return (
     <Page title="Dictionary" subtitle="What counts as a comparable attribute in your trade">
       <BlockStack gap="400">
         {result?.saved ? <Banner tone="success">Dictionary saved.</Banner> : null}
+        {result?.faqSaved ? <Banner tone="success">Buyer questions saved.</Banner> : null}
+        {result?.displaySaved ? <Banner tone="success">Product page facts saved.</Banner> : null}
         {result?.error ? (
           <Banner tone="critical">
             <Text as="p">{result.error}</Text>
@@ -158,12 +234,151 @@ export default function DictionaryPage() {
               </Form>
               <Form method="post">
                 <input type="hidden" name="dictionary" value={text} />
+                <input type="hidden" name="preset" value={preset} />
                 <input type="hidden" name="intent" value="save" />
                 <Button submit variant="primary" loading={busy}>
                   Save
                 </Button>
               </Form>
             </InlineStack>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
+              Buyer questions
+            </Text>
+            <Text as="p">
+              Questions come from your own descriptions: a heading that is already a
+              question, or a heading such as Ingredients, Warnings or How to use, with the
+              text under it as the answer. Add your own below. Write {"{title}"} where the
+              product's name goes.
+            </Text>
+            {result?.faqErrors?.length || result?.capError ? (
+              <Banner tone="critical" title="Not saved">
+                <List>
+                  {(result.faqErrors ?? []).map((e: MappingError) => (
+                    <List.Item key={`${e.list}-${e.row}-${e.message}`}>{mappingErrorText(e)}</List.Item>
+                  ))}
+                  {result.capError ? <List.Item>{result.capError}</List.Item> : null}
+                </List>
+              </Banner>
+            ) : null}
+
+            <Text as="h3" variant="headingSm">
+              A heading in your descriptions, and the question it answers
+            </Text>
+            {mappings.sections.map((s, i) => (
+              <InlineStack key={`s${i}`} gap="200" blockAlign="end" wrap={false}>
+                <TextField
+                  label={`Heading ${i + 1}`}
+                  value={s.heading}
+                  onChange={(v) => setSection(i, "heading", v)}
+                  autoComplete="off"
+                />
+                <TextField
+                  label="Question"
+                  value={s.question}
+                  onChange={(v) => setSection(i, "question", v)}
+                  placeholder="How do I assemble {title}?"
+                  autoComplete="off"
+                />
+                <Button onClick={() => setMappings((m) => ({ ...m, sections: m.sections.filter((_, j) => j !== i) }))}>
+                  Remove
+                </Button>
+              </InlineStack>
+            ))}
+            <InlineStack>
+              <Button onClick={() => setMappings((m) => ({ ...m, sections: [...m.sections, { heading: "", question: "" }] }))}>
+                Add a heading
+              </Button>
+            </InlineStack>
+
+            <Text as="h3" variant="headingSm">
+              A dictionary group, and the question its value answers
+            </Text>
+            {mappings.groups.map((g, i) => (
+              <InlineStack key={`g${i}`} gap="200" blockAlign="end" wrap={false}>
+                <Select
+                  label={`Group ${i + 1}`}
+                  options={
+                    g.group && !groups.includes(g.group)
+                      ? [...groupOptions, { label: g.group, value: g.group }]
+                      : groupOptions
+                  }
+                  value={g.group}
+                  onChange={(v) => setGroup(i, "group", v)}
+                />
+                <TextField
+                  label="Question"
+                  value={g.question}
+                  onChange={(v) => setGroup(i, "question", v)}
+                  placeholder="What shape is {title}?"
+                  autoComplete="off"
+                />
+                <Button onClick={() => setMappings((m) => ({ ...m, groups: m.groups.filter((_, j) => j !== i) }))}>
+                  Remove
+                </Button>
+              </InlineStack>
+            ))}
+            <InlineStack>
+              <Button onClick={() => setMappings((m) => ({ ...m, groups: [...m.groups, { group: "", question: "" }] }))}>
+                Add a group question
+              </Button>
+            </InlineStack>
+
+            <TextField
+              label="Questions per product"
+              type="number"
+              value={cap}
+              onChange={setCap}
+              min={1}
+              max={MAX_FAQ_CAP}
+              autoComplete="off"
+              helpText="Warnings are never cut: they always come first and count toward this number."
+            />
+
+            <Form method="post">
+              <input type="hidden" name="intent" value="save_faq" />
+              <input type="hidden" name="faq" value={JSON.stringify(mappings)} />
+              <input type="hidden" name="cap" value={cap} />
+              <Button submit loading={busy}>
+                Save buyer questions
+              </Button>
+            </Form>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingMd">
+              On the product page
+            </Text>
+            <Text as="p">
+              Each group's value is listed with your product's details on the product
+              page. Switch a group off to leave it out of that list. It stays in your
+              product data, the plain-text page and llms.txt.
+            </Text>
+            {groups.map((g) => (
+              <Checkbox
+                key={g}
+                label={`Show ${g} on the product page`}
+                checked={!hidden.includes(g)}
+                onChange={(on) => setHidden((h) => (on ? h.filter((x) => x !== g) : [...h, g]))}
+              />
+            ))}
+            <Text as="p" tone="subdued">
+              These are the groups of your saved dictionary. Save the dictionary first to
+              see a new group here.
+            </Text>
+            <Form method="post">
+              <input type="hidden" name="intent" value="save_display" />
+              <input type="hidden" name="hidden" value={JSON.stringify(hidden)} />
+              <Button submit loading={busy}>
+                Save product page facts
+              </Button>
+            </Form>
           </BlockStack>
         </Card>
 

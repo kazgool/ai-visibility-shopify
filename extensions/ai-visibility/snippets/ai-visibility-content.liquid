@@ -23,6 +23,9 @@
                     the storefront's language is printed instead
     heading_level   'h2' or 'h3'; questions sit one level below it
     show_summary, show_facts, show_fit, show_questions, show_links
+    hidden_groups   the dictionary group labels the facts list leaves out,
+                    from shop.metafields['$app'].facts_display (the shop object
+                    is not visible inside a rendered snippet, so it is passed)
 
   Rules, all from the PRD and CLAUDE.md:
   - Renders nothing at all - no wrapper, no heading, no whitespace - unless
@@ -60,8 +63,21 @@
 
   {%- assign av_show_summary = false -%}
   {%- if show_summary and av_summary != blank -%}{%- assign av_show_summary = true -%}{%- endif -%}
+  {%- comment -%}
+    Groups the merchant switched off on the Dictionary screen ("Show on the
+    product page") are left out of this list only; they stay in the facts
+    metafield, the plain-text page and llms.txt. Counted first, so a product
+    whose every fact is hidden prints no empty list.
+  {%- endcomment -%}
+  {%- assign av_hidden = hidden_groups -%}
+  {%- assign av_visible_facts = 0 -%}
+  {%- if show_facts and av_facts -%}
+    {%- for fact in av_facts -%}
+      {%- unless av_hidden contains fact.k -%}{%- assign av_visible_facts = av_visible_facts | plus: 1 -%}{%- endunless -%}
+    {%- endfor -%}
+  {%- endif -%}
   {%- assign av_show_facts = false -%}
-  {%- if show_facts and av_facts and av_facts.size > 0 -%}{%- assign av_show_facts = true -%}{%- endif -%}
+  {%- if av_visible_facts > 0 -%}{%- assign av_show_facts = true -%}{%- endif -%}
   {%- assign av_show_fit = false -%}
   {%- if show_fit and av_fit != blank -%}{%- assign av_show_fit = true -%}{%- endif -%}
   {%- assign av_show_questions = false -%}
@@ -82,8 +98,10 @@
         {%- endcomment -%}
         <dl class="ai-visibility-content__facts" style="display:grid;grid-template-columns:minmax(8rem,max-content) 1fr;gap:0.25rem 1.5rem;margin:0 0 1rem;">
           {%- for fact in av_facts -%}
+            {%- unless av_hidden contains fact.k -%}
             <dt style="margin:0;">{{ fact.k | escape }}</dt>
             <dd style="margin:0;">{{ fact.v | escape }}</dd>
+            {%- endunless -%}
           {%- endfor -%}
         </dl>
       {%- endif -%}

@@ -649,6 +649,12 @@ const LENGTH = /\d\s*(mm|cm|m|in|inch|inches|ft)\b|\d\s*["”]|\d\s*[x×]\s*\d/i
 
 const NOT_PLAIN = /[–—‘’“”…]|&#?[a-z0-9]+;/i;
 
+/** True when text holds only plain characters: no typographic dash, curly
+ * quote or ellipsis character, no HTML entity. */
+export function isPlainText(text: string): boolean {
+  return !NOT_PLAIN.test(text);
+}
+
 /**
  * Why a merchant's question cannot be saved, or null when it can: it must
  * name the product through {title}, end with "?", and use plain characters.

@@ -63,13 +63,15 @@ const VARIANT_DEFINITIONS = [
   { key: "state", type: "json", name: "AI Visibility state" },
 ] as const;
 
-// One shop-level record: the commercial answers (delivery, returns,
-// warranty, payment). Public read so the theme block can render shipping
-// and return schema without our app in the request path.
+// Shop-level records the theme block reads: the commercial answers (delivery,
+// returns, warranty, payment), the theme scan, the SEO unlock, and which
+// dictionary groups the product page's facts list leaves out. Public read so
+// the block renders them without our app in the request path.
 const SHOP_DEFINITIONS = [
   { key: "business", type: "json", name: "Business info" },
   { key: "theme_scan", type: "json", name: "Theme scan" },
   { key: "seo_unlocked", type: "boolean", name: "SEO unlock" },
+  { key: "facts_display", type: "json", name: "Facts shown on the product page" },
 ] as const;
 
 export async function ensureMetafieldDefinitions(graphql: AdminGraphql) {

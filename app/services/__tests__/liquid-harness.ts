@@ -100,6 +100,8 @@ export function storefront(options: {
   data?: ProductData;
   collection?: Record<string, unknown> | null;
   seoUnlocked?: boolean;
+  /** Dictionary group labels the facts list leaves out ($app.facts_display). */
+  hiddenGroups?: string[] | null;
 }): Record<string, unknown> {
   const data = options.data ?? {};
   const mf = (value: unknown) => (value === undefined || value === null ? undefined : { value });
@@ -115,6 +117,7 @@ export function storefront(options: {
           theme_scan: mf(options.themeScan),
           business: { value: {} },
           seo_unlocked: { value: options.seoUnlocked ?? false },
+          facts_display: options.hiddenGroups ? { value: { hidden: options.hiddenGroups } } : undefined,
         },
       },
     },
