@@ -59,14 +59,17 @@ rendered by Shopify. You can verify with any performance tool: there is
 no request to our servers from your storefront pages.
 
 **What happens to my data if I uninstall?**
-It stays. Attributes, summaries and tables are Shopify metafields in your
-store, usable by your theme without our app. Our copy of your settings
+What was written into your store stays: the attributes, summaries,
+comparison tables, meta titles and meta descriptions, and image alt text
+are Shopify metafields and fields in your store, and your theme can keep
+using them without our app. What the app serves stops: the visible
+product and collection blocks, the structured data block, the plain-text
+pages, llms.txt and agents.md are produced by this app while it is
+installed, and they are gone when you uninstall. Our copy of your settings
 and job history is deleted within 48 hours of Shopify's redact webhook.
 
 **Can I get a refund?**
-Billing runs through Shopify. Write to us within 14 days of the charge
-and we will refund it, no questions. After that, tell us what went wrong
-and we will be reasonable.
+Billing runs through Shopify. Write to us at hello@mrdigital.ro and we will answer within two working days.
 
 ## What we do not offer
 

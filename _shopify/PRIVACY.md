@@ -28,8 +28,14 @@ it never sees names, addresses, orders or payment details of your buyers.
 ## What the app writes
 
 The app writes extracted attributes, summaries, questions and comparison
-tables to metafields in your store. Metafields belong to you: they remain
-in your store if you uninstall.
+tables to metafields in your store, and, where you approve it, meta titles,
+meta descriptions and image alt text into the fields Shopify keeps for them.
+What stays if you uninstall: all of that. The attributes, summaries, tables,
+meta titles and descriptions, and alt text are Shopify metafields and fields
+in your store, and they belong to you. What stops: the visible product and
+collection blocks, the structured data block, the plain-text pages, llms.txt
+and agents.md are served by the app while it is installed, and they are gone
+at uninstall.
 
 ## What we store on our servers
 
