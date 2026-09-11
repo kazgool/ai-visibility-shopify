@@ -1,0 +1,47 @@
+{
+  "content": {
+    "settings": {
+      "heading": {
+        "label": "Titlu",
+        "info": "Lasă gol pentru \"Despre acest produs\" în limba magazinului."
+      },
+      "heading_level": {
+        "label": "Nivelul titlului",
+        "info": "Întrebările stau cu un nivel mai jos.",
+        "options": {
+          "h2": "H2",
+          "h3": "H3"
+        }
+      },
+      "show_summary": {
+        "label": "Arată rezumatul"
+      },
+      "show_facts": {
+        "label": "Arată caracteristicile principale"
+      },
+      "show_fit": {
+        "label": "Arată pentru cine este potrivit"
+      },
+      "show_questions": {
+        "label": "Arată întrebările cumpărătorilor și răspunsurile"
+      },
+      "show_links": {
+        "label": "Arată linkurile către versiunile text"
+      },
+      "collection_heading": {
+        "label": "Titlu pe paginile de colecție",
+        "info": "Lasă gol pentru \"Despre această colecție\" în limba magazinului."
+      },
+      "show_criteria": {
+        "label": "Arată între ce se alege, pe paginile de colecție"
+      },
+      "show_table": {
+        "label": "Arată tabelul comparativ, pe paginile de colecție"
+      },
+      "manual_placement": {
+        "label": "Am pus eu blocul de conținut; ascunde-l pe cel automat",
+        "info": "Pe paginile de produs ascunde tot ce este mai sus. Pe paginile de colecție ascunde tot în afară de întrebări, pe care blocul de comparație nu le arată."
+      }
+    }
+  }
+}

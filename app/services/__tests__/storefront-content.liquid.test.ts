@@ -28,9 +28,13 @@ const render = (options: Parameters<typeof storefront>[0], file = EMBED) =>
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 describe("the visible product block: what it shows", () => {
-  it("ships with every part on, heading 'About this product' at h2, and manual placement off", () => {
+  // Changed deliberately (CC-PROMPT-AI-READABILITY-2 item 6): the heading has
+  // no default text any more. Blank prints "About this product" in the
+  // storefront's language, from the locale files.
+  it("ships with every part on, no heading text of its own, h2, and manual placement off", () => {
+    expect(defaults.heading).toBeFalsy();
+    expect(defaults.collection_heading).toBeFalsy();
     expect(defaults).toMatchObject({
-      heading: "About this product",
       heading_level: "h2",
       show_summary: true,
       show_facts: true,
@@ -134,10 +138,15 @@ describe("the visible product block: when it renders nothing at all", () => {
     expect(html.trim()).toBe("");
   });
 
-  it("prints no heading when the heading text is blank, and still prints the content", async () => {
-    const html = await render({ data: FULL, settings: { ...defaults, heading: "" } });
-    expect(html).not.toMatch(/<h2/);
-    expect(text(html)).toContain("A solid oak chair");
+  // Changed deliberately (item 6): blank used to mean no heading. It now
+  // means the default heading in the storefront's language; a heading the
+  // merchant typed is printed as typed.
+  it("prints the default heading when the heading text is blank, and the merchant's own when typed", async () => {
+    const blank = await render({ data: FULL, settings: { ...defaults, heading: "" } });
+    expect(blank).toMatch(/<h2[^>]*>About this product<\/h2>/);
+    expect(text(blank)).toContain("A solid oak chair");
+    const typed = await render({ data: FULL, settings: { ...defaults, heading: "Detalii & fișă" } });
+    expect(typed).toMatch(/<h2[^>]*>Detalii &amp; fișă<\/h2>/);
   });
 });
 

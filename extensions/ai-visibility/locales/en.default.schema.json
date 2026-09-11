@@ -1,0 +1,47 @@
+{
+  "content": {
+    "settings": {
+      "heading": {
+        "label": "Heading",
+        "info": "Leave blank to show \"About this product\" in your store's language."
+      },
+      "heading_level": {
+        "label": "Heading level",
+        "info": "Questions sit one level below it.",
+        "options": {
+          "h2": "H2",
+          "h3": "H3"
+        }
+      },
+      "show_summary": {
+        "label": "Show the summary"
+      },
+      "show_facts": {
+        "label": "Show the key facts"
+      },
+      "show_fit": {
+        "label": "Show who it suits"
+      },
+      "show_questions": {
+        "label": "Show buyer questions and answers"
+      },
+      "show_links": {
+        "label": "Show links to the plain-text versions"
+      },
+      "collection_heading": {
+        "label": "Heading on collection pages",
+        "info": "Leave blank to show \"About this collection\" in your store's language."
+      },
+      "show_criteria": {
+        "label": "Show what to choose between, on collection pages"
+      },
+      "show_table": {
+        "label": "Show the comparison table, on collection pages"
+      },
+      "manual_placement": {
+        "label": "I placed the content block myself; hide the automatic one",
+        "info": "On product pages this hides everything above. On collection pages it hides all but the questions, which the comparison block does not show."
+      }
+    }
+  }
+}

@@ -42,7 +42,9 @@
       </ul>
     {%- endif -%}
 
-    {%- assign av_caption = collection.title | append: ': product comparison' -%}
+    {%- comment -%} The same translated caption as the content snippet's (locales/*.json). {%- endcomment -%}
+    {%- assign av_caption_suffix = 'content.comparison_caption_suffix' | t -%}
+    {%- assign av_caption = collection.title | append: av_caption_suffix -%}
     {%- render 'ai-visibility-table',
       table: av_table,
       caption: av_caption,

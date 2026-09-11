@@ -1,0 +1,32 @@
+{
+  "name": "AI Visibility",
+  "settings": {
+    "enabled": {
+      "label": "Activează datele AI Visibility"
+    },
+    "mode": {
+      "label": "Modul datelor structurate",
+      "info": "Extinde este sigur pe temele care au deja un nod Product. Folosește Complet doar dacă tema nu are niciunul.",
+      "options": {
+        "extend": "Extinde datele Product ale temei",
+        "full": "Un nod Product complet"
+      }
+    },
+    "mirror": {
+      "label": "Link către versiunea text"
+    },
+    "lift_snippets": {
+      "label": "Permite asistenților să citeze toată pagina",
+      "info": "Adaugă max-snippet:-1, ca răspunsurile să te poată cita corect, nu printr-un rând trunchiat."
+    }
+  },
+  "content": {
+    "heading_product": "Despre acest produs",
+    "heading_collection": "Despre această colecție",
+    "suits": "Potrivit pentru",
+    "plain_text_page": "Versiunea text a acestei pagini",
+    "all_products": "Toate produsele, în format text",
+    "product_column": "Produs",
+    "comparison_caption_suffix": ": comparație între produse"
+  }
+}

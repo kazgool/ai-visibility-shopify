@@ -19,5 +19,14 @@
       "label": "Allow assistants to quote the full page",
       "info": "Adds max-snippet:-1, so answers can cite you properly instead of a truncated line."
     }
+  },
+  "content": {
+    "heading_product": "About this product",
+    "heading_collection": "About this collection",
+    "suits": "Suits",
+    "plain_text_page": "Plain-text version of this page",
+    "all_products": "All products as plain text",
+    "product_column": "Product",
+    "comparison_caption_suffix": ": product comparison"
   }
 }

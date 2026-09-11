@@ -17,7 +17,13 @@ import { extractLdObjects, OUR_NODE_MARKER } from "../theme-scan.server";
 const EXTENSION = path.resolve("extensions/ai-visibility");
 const SCHEMA_TAG = /{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/;
 
-function engine(): Liquid {
+/** The storefront locale file for a language: en is en.default.json. */
+export function storefrontLocale(locale: string): Record<string, unknown> {
+  const file = locale === "en" ? "en.default.json" : `${locale}.json`;
+  return JSON.parse(readFileSync(path.join(EXTENSION, "locales", file), "utf8"));
+}
+
+function engine(locale: string): Liquid {
   const liquid = new Liquid({
     root: [path.join(EXTENSION, "snippets")],
     extname: ".liquid",
@@ -27,6 +33,16 @@ function engine(): Liquid {
   // Shopify's json filter: nil becomes null.
   liquid.registerFilter("json", (value: unknown) => JSON.stringify(value === undefined ? null : value));
   liquid.registerFilter("image_url", () => "//cdn.example/files/x.jpg");
+  // Shopify's t filter against the extension's own locale files, for one
+  // storefront language. A key the file lacks prints what Shopify prints, so
+  // a test sees the failure a shopper would.
+  const strings = storefrontLocale(locale);
+  liquid.registerFilter("t", (key: string, ...args: unknown[]) => {
+    const value = key.split(".").reduce<any>((node, part) => node?.[part], strings);
+    if (typeof value !== "string") return `translation missing: ${locale}.${key}`;
+    const vars = Object.fromEntries(args.filter(Array.isArray) as [string, unknown][]);
+    return value.replace(/{{\s*(\w+)\s*}}/g, (_, name: string) => String(vars[name] ?? ""));
+  });
   return liquid;
 }
 
@@ -46,8 +62,13 @@ export function blockDefaults(file: string): Record<string, unknown> {
   return out;
 }
 
-export async function renderBlock(file: string, context: Record<string, unknown>): Promise<string> {
-  return engine().parseAndRender(blockSource(file), context);
+/** `locale` is the storefront's language; "en" reads en.default.json. */
+export async function renderBlock(
+  file: string,
+  context: Record<string, unknown>,
+  locale = "en",
+): Promise<string> {
+  return engine(locale).parseAndRender(blockSource(file), context);
 }
 
 /** Every JSON-LD object on the rendered output, @graph flattened. Throws on invalid JSON. */

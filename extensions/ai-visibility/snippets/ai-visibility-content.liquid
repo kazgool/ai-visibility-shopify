@@ -19,7 +19,8 @@
     product         the product, when kind is 'product'
     collection      the collection, when kind is 'collection'
     shop_url        shop.url
-    heading         text; nothing printed when blank
+    heading         the merchant's text; when blank, the default heading in
+                    the storefront's language is printed instead
     heading_level   'h2' or 'h3'; questions sit one level below it
     show_summary, show_facts, show_fit, show_questions, show_links
 
@@ -34,6 +35,14 @@
     facts list, which P0.1 names. No font, no colour: the block takes the
     theme's own, so it reads as part of the page, not as an advert.
   - No JavaScript, no request, nothing that executes.
+  - Every fixed string comes from the extension's locale files through the t
+    filter (locales/en.default.json, locales/ro.json), so a Romanian
+    storefront prints Romanian around the Romanian text the app wrote.
+    Theme app extensions carry storefront locale files for "the text that
+    appears in the storefront when your app block or app embed block is
+    rendered": https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration
+    (Locale files). The t filter itself:
+    https://shopify.dev/docs/storefronts/themes/architecture/locales/storefront-locale-files
 {%- endcomment -%}
 
 {%- assign av_h = 'h2' -%}
@@ -59,10 +68,10 @@
   {%- if show_questions and av_questions and av_questions.size > 0 -%}{%- assign av_show_questions = true -%}{%- endif -%}
 
   {%- if av_show_summary or av_show_facts or av_show_fit or av_show_questions -%}
+    {%- assign av_heading = heading -%}
+    {%- if av_heading == blank -%}{%- assign av_heading = 'content.heading_product' | t -%}{%- endif -%}
     <section class="ai-visibility-content" style="margin:2rem 0;max-width:72rem;">
-      {%- if heading != blank -%}
-        <{{ av_h }} style="margin:0 0 0.75rem;">{{ heading | escape }}</{{ av_h }}>
-      {%- endif -%}
+      <{{ av_h }} style="margin:0 0 0.75rem;">{{ av_heading | escape }}</{{ av_h }}>
       {%- if av_show_summary -%}
         <p style="margin:0 0 1rem;">{{ av_summary | escape }}</p>
       {%- endif -%}
@@ -79,7 +88,7 @@
         </dl>
       {%- endif -%}
       {%- if av_show_fit -%}
-        <p style="margin:0 0 1rem;">Suits: {{ av_fit | escape }}</p>
+        <p style="margin:0 0 1rem;">{{ 'content.suits' | t }}: {{ av_fit | escape }}</p>
       {%- endif -%}
       {%- if av_show_questions -%}
         {%- for qa in av_questions -%}
@@ -112,8 +121,8 @@
         </script>
       {%- endif -%}
       {%- if show_links -%}
-        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/{{ product.handle }}">Plain-text version of this page</a></p>
-        <p style="margin:0.25rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">All products as plain text</a></p>
+        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/{{ product.handle }}">{{ 'content.plain_text_page' | t }}</a></p>
+        <p style="margin:0.25rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">{{ 'content.all_products' | t }}</a></p>
       {%- endif -%}
     </section>
   {%- endif -%}
@@ -141,10 +150,10 @@
   {%- if show_table and av_c_table and av_c_table.columns.size > 0 and av_c_table.rows.size > 0 -%}{%- assign av_show_table = true -%}{%- endif -%}
 
   {%- if av_show_summary or av_show_criteria or av_show_questions or av_show_table -%}
+    {%- assign av_heading = heading -%}
+    {%- if av_heading == blank -%}{%- assign av_heading = 'content.heading_collection' | t -%}{%- endif -%}
     <section class="ai-visibility-content" style="margin:2rem 0;max-width:72rem;">
-      {%- if heading != blank -%}
-        <{{ av_h }} style="margin:0 0 0.75rem;">{{ heading | escape }}</{{ av_h }}>
-      {%- endif -%}
+      <{{ av_h }} style="margin:0 0 0.75rem;">{{ av_heading | escape }}</{{ av_h }}>
       {%- if av_show_summary -%}
         <p style="margin:0 0 1rem;">{{ av_c_summary | escape }}</p>
       {%- endif -%}
@@ -179,13 +188,19 @@
         </script>
       {%- endif -%}
       {%- if av_show_table -%}
-        {%- assign av_caption = collection.title | append: ': product comparison' -%}
+        {%- comment -%}
+          The caption is the title with a translated suffix appended, not an
+          interpolated translation: the table snippet escapes the caption, and
+          a title already escaped by t would come out as "&amp;amp;".
+        {%- endcomment -%}
+        {%- assign av_caption_suffix = 'content.comparison_caption_suffix' | t -%}
+        {%- assign av_caption = collection.title | append: av_caption_suffix -%}
         <div style="margin:1rem 0 0;">
-          {%- render 'ai-visibility-table', table: av_c_table, caption: av_caption, shop_url: shop_url, product_column: 'Product' -%}
+          {%- render 'ai-visibility-table', table: av_c_table, caption: av_caption, shop_url: shop_url -%}
         </div>
       {%- endif -%}
       {%- if show_links -%}
-        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">All products as plain text</a></p>
+        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">{{ 'content.all_products' | t }}</a></p>
       {%- endif -%}
     </section>
   {%- endif -%}
