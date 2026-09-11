@@ -851,7 +851,8 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
     where:
       "Switch off your theme's own product description for search engines, then run this check " +
       "again. Most themes have that switch; on some it is a line a developer removes. This app " +
-      "then publishes the whole description, with the details read from your own product text.",
+      "then publishes a complete description of its own. The details it reads from your product " +
+      "text stay on the page as text either way.",
   },
 };
 

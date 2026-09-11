@@ -86,6 +86,30 @@
           <{{ av_hq }} style="margin:1rem 0 0.25rem;">{{ qa.q | escape }}</{{ av_hq }}>
           <p style="margin:0 0 0.5rem;">{{ qa.a | escape }}</p>
         {%- endfor -%}
+        {%- comment -%}
+          FAQPage, here and only here: right after the questions it describes,
+          and only when they are shown, so the markup never describes text the
+          page does not carry (P0.3). The head block used to emit it whatever
+          this block showed. No rich result follows from it - Google ended FAQ
+          rich results on 7 May 2026 - and nothing in this app may imply one;
+          it is for the reader parsing the page.
+        {%- endcomment -%}
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "https://mrdigital.ro/ns/ai-visibility": "1",
+            "mainEntity": [
+              {%- for qa in av_questions -%}
+                {
+                  "@type": "Question",
+                  "name": {{ qa.q | json }},
+                  "acceptedAnswer": { "@type": "Answer", "text": {{ qa.a | json }} }
+                }{% unless forloop.last %},{% endunless %}
+              {%- endfor -%}
+            ]
+          }
+        </script>
       {%- endif -%}
       {%- if show_links -%}
         <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/{{ product.handle }}">Plain-text version of this page</a></p>
@@ -136,6 +160,23 @@
           <{{ av_hq }} style="margin:1rem 0 0.25rem;">{{ qa.q | escape }}</{{ av_hq }}>
           <p style="margin:0 0 0.5rem;">{{ qa.a | escape }}</p>
         {%- endfor -%}
+        {%- comment -%} FAQPage after the questions it describes, as on product pages. {%- endcomment -%}
+        <script type="application/ld+json">
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "https://mrdigital.ro/ns/ai-visibility": "1",
+            "mainEntity": [
+              {%- for qa in av_c_questions -%}
+                {
+                  "@type": "Question",
+                  "name": {{ qa.q | json }},
+                  "acceptedAnswer": { "@type": "Answer", "text": {{ qa.a | json }} }
+                }{% unless forloop.last %},{% endunless %}
+              {%- endfor -%}
+            ]
+          }
+        </script>
       {%- endif -%}
       {%- if av_show_table -%}
         {%- assign av_caption = collection.title | append: ': product comparison' -%}

@@ -1610,8 +1610,9 @@ export function readingOf(
   }
 
   // B4: our block on this page, per product rather than per theme. Two
-  // signals, because in extend mode with nothing to add the block emits no
-  // node of its own and only the discovery link is left.
+  // signals, because in extend mode on a theme with its own Product node the
+  // block emits no node of its own (since 11 September 2026, whatever the
+  // product's facts) and only the discovery links are left.
   const mirrorLink = page.html.includes("/apps/ai-visibility/");
   const appBlock = ours || mirrorLink ? "present" : "absent";
   if (appBlock === "absent") {

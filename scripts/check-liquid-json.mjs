@@ -27,8 +27,14 @@
 import { readFileSync } from "node:fs";
 import { Liquid } from "liquidjs";
 
-const FILE =
-  process.argv[2] ?? "extensions/ai-visibility/blocks/ai-visibility.liquid";
+// The head block and, since 11 September 2026, the content snippet: FAQPage
+// moved there, next to the visible questions it describes.
+const FILES = process.argv[2]
+  ? [process.argv[2]]
+  : [
+      "extensions/ai-visibility/blocks/ai-visibility.liquid",
+      "extensions/ai-visibility/snippets/ai-visibility-content.liquid",
+    ];
 
 // --- the engine -------------------------------------------------------------
 
@@ -186,11 +192,14 @@ function baseContext(patch) {
 }
 
 async function main() {
-  const source = readFileSync(FILE, "utf8");
-  const nodes = nodesOf(source);
-  if (nodes.length === 0) {
-    console.error(`check-liquid-json: no ld+json blocks found in ${FILE}`);
-    process.exit(1);
+  const nodes = [];
+  for (const file of FILES) {
+    const found = nodesOf(readFileSync(file, "utf8")).map((n) => ({ ...n, file }));
+    if (found.length === 0) {
+      console.error(`check-liquid-json: no ld+json blocks found in ${file}`);
+      process.exit(1);
+    }
+    nodes.push(...found);
   }
 
   let combinations = 0;
@@ -214,7 +223,7 @@ async function main() {
       try {
         rendered = await engine.parseAndRender(node.body, baseContext(patch));
       } catch (error) {
-        failures.push({ line: node.line, states, reason: `Liquid: ${error.message}` });
+        failures.push({ file: node.file, line: node.line, states, reason: `Liquid: ${error.message}` });
         combinations += 1;
         continue;
       }
@@ -227,7 +236,7 @@ async function main() {
       try {
         JSON.parse(rendered);
       } catch (error) {
-        failures.push({ line: node.line, states, reason: error.message });
+        failures.push({ file: node.file, line: node.line, states, reason: error.message });
       }
     }
   }
@@ -245,7 +254,7 @@ async function main() {
   // it: a hundred identical failures from one node is one defect.
   const grouped = new Map();
   for (const failure of failures) {
-    const key = `${failure.line}|${failure.reason}`;
+    const key = `${failure.file}|${failure.line}|${failure.reason}`;
     if (!grouped.has(key)) grouped.set(key, { ...failure, count: 0 });
     grouped.get(key).count += 1;
   }
@@ -254,7 +263,7 @@ async function main() {
   );
   for (const failure of grouped.values()) {
     console.error(
-      `  ${FILE}:${failure.line} - ${failure.count} combination(s): ${failure.reason}`,
+      `  ${failure.file}:${failure.line} - ${failure.count} combination(s): ${failure.reason}`,
     );
     console.error(`    first: ${failure.states.join(" ")}`);
   }

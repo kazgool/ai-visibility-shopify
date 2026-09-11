@@ -806,8 +806,10 @@ function whyNothingIsArriving(
 export const MERCHANT_REASON: Record<string, string> = {
   "The app embed is not active in the theme.":
     "This app's block is not switched on in your theme, so nothing it publishes reaches the page.",
-  "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.":
-    "Nothing has been prepared for this product yet, so there is nothing to add to what your theme already publishes.",
+  "The theme's own Product node stands; extend mode adds nothing to it, and this app's product details are on the page as visible text.":
+    "Your theme already describes this product for search engines, so this app leaves that description as it is and shows its own details as text on the page.",
+  "Not published until a theme scan records whether the theme has its own Product node; extend mode never guesses, because a wrong guess is a second product.":
+    "This app has not yet read your pages to see whether your theme already describes this product, so it adds nothing yet rather than risk a second description.",
   "The theme's Product node carries no @id, so extend mode holds ours back rather than add a second product (B33).":
     "Your theme already describes this product in a way that leaves nowhere for this app's details to attach, so this app adds nothing here rather than a second description.",
   "No store social profile URLs are filled in on the Business screen.":
@@ -845,6 +847,11 @@ export const UNEXPLAINED_REASON =
  * holds that record to what the function writes today stays exact.
  */
 export const LEGACY_MERCHANT_REASON: Record<string, string> = {
+  // Retired 11 September 2026: extend mode stopped adding the summary and
+  // facts to the theme's node (they are visible text now), so whether a
+  // product has them no longer decides its Product node.
+  "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.":
+    "Nothing has been prepared for this product yet, so there is nothing to add to what your theme already publishes.",
   // Replaced 5 September 2026 by the two per-node sentences above. It told
   // the merchant to check the block on a read that had already found it
   // active, so the translation no longer says that.

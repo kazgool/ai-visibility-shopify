@@ -12,6 +12,8 @@ import {
   mergeNarrowScanIntoDetail,
   themeRowKey,
   HELD_BACK_FOR_THEME_NODE,
+  THEME_PRODUCT_NODE_STANDS,
+  AWAITING_THEME_READ,
   type ThemeScanResult,
 } from "../theme-scan.server";
 import { LEGACY_MERCHANT_REASON, MERCHANT_REASON, merchantReason } from "../seo-readiness";
@@ -325,18 +327,21 @@ describe("deriveMissingReasons", () => {
     expect(reasons.every((r) => r.reason?.includes("app embed is not active"))).toBe(true);
   });
 
-  it("says extend mode has nothing to add when there are no facts or summary", () => {
-    const reasons = deriveMissingReasons(base);
-    const product = reasons.find((r) => r.nodeType === "Product")!;
+  // Rewritten 11 September 2026, deliberately: extend mode no longer adds the
+  // summary and facts to the theme's node (they are visible text now), so a
+  // product's facts stopped deciding its Product node. The two tests that
+  // pinned "nothing to add" and "emitted once facts exist" pinned exactly
+  // that, and are replaced by the rule the block now follows.
+  it("holds the Product node back in extend mode until a theme scan says whether the theme has one", () => {
+    const product = deriveMissingReasons(base).find((r) => r.nodeType === "Product")!;
     expect(product.emitted).toBe(false);
-    expect(product.reason).toMatch(/nothing to add/);
+    expect(product.reason).toBe(AWAITING_THEME_READ);
+    expect(product.fixScreen).toBeNull();
   });
 
-  it("marks the Product node emitted once facts exist", () => {
-    const reasons = deriveMissingReasons({ ...base, hasFacts: true });
-    const product = reasons.find((r) => r.nodeType === "Product")!;
-    expect(product.emitted).toBe(true);
-    expect(product.reason).toBeNull();
+  it("no longer lets facts decide the Product node in extend mode", () => {
+    const withFacts = deriveMissingReasons({ ...base, hasFacts: true, hasSummary: true });
+    expect(withFacts.find((r) => r.nodeType === "Product")!.emitted).toBe(false);
   });
 
   it("follows the block's three extend-mode cases when the theme's side is known", () => {
@@ -348,8 +353,10 @@ describe("deriveMissingReasons", () => {
     const held = product({ themeHasProductNode: true, themeProductId: "" });
     expect(held.emitted).toBe(false);
     expect(held.reason).toBe(HELD_BACK_FOR_THEME_NODE);
-    // Theme node with @id: extended when there is something to add.
-    expect(product({ themeHasProductNode: true, themeProductId: "https://x/p#product" }).emitted).toBe(true);
+    // Theme node with @id: the theme's node stands, ours adds nothing.
+    const stands = product({ themeHasProductNode: true, themeProductId: "https://x/p#product" });
+    expect(stands.emitted).toBe(false);
+    expect(stands.reason).toBe(THEME_PRODUCT_NODE_STANDS);
     // Full mode is unaffected by the theme's side.
     expect(product({ mode: "full", themeHasProductNode: true, themeProductId: "" }).emitted).toBe(true);
   });
@@ -596,6 +603,7 @@ describe("every reason deriveMissingReasons can record has a merchant sentence",
     { ...base, isCollectionPage: true },
     { ...base, isCollectionPage: true, hasCollectionQuestions: null },
     { ...base, themeHasProductNode: true, themeProductId: "" },
+    { ...base, themeHasProductNode: true, themeProductId: "https://x/p#product" },
     { ...base, mode: "full" as const, hasFacts: true, hasSummary: true, hasRating: true, hasSocialProfiles: true, hasReturnDays: true, hasDeliveryTime: true },
   ];
 

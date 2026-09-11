@@ -791,8 +791,11 @@ describe("B6 on the row source A writes", () => {
   }
 
   it("writes B6 as a source A finding, so source B cannot erase it", async () => {
-    // No facts and no summary, so extend mode has nothing to add: a real
-    // missing Product node, and the Business screen is empty too.
+    // The Business screen is empty, so the Organization node is really
+    // missing and a screen in this app fixes it. Until 11 September 2026 this
+    // test used "extend mode has nothing to add" as its missing Product node;
+    // extend mode no longer adds to the theme's node, so the Product node is
+    // never a fixable absence any more (seo-nodes.test.ts).
     const product = complete({ metafields: [] });
     resetDb();
     vi.mocked(isSeoUnlocked).mockResolvedValue(true);
@@ -812,7 +815,8 @@ describe("B6 on the row source A writes", () => {
     // would have source B erase it on the next page scan without being able to
     // recompute it.
     expect(b6.source).toBe("A");
-    expect(b6.detail.missing.map((m: any) => m.nodeType)).toContain("Product");
+    expect(b6.detail.missing.map((m: any) => m.nodeType)).toContain("Organization");
+    expect(b6.detail.missing.map((m: any) => m.nodeType)).not.toContain("Product");
   });
 
   it("writes no B6 at all when the merchant switched the output off", async () => {
@@ -952,8 +956,11 @@ describe("B6 on the row source A writes", () => {
 
     expect(b6Entry("BreadcrumbList")).toBeNull();
     expect(b6Entry("AggregateRating")).toBeNull();
-    // BreadcrumbList, AggregateRating and WebSite (no home read) all unknown.
-    expect(b6Written().unknownCount).toBe(3);
+    // BreadcrumbList, AggregateRating and WebSite (no home read) all unknown,
+    // and since 11 September 2026 the Product node too: with no theme scan on
+    // record, extend mode holds it back until one says whether the theme has
+    // its own. Four, deliberately, where it was three.
+    expect(b6Written().unknownCount).toBe(4);
   });
 
   it("computes no B6 rather than guessing when the embed read fails", async () => {

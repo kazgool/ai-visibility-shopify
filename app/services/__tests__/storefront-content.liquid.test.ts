@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockDefaults, renderBlock, SHOP_URL, storefront } from "./liquid-harness";
+import { blockDefaults, ldObjects, ourNodes, renderBlock, SHOP_URL, storefront } from "./liquid-harness";
 
 // The visible content embed (PRD-AI-READABILITY P0.1), rendered whole through
 // liquidjs with the shared snippet. Invented data.
@@ -141,6 +141,32 @@ describe("the visible product block: when it renders nothing at all", () => {
   });
 });
 
+// FAQPage lives with the visible questions (P0.3).
+
+describe("FAQPage next to the questions it describes", () => {
+  it("emits one FAQPage, marked, with exactly the questions and answers the page shows", async () => {
+    const html = await render({ data: FULL });
+    const [faq, ...rest] = ourNodes(html, "FAQPage");
+    expect(rest).toHaveLength(0);
+    expect(faq.mainEntity.map((q: any) => [q.name, q.acceptedAnswer.text])).toEqual(
+      FULL.questions.map((qa) => [qa.q, qa.a]),
+    );
+    for (const qa of FULL.questions) expect(text(html)).toContain(qa.q);
+    expect(html.indexOf("Does it need assembly?")).toBeLessThan(html.indexOf("application/ld+json"));
+  });
+
+  it("emits none when the questions are switched off, on the same render that hides them", async () => {
+    const html = await render({ data: FULL, settings: { ...defaults, show_questions: false } });
+    expect(ldObjects(html).filter((n) => n["@type"] === "FAQPage")).toHaveLength(0);
+    expect(text(html)).not.toContain("Is it solid wood?");
+  });
+
+  it("emits none for a product with no questions", async () => {
+    const html = await render({ data: { ...FULL, questions: [] } });
+    expect(ldObjects(html)).toHaveLength(0);
+  });
+});
+
 // The block a merchant places by hand (P1.1): the same snippet, so the same
 // markup, and unaffected by the embed's manual placement tick.
 
@@ -250,6 +276,14 @@ describe("the visible collection block", () => {
       { ...defaults, manual_placement: true },
     );
     expect(noQuestions.trim()).toBe("");
+  });
+
+  it("emits the collection FAQPage after the visible questions, and none when they are hidden", async () => {
+    const shown = await onCollection(FULL_COLLECTION);
+    const [faq] = ourNodes(shown, "FAQPage");
+    expect(faq.mainEntity[0].name).toBe("Which is widest?");
+    const hidden = await onCollection(FULL_COLLECTION, { ...defaults, show_questions: false });
+    expect(ldObjects(hidden).filter((n) => n["@type"] === "FAQPage")).toHaveLength(0);
   });
 });
 

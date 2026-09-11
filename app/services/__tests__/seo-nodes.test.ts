@@ -47,6 +47,9 @@ function input(over: Partial<MissingReasonInput> = {}): MissingReasonInput {
     hasSocialProfiles: true,
     seoUnlocked: true,
     isCollectionPage: false,
+    // A theme with no Product node of its own, so extend mode emits ours.
+    themeHasProductNode: false,
+    themeProductId: "",
     ...over,
   };
 }
@@ -93,14 +96,24 @@ describe("B6 over the real reasons deriveMissingReasons produces", () => {
     expect(b6Detail(deriveMissingReasons(input()), ON)).toBeNull();
   });
 
-  it("names a Product node that extend mode has nothing to add to", () => {
-    const detail = b6Detail(
-      deriveMissingReasons(input({ hasFacts: false, hasSummary: false })),
-      ON,
-    );
-    expect(detail).not.toBeNull();
-    const missing = (detail as any).missing.map((m: any) => m.nodeType);
-    expect(missing).toContain("Product");
+  // Rewritten 11 September 2026, deliberately. This test pinned "extend mode
+  // has nothing to add" as a missing Product node. Extend mode no longer adds
+  // anything to the theme's node (the facts are visible text now), and every
+  // way it can leave the Product node out - the theme's node stands, the
+  // theme's node has no @id, no theme read yet - is by design with no screen
+  // to fix it, so none of them may be reported as missing.
+  it("never names the Product node missing in extend mode, whatever the theme has", () => {
+    for (const theme of [
+      { themeHasProductNode: true, themeProductId: "https://x/p#product" },
+      { themeHasProductNode: true, themeProductId: "" },
+      { themeHasProductNode: null, themeProductId: "" },
+    ]) {
+      const detail = b6Detail(
+        deriveMissingReasons(input({ hasFacts: false, hasSummary: false, ...theme })),
+        ON,
+      );
+      expect(detail).toBeNull();
+    }
   });
 
   // The mode is read from the block now rather than hardcoded, and this is why:

@@ -22,16 +22,17 @@ describe("extend mode: which Product node the page gets (PRD-AI-READABILITY P0.5
     expect(settings.mode).toBe("extend");
   });
 
-  it("theme node with @id: one node from us, a fragment under the theme's @id", async () => {
+  // Until item 10 of the same batch this case emitted a fragment under the
+  // theme's @id carrying summary, audience and facts. Those are visible text
+  // in the body now, and the head marks up nothing it cannot see is shown, so
+  // the fragment is gone and the theme's node stands alone.
+  it("theme node with @id: no Product node from us, the theme's stands alone", async () => {
     const html = await renderBlock(
       FILE,
       storefront({ settings, data: DATA, themeScan: { productId: THEME_ID, hasProductLd: true } }),
     );
-    const nodes = ourNodes(html, "Product");
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0]["@id"]).toBe(THEME_ID);
-    expect(nodes[0].offers).toBeUndefined();
-    expect(nodes[0].name).toBeUndefined();
+    expect(ourNodes(html, "Product")).toHaveLength(0);
+    expect(html).not.toContain(THEME_ID);
   });
 
   it("theme node without @id: no Product node from us at all (B33)", async () => {
@@ -116,5 +117,73 @@ describe("one WebSite node on the home page (PRD-AI-READABILITY P0.4)", () => {
       storefront({ settings, data: DATA, themeScan: { hasWebSiteLd: false }, seoUnlocked: true }),
     );
     expect(ldObjects(html).filter((n) => n["@type"] === "WebSite")).toHaveLength(0);
+  });
+});
+
+describe("the head marks up only what the page shows (PRD-AI-READABILITY P0.3)", () => {
+  const QUESTIONS = [{ q: "Is it solid wood?", a: "Yes." }];
+  const WITH_QUESTIONS = { ...DATA, questions: QUESTIONS };
+
+  it("emits no FAQPage on a product page in any mode, whatever the questions", async () => {
+    for (const mode of ["extend", "full"]) {
+      for (const themeScan of [{ productId: "", hasProductLd: false }, { productId: THEME_ID, hasProductLd: true }]) {
+        const html = await renderBlock(
+          FILE,
+          storefront({ settings: { ...settings, mode }, data: WITH_QUESTIONS, themeScan }),
+        );
+        expect(ldObjects(html).filter((n) => n["@type"] === "FAQPage")).toHaveLength(0);
+      }
+    }
+  });
+
+  it("the complete node takes the theme's own description, never the summary, and carries no facts", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({ settings: { ...settings, mode: "full" }, data: WITH_QUESTIONS, themeScan: null }),
+    );
+    const [node] = ourNodes(html, "Product");
+    expect(node.description).toBe("A solid oak chair &amp; cushion.");
+    expect(node.description).not.toContain(DATA.summary);
+    expect(node.additionalProperty).toBeUndefined();
+    expect(node.audience).toBeUndefined();
+    expect(html).not.toContain("45 cm");
+  });
+
+  it("on a collection page: a CollectionPage from the collection's own text, no criteria, no FAQPage", async () => {
+    const collection = {
+      title: "Chairs",
+      url: "/collections/chairs",
+      description: "<p>All our chairs.</p>",
+      products_count: 1,
+      products: [{ title: "Oak chair", url: "/products/oak-chair" }],
+      metafields: {
+        $app: {
+          summary: { value: "Twelve chairs in oak and pine." },
+          criteria: { value: ["Material", "Width"] },
+          questions: { value: QUESTIONS },
+        },
+      },
+    };
+    const html = await renderBlock(FILE, storefront({ template: "collection", settings, collection }));
+    const [page] = ourNodes(html, "CollectionPage");
+    expect(page.description).toBe("All our chairs.");
+    expect(page.additionalProperty).toBeUndefined();
+    expect(html).not.toContain("Twelve chairs");
+    expect(ldObjects(html).filter((n) => n["@type"] === "FAQPage")).toHaveLength(0);
+  });
+
+  it("a collection with no description of its own gets a CollectionPage without one, still valid JSON", async () => {
+    const collection = {
+      title: "Chairs",
+      url: "/collections/chairs",
+      description: "",
+      products_count: 0,
+      products: [],
+      metafields: { $app: { summary: { value: "Twelve chairs." } } },
+    };
+    const html = await renderBlock(FILE, storefront({ template: "collection", settings, collection }));
+    const [page] = ourNodes(html, "CollectionPage");
+    expect(page.description).toBeUndefined();
+    expect(page.name).toBe("Chairs");
   });
 });

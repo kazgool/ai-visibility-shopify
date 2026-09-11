@@ -553,6 +553,14 @@ export type MissingReasonInput = {
 export const HELD_BACK_FOR_THEME_NODE =
   "The theme's Product node carries no @id, so extend mode holds ours back rather than add a second product (B33).";
 
+/** Extend mode on a theme whose Product node carries an @id (ai-visibility.liquid, case 1). */
+export const THEME_PRODUCT_NODE_STANDS =
+  "The theme's own Product node stands; extend mode adds nothing to it, and this app's product details are on the page as visible text.";
+
+/** Extend mode before a theme scan has recorded whether the theme has a Product node. */
+export const AWAITING_THEME_READ =
+  "Not published until a theme scan records whether the theme has its own Product node; extend mode never guesses, because a wrong guess is a second product.";
+
 export type MissingReason = {
   nodeType: string;
   emitted: boolean;
@@ -594,31 +602,31 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
     }));
   }
 
-  // Product node, against the block's own three extend-mode cases
-  // (ai-visibility.liquid): a theme node with an @id is extended when there is
-  // something to add; a theme node without one holds ours back (B33); no theme
-  // node gets the complete node, as full mode does. When the theme's side is
-  // not known, the older two cases stand.
+  // Product node, exactly as ai-visibility.liquid decides it since 11
+  // September 2026. Full mode, or extend mode on a theme with no Product node:
+  // our complete node. Extend mode on a theme with one: none of ours, with or
+  // without an @id - the fragment extend mode used to add carried the
+  // summary, who it suits and the facts, which are visible text in the body
+  // now and no longer marked up from the head. Extend mode before any scan
+  // has said which: none, and never a guess. Facts and summary no longer
+  // decide anything here. None of these absences has a screen to fix it, so
+  // none of them is a B6 finding (seo-nodes.ts).
   const themeHasNoNode = input.mode === "extend" && input.themeHasProductNode === false;
-  const themeNodeWithoutId =
-    input.mode === "extend" && input.themeHasProductNode === true && !input.themeProductId;
   if (input.mode === "full" || themeHasNoNode) {
     reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
-  } else if (themeNodeWithoutId) {
+  } else if (input.mode === "extend" && input.themeHasProductNode === true) {
     reasons.push({
       nodeType: "Product",
       emitted: false,
-      reason: HELD_BACK_FOR_THEME_NODE,
+      reason: input.themeProductId ? THEME_PRODUCT_NODE_STANDS : HELD_BACK_FOR_THEME_NODE,
       fixScreen: null,
     });
-  } else if (input.hasFacts || input.hasSummary) {
-    reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
   } else {
     reasons.push({
       nodeType: "Product",
       emitted: false,
-      reason: "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.",
-      fixScreen: "/app/products",
+      reason: AWAITING_THEME_READ,
+      fixScreen: null,
     });
   }
 
