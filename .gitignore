@@ -24,6 +24,11 @@ pnpm-lock.yaml
 /_shopify/repo-snapshot-080e0d6.tar.gz
 _shopify/*.tar.gz
 
+# The FAQ corpus is other stores' public catalogue data: read for measurement,
+# never committed. Only the manifest, the rubric and the reports are.
+/_shopify/corpus/*
+!/_shopify/corpus/*.md
+
 # Ignore shopify files created during app dev
 .shopify/*
 .shopify.lock
