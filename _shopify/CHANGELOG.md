@@ -24,6 +24,137 @@ Liquid syntax, and the JSON check at 7 nodes and 1,036 combinations - and
 `shopify theme check` on the extension, 8 files, no offenses. Nothing here has
 been observed on a store yet.
 
+A second batch on top of it, the same day and for the same deploy, built
+from `CC-PROMPT-AI-READABILITY-2.md`; its entries come first below. Final
+run, after its last code commit (0c370d3): `check.bat` green - 84 test files,
+1,557 tests, typecheck, both builds, Liquid syntax, and the JSON check at 7
+nodes and 1,036 combinations - the full suite also green with `.env` renamed
+away, and `shopify theme check` on the extension, 11 files, no offenses.
+Nothing in it has been observed on a store either.
+
+### The engine measured before anything changed (11 September 2026)
+
+`scripts/audit-engine-run.ts` pointed at a sandbox that no longer exists
+(`/tmp/rb/p1.json`). It now takes the catalogue and dictionary paths as
+arguments, a `--dump` of every product's facts, summary and questions, a
+`--business rb` with the answers Republica BIO's live FAQ carried that day,
+and a `--lang`; it parses the furniture CSV itself, because the repo has no
+CSV dependency. `scripts/audit-engine-report.ts` turns dumps into the
+metrics and the before/after diff. Republica BIO read from its public
+`products.json` (189 products). Result, in
+`audit-logs-2026-09-11/engine-before.md`: all 189 products got the same four
+commerce questions (price, delivery, returns, payment) and nothing from the
+26-group dictionary; 187 summaries carried the whole price sentence. The
+brief's two claims held.
+
+### Repo cleanup; one response time in SUPPORT (11 September 2026)
+
+`git rm` of `ibility-shopify` (CRLF warnings from a mistyped redirect) and
+`_shopify/repo-snapshot-080e0d6.tar.gz` (an audit snapshot); both paths and
+`_shopify/*.tar.gz` ignored. SUPPORT.md's refund answer now promises "within
+one working day", as its Contact section does. The refund wording itself is
+unchanged and still Marius's decision.
+
+### A heartbeat for long jobs (11 September 2026)
+
+The nightly page read wrote its JobRun at the start and at the end only, so
+a scan past 30 minutes read "stuck" under `job-stale.ts` while it ran and the
+guard let a second one start. `app/services/job-heartbeat.ts`: a write at most
+once per 10 units of work or 60 seconds, whichever comes first, tied to work
+and never to a timer, so a job hung on one await still goes stale.
+`scanShopPages` reports after every storefront request; the worker writes the
+page count to the `seo_scan` row and a sign of life (updatedAt only, never a
+count) to the "Read my pages now" row. Every other task that owns a JobRun
+was audited for its longest gap between writes; wherever it could pass ten
+minutes the same heartbeat now beats on Admin calls (each bulk-operation poll,
+through `beatingGraphql`), on source A's row writes and on queued jobs:
+`bulk_extract`, `crawler_check` (per agent), `reconcile_mirrors`,
+`bulk_alt_text`, `seo_collection_queue`, `seo_collection_apply`,
+`seo_snapshot`, `seo_queue_build`. The table of gaps before and after is in
+the handover of 11 September. Tests: `job-heartbeat.test.ts` (7), one task test
+driving 25 pages with a slow minute, one scan test. Not observed on Fly.
+
+### The language product pages are written in (11 September 2026)
+
+Business screen: "Language your product pages are written in", English or
+Romanian, stored as `contentLanguage` on the business record. The app has no
+`read_locales` scope and `shopLocales` needs it (or `read_markets_home`);
+adding one makes every merchant re-approve. The `webPresences` query needs
+only `read_markets`, and each web presence carries `defaultLocale`, a
+`ShopLocale` with `primary`. Read in its own query that returns null on any
+refusal, stored as the `shop_locale` Setting by the catalogue pass, the
+Business screen and the dashboard, and used when nothing is chosen. Neither
+known: English, as before. The dashboard asks for it under "Make it yours"
+only in that case. Tests: `content-language.test.ts` (11), one ladder test.
+Not observed: the query's answer on Republica BIO.
+
+### The product text in the content language; the price out of it (11 September 2026)
+
+One phrase table, `app/engine/phrases.ts`, English and Romanian, for every
+fixed phrase the engine writes: the summary's connective and fallback
+sentence, every question and business answer, the warranty unit, the
+collection capsule, the meta description's connective, the mirror's headings
+and row labels. Romanian with its diacritics and its own counting ("14 zile",
+"30 de zile", "24 de luni"); no phrase agrees with a title's gender. A test
+fails if an old English sentence reappears anywhere else in the engine or the
+mirror. The language reaches the engine on its inputs; absent is English.
+
+The price sentence ("Priced at 81.01 RON from Republica BIO.") and the "How
+much does it cost?" question are gone in both languages. They were there on
+the WordPress rule that an assistant quotes the sentence it can lift. They go
+because the page and the Product node's offers carry the live price, and a
+price frozen into generated text is wrong at the first sale: Ashwagandha read
+81.01 in our text and 98.80 lei on its own page the same day. The WordPress
+fixtures assert nothing about it.
+
+Every fact label the specific templates do not cover now gets one question
+in the merchant's own words ("Ce gramaj are X?"), values that are a dose or
+an instruction skipped, specific questions first, then these, then business,
+six at most. On Republica BIO: 1,105 such questions where there were none.
+The cap cuts the three business questions on 183 of 189 products; that loss,
+and every other removed item, is listed in `engine-after.md` for Marius.
+Tests: `phrases.test.ts` (17); two summary tests inverted on purpose.
+
+### Storefront strings in the extension's locale files (11 September 2026)
+
+`locales/en.default.json` and `locales/ro.json` carry the headings, "Suits",
+the two plain-text links, the table's first column and the comparison
+caption; the snippets print them through `t`. Editor labels of both content
+blocks come from `en.default.schema.json` and `ro.schema.json`. The headings
+have no default text any more: blank prints the default in the storefront's
+language, a typed heading prints as typed. The caption is the title plus a
+translated suffix, so a title with "&" is not escaped twice. The test harness
+renders under either locale; a Romanian render carries no English fixed
+string and no "translation missing". Theme check: 11 files, no offenses. Not
+observed: `t` inside an extension snippet on a live Romanian storefront.
+
+### A new language rewrites what the app wrote (11 September 2026)
+
+Saving the Business screen with a different language, compared on the
+language actually written, queues one `bulk_extract` under the dashboard's
+one-at-a-time rule. That pass already writes summaries and questions through
+`writeFacts`, which skips every value a person wrote or edited and every
+identical value; there is no new write path. The screen says "Summaries and
+questions are being rewritten in the new language. Anything you edited
+yourself is kept.", or that the rewrite waits for a running job. Collection
+capsules follow on the next collections pass. Tests:
+`app.business.language.test.ts` (4).
+
+### Switch-on step for the content embed; embed-check reads it apart (11 September 2026)
+
+Both embeds carry the extension's uid, and embed-check matched on the uid:
+with the new content embed on, a theme counted two head embeds, and a theme
+with only the content embed on read as "active". Blocks are now read by the
+handle in `shopify://apps/<app>/blocks/<handle>/<uid>`, and the content embed
+is reported on its own. The dashboard gains step five, "Show this app's
+content on your product pages", between the catalogue pass and "Make it
+yours", with the documented deep link
+(`activateAppId={client_id}/ai-visibility-content`, product template); done
+when embed-check sees the content embed active. The head embed's older link
+passes the extension uid instead and is left as it is. Tests:
+`embed-check.test.ts` (7), three ladder tests; ladder tests updated from five
+steps to six.
+
 ### Baseline, and the llms.txt shape written blind (11 September 2026)
 
 The blockquote after the H1 and the move of collections below the products,

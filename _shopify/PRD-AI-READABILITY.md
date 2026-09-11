@@ -380,10 +380,12 @@ opt into.
 - Competitor scan, 9 App Store listings, 11 September 2026: recorded in
   `_shopify/audit-logs-2026-09-11/competitors-storefront.md`
 
-## Amendments from the build of 11 September 2026 (pending Marius's approval)
+## Amendments from the build of 11 September 2026 (approved by Marius, 11 September 2026)
 
 Three places where the build could not meet the text as written. Each is
-stated here rather than explained away in the delivery note.
+stated here rather than explained away in the delivery note. All three were
+approved by Marius on 11 September 2026, in the brief for the second batch
+(`CC-PROMPT-AI-READABILITY-2.md`).
 
 1. **Job expiry.** The brief asked for graphile-worker's `maxJobExpiry` at
    30 minutes. graphile-worker 0.16.6 has no such option: the four-hour

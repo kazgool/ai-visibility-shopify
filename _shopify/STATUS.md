@@ -40,19 +40,46 @@ products, Shella theme). Everything below section 0 was written on 3 August;
 - Documents. Uninstall paragraph in SUPPORT and PRIVACY; the refund answer
   no longer states a policy nobody decided.
 
+**A second batch, same day, same deploy** (`CC-PROMPT-AI-READABILITY-2.md`):
+
+- Content language. English or Romanian, chosen on the Business screen or
+  read from the store's default language through `webPresences`
+  (`read_markets`, no new scope). Summaries, questions, collection capsules,
+  the meta description's connective and the mirror's headings come from one
+  phrase table, `app/engine/phrases.ts`. Changing the language rewrites what
+  the app wrote through the existing catalogue pass; anything a person wrote
+  is kept.
+- No price in generated text any more; questions from the merchant's own
+  dictionary labels, six at most. Measured before and after on both
+  catalogues: `audit-logs-2026-09-11/engine-before.md` and `engine-after.md`.
+- Storefront strings of the visible block in the extension's locale files,
+  English and Romanian.
+- Dashboard step five, "Show this app's content on your product pages", with
+  a deep link; embed-check now reads the content embed apart from the head
+  embed, which it used to count as a second copy of it.
+- A heartbeat on every long job, so a page read past 30 minutes no longer
+  reads as stuck.
+- The stray CSV capture and the audit tarball are out of the repo.
+
 Last full run: see the handover of 11 September and the CHANGELOG entries.
 
 **Not yet observed on a store**, and each needs Marius: the App embeds toggle
-for "AI Visibility content" on Republica BIO, the nightly page read that
-fills B34, `npx tsx scripts/read-ld-visible.ts republicabio.myshopify.com 20`,
+for "AI Visibility content" on Republica BIO (step five on the dashboard
+opens it), the Romanian strings on its product pages (no English and no
+"translation missing"), the store language the app reads for it, the
+rewrite job after a language change, the nightly page read that fills B34,
+`npx tsx scripts/read-ld-visible.ts republicabio.myshopify.com 20`,
 `npx tsx scripts/read-llms-txt.ts republicabio.myshopify.com`, and the Gemini
 test in the PRD's success metrics.
 
-**Open decisions for Marius**: the refund policy text (SUPPORT.md now
-promises only an answer), the three PRD amendments at the end of
-`PRD-AI-READABILITY.md`, and whether the new embed ships on for existing
-installs (it does not: app embeds are off after install until the merchant
-switches them on).
+**Open decisions for Marius**: the refund policy text (SUPPORT.md promises
+only an answer); the phrase table, en and ro, as client-facing wording; the
+cap of six that cuts delivery, returns and payment from the questions on 183
+Republica BIO products (`engine-after.md`); the dictionary labels "Fara" and
+"Contine", which read badly as "Ce fara are X?"; and whether the head embed's
+deep link should move to the documented client_id form. The three PRD
+amendments were approved on 11 September. The new embed does not ship on for
+existing installs: app embeds are off until the merchant switches them on.
 
 **Still open from the handoff**: the four-context table in `extract.ts`,
 the llms.txt request path reading every mirror body, alt-text provenance,
