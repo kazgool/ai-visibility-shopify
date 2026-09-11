@@ -418,6 +418,9 @@ type NodeExpectation = {
   hasSocialProfiles: boolean;
   /** Off the home page's last read; see homeWebSiteSeen. One value per pass. */
   hasWebSiteNode: boolean | null;
+  /** The theme's Product node, off the same scan; see themeProductSide. */
+  themeHasProductNode: boolean | null;
+  themeProductId: string;
 };
 
 /**
@@ -438,8 +441,10 @@ async function readNodeExpectation(
     });
     const business = await businessFor(shopId);
     const hasWebSiteNode = await homeWebSiteSeen(shopId);
+    const themeSide = await themeProductSide(shopId);
     return {
       hasWebSiteNode,
+      ...themeSide,
       embedActive: Boolean(embed.active),
       mode: embed.mode,
       context: {
@@ -508,6 +513,32 @@ async function homeWebSiteSeen(shopId: string): Promise<boolean | null> {
   );
 }
 
+/**
+ * The theme's own Product node, off the newest theme scan: whether it has one
+ * and its @id. The same two values the scan mirrors to the theme_scan
+ * metafield, so B6 decides the Product node exactly as the block does
+ * (ai-visibility.liquid, three extend-mode cases). Null when there is no scan
+ * or it hit the password page, and B6 then keeps the older two-case answer.
+ */
+async function themeProductSide(
+  shopId: string,
+): Promise<{ themeHasProductNode: boolean | null; themeProductId: string }> {
+  const scan = await db.themeScan.findFirst({
+    where: { shopId },
+    orderBy: { scannedAt: "desc" },
+    select: { detail: true },
+  });
+  const detail = scan?.detail as { hasProductLd?: unknown; emitters?: unknown; passwordProtected?: boolean } | null;
+  if (!detail || detail.passwordProtected || typeof detail.hasProductLd !== "boolean") {
+    return { themeHasProductNode: null, themeProductId: "" };
+  }
+  const emitters = Array.isArray(detail.emitters) ? detail.emitters.map(String) : [];
+  return {
+    themeHasProductNode: detail.hasProductLd,
+    themeProductId: emitters.find((id) => id !== "") ?? "",
+  };
+}
+
 /** B6 for one product, or null when there is nothing missing that we can fix. */
 function b6For(
   product: ProductInput,
@@ -538,6 +569,8 @@ function b6For(
     hasSocialProfiles: expectation.hasSocialProfiles,
     seoUnlocked: true,
     isCollectionPage: false,
+    themeHasProductNode: expectation.themeHasProductNode,
+    themeProductId: expectation.themeProductId,
   });
 
   const detail = b6Detail(reasons, expectation.context);

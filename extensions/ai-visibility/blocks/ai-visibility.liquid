@@ -160,29 +160,46 @@
 
   {%- if template.name == 'product' and product -%}
     {%- comment -%}
-      Extend needs something to extend. The scan records the @id of the
-      theme's own Product node; a theme that emits one carrying no @id gives
-      us nothing to attach to. Extending it anyway emitted a fragment under
-      an @id we invented, which nothing else references: the theme's
-      complete node plus an orphan of ours, read as two products, with
-      everything this module adds hanging off the orphan.
+      Which Product node this page gets from us. Full mode always emits the
+      complete node. Extend mode reads the theme scan and has three cases:
 
-      Emitting our own complete node instead would be worse, not better -
-      two complete Product nodes is the thing this app refuses outright, and
-      the reason it has an extend mode at all. So in that one case the
-      Product node is skipped entirely and the SEO screen says so (B33): the
-      merchant turns the theme's own product schema off, which most themes
-      including Shella offer, and the next scan finds no theme node, which
-      is the ordinary full-mode case and needs no special handling here.
+      1. The theme's Product node carries an @id (theme_scan.productId set):
+         extend it - a fragment under the theme's own @id, which merges into
+         the theme's node, so a reader sees one product.
+      2. The theme has a Product node with no @id (hasProductLd true,
+         productId blank): hold back, emit no Product node at all. There is
+         nothing to attach a fragment to - one under an invented @id is an
+         orphan read as a second product - and our complete node beside the
+         theme's would be two complete Product nodes, the thing this app
+         refuses outright. The SEO screen says so (B33).
+      3. The theme has no Product node (hasProductLd false): emit the
+         complete node exactly as full mode does. Nothing on the page can
+         collide with it, and without it the page has no Product node at
+         all. This is also what clears B33: once the merchant turns the
+         theme's own product schema off, the next scan records false and
+         this branch takes over with no switch to flip.
+
+      A theme_scan written before hasProductLd existed carries no flag at
+      all, which is neither true nor false here, and falls into case 2 - the
+      behaviour the block had before this rule. Case 3 needs a scan that
+      says so, because guessing it wrong on a theme like Shella would print
+      the second complete node.
 
       The mirror link, the llms.txt link and the snippet directive below are
       unaffected: they are not schema and cannot collide.
     {%- endcomment -%}
-    {%- assign av_product_ld = true -%}
-    {%- if block.settings.mode == 'extend' and av_theme_product_id == blank -%}
-      {%- assign av_product_ld = false -%}
+    {%- assign av_theme_has_product = shop.metafields['$app'].theme_scan.value.hasProductLd -%}
+    {%- assign av_product_ld = 'full' -%}
+    {%- if block.settings.mode == 'extend' -%}
+      {%- if av_theme_product_id != blank -%}
+        {%- assign av_product_ld = 'extend' -%}
+      {%- elsif av_theme_has_product == false -%}
+        {%- assign av_product_ld = 'full' -%}
+      {%- else -%}
+        {%- assign av_product_ld = 'none' -%}
+      {%- endif -%}
     {%- endif -%}
-    {%- if av_product_ld and block.settings.mode == 'full' -%}
+    {%- if av_product_ld == 'full' -%}
       <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -267,7 +284,7 @@
           {%- endif %}
         }
       </script>
-    {%- elsif av_product_ld and av_facts or av_product_ld and av_summary -%}
+    {%- elsif av_product_ld == 'extend' and av_facts or av_product_ld == 'extend' and av_summary -%}
       {%- comment -%}
         Extend mode: never a second complete Product node. We add only what
         themes almost never emit, referencing the theme's node by @id so an

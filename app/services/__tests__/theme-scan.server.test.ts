@@ -11,6 +11,7 @@ import {
   organizationPairIsInformational,
   mergeNarrowScanIntoDetail,
   themeRowKey,
+  HELD_BACK_FOR_THEME_NODE,
   type ThemeScanResult,
 } from "../theme-scan.server";
 import { LEGACY_MERCHANT_REASON, MERCHANT_REASON, merchantReason } from "../seo-readiness";
@@ -338,6 +339,21 @@ describe("deriveMissingReasons", () => {
     expect(product.reason).toBeNull();
   });
 
+  it("follows the block's three extend-mode cases when the theme's side is known", () => {
+    const product = (over: object) =>
+      deriveMissingReasons({ ...base, hasFacts: true, ...over }).find((r) => r.nodeType === "Product")!;
+    // No theme node: the complete node, even with nothing extracted.
+    expect(product({ hasFacts: false, themeHasProductNode: false, themeProductId: "" }).emitted).toBe(true);
+    // Theme node without @id: held back, and the reason says why.
+    const held = product({ themeHasProductNode: true, themeProductId: "" });
+    expect(held.emitted).toBe(false);
+    expect(held.reason).toBe(HELD_BACK_FOR_THEME_NODE);
+    // Theme node with @id: extended when there is something to add.
+    expect(product({ themeHasProductNode: true, themeProductId: "https://x/p#product" }).emitted).toBe(true);
+    // Full mode is unaffected by the theme's side.
+    expect(product({ mode: "full", themeHasProductNode: true, themeProductId: "" }).emitted).toBe(true);
+  });
+
   it("points the return policy reason at the Business screen", () => {
     const reasons = deriveMissingReasons(base);
     const returns = reasons.find((r) => r.nodeType === "MerchantReturnPolicy")!;
@@ -579,6 +595,7 @@ describe("every reason deriveMissingReasons can record has a merchant sentence",
     { ...base, hasRating: null },
     { ...base, isCollectionPage: true },
     { ...base, isCollectionPage: true, hasCollectionQuestions: null },
+    { ...base, themeHasProductNode: true, themeProductId: "" },
     { ...base, mode: "full" as const, hasFacts: true, hasSummary: true, hasRating: true, hasSocialProfiles: true, hasReturnDays: true, hasDeliveryTime: true },
   ];
 

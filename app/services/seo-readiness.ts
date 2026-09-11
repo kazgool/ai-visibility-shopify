@@ -808,6 +808,8 @@ export const MERCHANT_REASON: Record<string, string> = {
     "This app's block is not switched on in your theme, so nothing it publishes reaches the page.",
   "Extend mode has nothing to add yet - this product has no extracted attributes or generated summary.":
     "Nothing has been prepared for this product yet, so there is nothing to add to what your theme already publishes.",
+  "The theme's Product node carries no @id, so extend mode holds ours back rather than add a second product (B33).":
+    "Your theme already describes this product in a way that leaves nowhere for this app's details to attach, so this app adds nothing here rather than a second description.",
   "No store social profile URLs are filled in on the Business screen.":
     "No social profile addresses are filled in on the Business screen in this app.",
   "This property is part of the operator-configured SEO module, not yet enabled for this shop.":

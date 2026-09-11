@@ -582,6 +582,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ),
     seoUnlocked: true,
     isCollectionPage: false,
+    // The same two values the scan writes to the theme_scan metafield, so the
+    // screen and the block decide the Product node the same way.
+    themeHasProductNode: result.passwordProtected ? null : result.hasProductLd,
+    // `?? []`: a scan result read back from an older shape can lack the list.
+    themeProductId: (result.emitters ?? []).find((id) => id !== "") ?? "",
   };
 
   const missingReasons = deriveMissingReasons(reasonInput);

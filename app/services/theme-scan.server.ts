@@ -538,7 +538,20 @@ export type MissingReasonInput = {
   hasSocialProfiles: boolean;
   seoUnlocked: boolean;
   isCollectionPage: boolean;
+  /**
+   * The theme's side of the extend-mode decision, as the theme_scan
+   * metafield records it (themeScanMirror): whether the theme emits a Product
+   * node of its own, and that node's @id. Optional: a caller that does not
+   * know gets the answer the block gave before 11 September 2026, when
+   * extend mode never emitted the complete node.
+   */
+  themeHasProductNode?: boolean | null;
+  themeProductId?: string | null;
 };
+
+/** Extend mode found a theme Product node it cannot attach to (ai-visibility.liquid, case 2). */
+export const HELD_BACK_FOR_THEME_NODE =
+  "The theme's Product node carries no @id, so extend mode holds ours back rather than add a second product (B33).";
 
 export type MissingReason = {
   nodeType: string;
@@ -581,10 +594,23 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
     }));
   }
 
-  // Product node: full mode emits unconditionally; extend mode only when
-  // there are facts or a generated summary to add.
-  if (input.mode === "full") {
+  // Product node, against the block's own three extend-mode cases
+  // (ai-visibility.liquid): a theme node with an @id is extended when there is
+  // something to add; a theme node without one holds ours back (B33); no theme
+  // node gets the complete node, as full mode does. When the theme's side is
+  // not known, the older two cases stand.
+  const themeHasNoNode = input.mode === "extend" && input.themeHasProductNode === false;
+  const themeNodeWithoutId =
+    input.mode === "extend" && input.themeHasProductNode === true && !input.themeProductId;
+  if (input.mode === "full" || themeHasNoNode) {
     reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
+  } else if (themeNodeWithoutId) {
+    reasons.push({
+      nodeType: "Product",
+      emitted: false,
+      reason: HELD_BACK_FOR_THEME_NODE,
+      fixScreen: null,
+    });
   } else if (input.hasFacts || input.hasSummary) {
     reasons.push({ nodeType: "Product", emitted: true, reason: null, fixScreen: null });
   } else {
