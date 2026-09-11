@@ -749,6 +749,63 @@ const SET_METAFIELD = `#graphql
   }
 `;
 
+/** What the storefront block reads from the `theme_scan` shop metafield. */
+export type ThemeScanMirror = {
+  hasOrganizationLd: boolean;
+  organizationId: string;
+  productId: string;
+  /** The theme emits at least one Product node that is not ours. */
+  hasProductLd: boolean;
+  /** The theme emits a WebSite node that is not ours, on either page read. */
+  hasWebSiteLd: boolean;
+};
+
+/**
+ * The metafield value, from a scan result. Pure and exported for tests.
+ *
+ * `hasProductLd` and `hasWebSiteLd` exist so the block can tell "the theme has
+ * a node" from "the theme has a node with an @id" (PRD-AI-READABILITY P0.4 and
+ * P0.5): extend mode holds its Product node back only when the theme has one
+ * it cannot reference, and emits the complete node when the theme has none;
+ * our WebSite node goes out only when the theme has no WebSite of its own.
+ * Both exclude our own nodes by the marker, for the same reason
+ * `productNodes` and `orgNodes` do: counting our output as the theme's makes
+ * the next scan switch our node off, and the scan after that switch it back
+ * on (CLAUDE.md rule 3).
+ *
+ * A narrow scan that never read the home page still knows the home page from
+ * the detail it was merged into (mergeNarrowScanIntoDetail). A scan with no
+ * home page at all reports WebSite from the product page alone, which reads
+ * false on a theme that emits WebSite only on the home page: the block then
+ * emits ours, which is what it did before this flag existed.
+ */
+export function themeScanMirror(result: ThemeScanResult): ThemeScanMirror {
+  const organizationId = result.organizationEmitters.find((id) => id !== "") ?? "";
+  // The same rule the Organization node has followed since 1 September, now
+  // for Product: a node with no @id of its own gives the block nothing to
+  // reference. Extend mode used to invent an @id and emit a fragment against
+  // it, so on a theme whose Product node carries no @id - Shella, on the
+  // first paying store - the page ended with the theme's complete node and
+  // an orphan of ours, which is the second Product node this app exists to
+  // avoid, and the fields the SEO module adds attached to nothing.
+  const productId = result.emitters.find((id) => id !== "") ?? "";
+
+  const pages = [result.product, result.home].filter(
+    (page): page is PageScan => Boolean(page) && !page!.passwordProtected,
+  );
+  const hasWebSiteLd = pages.some((page) =>
+    page.nodes.some((n) => n.types.includes("WebSite") && !isOurNode(n)),
+  );
+
+  return {
+    hasOrganizationLd: result.hasOrganizationLd,
+    organizationId,
+    productId,
+    hasProductLd: result.hasProductLd,
+    hasWebSiteLd,
+  };
+}
+
 /**
  * Mirror the Organization detection to a shop metafield, so the storefront
  * block can decide extend-or-emit at render time without a fetch. The block
@@ -772,21 +829,7 @@ async function mirrorThemeScanMetafield(
   const shopGid = idJson.data?.shop?.id;
   if (!shopGid) return;
 
-  const organizationId = result.organizationEmitters.find((id) => id !== "") ?? "";
-  // The same rule the Organization node has followed since 1 September, now
-  // for Product: a node with no @id of its own gives the block nothing to
-  // reference. Extend mode used to invent an @id and emit a fragment against
-  // it, so on a theme whose Product node carries no @id - Shella, on the
-  // first paying store - the page ended with the theme's complete node and
-  // an orphan of ours, which is the second Product node this app exists to
-  // avoid, and the fields the SEO module adds attached to nothing.
-  const productId = result.emitters.find((id) => id !== "") ?? "";
-
-  const value = JSON.stringify({
-    hasOrganizationLd: result.hasOrganizationLd,
-    organizationId,
-    productId,
-  });
+  const value = JSON.stringify(themeScanMirror(result));
 
   const res = await named("SetShopThemeScan", () =>
     graphql(SET_METAFIELD, {
