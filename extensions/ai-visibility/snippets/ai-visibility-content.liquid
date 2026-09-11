@@ -1,0 +1,96 @@
+{%- comment -%}
+  AI Visibility - visible content (PRD-AI-READABILITY P0.1, P0.2, P1.1).
+
+  What the app wrote for a product - summary, facts, who it suits, buyer
+  questions - printed as text on the page itself. Every AI system that reads
+  a store reads rendered text: the crawlers that build training data, the
+  ones that build search indexes, and the agents that fetch a page when a
+  user asks. JSON-LD in the head and the plain-text mirror under the app
+  proxy reach none of them reliably; this does.
+
+  One snippet so the markup exists once. Rendered by the automatic embed
+  (blocks/ai-visibility-content.liquid) and by the block a merchant places
+  by hand (blocks/product-content.liquid). A rendered snippet sees only what
+  it is given, so both pass the page object and their own settings:
+
+    kind            'product' or 'collection'. Passed, not inferred: a
+                    product reached through /collections/x/products/y has a
+                    collection in context as well as a product.
+    product         the product, when kind is 'product'
+    collection      the collection, when kind is 'collection'
+    shop_url        shop.url
+    heading         text; nothing printed when blank
+    heading_level   'h2' or 'h3'; questions sit one level below it
+    show_summary, show_facts, show_fit, show_questions, show_links
+
+  Rules, all from the PRD and CLAUDE.md:
+  - Renders nothing at all - no wrapper, no heading, no whitespace - unless
+    at least one part has content and is switched on. A heading over an
+    empty box, or a box holding only two links, is the "0 facts" line the
+    merchant was promised never to see.
+  - Every value through `escape`: a fact reading "<30 cm & light" prints as
+    text, never as markup.
+  - Inline styles are spacing, a max-width and the two-column layout of the
+    facts list, which P0.1 names. No font, no colour: the block takes the
+    theme's own, so it reads as part of the page, not as an advert.
+  - No JavaScript, no request, nothing that executes.
+{%- endcomment -%}
+
+{%- assign av_h = 'h2' -%}
+{%- assign av_hq = 'h3' -%}
+{%- if heading_level == 'h3' -%}
+  {%- assign av_h = 'h3' -%}
+  {%- assign av_hq = 'h4' -%}
+{%- endif -%}
+
+{%- if kind == 'product' and product -%}
+  {%- assign av_summary = product.metafields['$app'].summary.value -%}
+  {%- assign av_facts = product.metafields['$app'].facts.value -%}
+  {%- assign av_fit = product.metafields['$app'].fit_for.value -%}
+  {%- assign av_questions = product.metafields['$app'].questions.value -%}
+
+  {%- assign av_show_summary = false -%}
+  {%- if show_summary and av_summary != blank -%}{%- assign av_show_summary = true -%}{%- endif -%}
+  {%- assign av_show_facts = false -%}
+  {%- if show_facts and av_facts and av_facts.size > 0 -%}{%- assign av_show_facts = true -%}{%- endif -%}
+  {%- assign av_show_fit = false -%}
+  {%- if show_fit and av_fit != blank -%}{%- assign av_show_fit = true -%}{%- endif -%}
+  {%- assign av_show_questions = false -%}
+  {%- if show_questions and av_questions and av_questions.size > 0 -%}{%- assign av_show_questions = true -%}{%- endif -%}
+
+  {%- if av_show_summary or av_show_facts or av_show_fit or av_show_questions -%}
+    <section class="ai-visibility-content" style="margin:2rem 0;max-width:72rem;">
+      {%- if heading != blank -%}
+        <{{ av_h }} style="margin:0 0 0.75rem;">{{ heading | escape }}</{{ av_h }}>
+      {%- endif -%}
+      {%- if av_show_summary -%}
+        <p style="margin:0 0 1rem;">{{ av_summary | escape }}</p>
+      {%- endif -%}
+      {%- if av_show_facts -%}
+        {%- comment -%}
+          Label and value exactly as stored in $app.facts, in the stored order,
+          which is the order the plain-text mirror prints them in.
+        {%- endcomment -%}
+        <dl class="ai-visibility-content__facts" style="display:grid;grid-template-columns:minmax(8rem,max-content) 1fr;gap:0.25rem 1.5rem;margin:0 0 1rem;">
+          {%- for fact in av_facts -%}
+            <dt style="margin:0;">{{ fact.k | escape }}</dt>
+            <dd style="margin:0;">{{ fact.v | escape }}</dd>
+          {%- endfor -%}
+        </dl>
+      {%- endif -%}
+      {%- if av_show_fit -%}
+        <p style="margin:0 0 1rem;">Suits: {{ av_fit | escape }}</p>
+      {%- endif -%}
+      {%- if av_show_questions -%}
+        {%- for qa in av_questions -%}
+          <{{ av_hq }} style="margin:1rem 0 0.25rem;">{{ qa.q | escape }}</{{ av_hq }}>
+          <p style="margin:0 0 0.5rem;">{{ qa.a | escape }}</p>
+        {%- endfor -%}
+      {%- endif -%}
+      {%- if show_links -%}
+        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/{{ product.handle }}">Plain-text version of this page</a></p>
+        <p style="margin:0.25rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">All products as plain text</a></p>
+      {%- endif -%}
+    </section>
+  {%- endif -%}
+{%- endif -%}
