@@ -385,16 +385,6 @@
             title="Plain text version">
     {%- endif -%}
 
-    {%- comment -%}
-      The llms.txt proposal names rel="describedby" as the way a page points
-      at the llms.txt covering it. This app's llms.txt is generated live
-      under the app proxy path; the bare /llms.txt route is not something
-      this app serves, so pointing there risked a 404. Same target as the
-      Link header the plain text mirror sends.
-    {%- endcomment -%}
-    {%- if block.settings.llms_link -%}
-      <link rel="describedby" href="{{ shop.url }}/apps/ai-visibility/llms.txt">
-    {%- endif -%}
   {%- endif -%}
 
   {%- comment -%}
@@ -460,6 +450,25 @@
         </script>
       {%- endif -%}
     {%- endif -%}
+  {%- endif -%}
+
+  {%- comment -%}
+    The llms.txt proposal names rel="describedby" as the way a page points
+    at the llms.txt covering it. This app's llms.txt is generated live under
+    the app proxy path; the bare /llms.txt route is not something this app
+    serves, so pointing there risked a 404. Same target as the Link header
+    the plain text mirror sends.
+
+    Shop-wide on purpose, not product-only (moved 11 September 2026): a
+    crawler landing on the home page or a collection page never saw this
+    link when it lived inside the product-only block, so nothing on the
+    storefront pointed at the mirrors except this one link, and only on
+    product pages. Needs no product data, so it belongs at the top level
+    with the Organization and WebSite nodes above, not inside the
+    product-only section. Our own file, no theme file touched.
+  {%- endcomment -%}
+  {%- if block.settings.llms_link -%}
+    <link rel="describedby" href="{{ shop.url }}/apps/ai-visibility/llms.txt">
   {%- endif -%}
 
   {%- if block.settings.lift_snippets -%}

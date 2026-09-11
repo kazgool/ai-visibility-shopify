@@ -55,7 +55,7 @@ async function main() {
   const locked = await db.$queryRawUnsafe<LockedJob[]>(`
     SELECT id::text, task_identifier, locked_at, locked_by, attempts, max_attempts,
            EXTRACT(EPOCH FROM (now() - locked_at))::int / 60 AS minutes_locked
-    FROM graphile_worker._private_jobs
+    FROM graphile_worker.jobs
     WHERE locked_at IS NOT NULL
       AND locked_at < now() - INTERVAL '${minutes} minutes'
     ORDER BY locked_at
