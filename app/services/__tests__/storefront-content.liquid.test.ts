@@ -140,3 +140,111 @@ describe("the visible product block: when it renders nothing at all", () => {
     expect(text(html)).toContain("A solid oak chair");
   });
 });
+
+// Collection pages (P0.2).
+
+const TABLE = {
+  columns: ["Material", "Width"],
+  rows: [
+    { title: "Oak chair", handle: "oak-chair", cells: ["Oak", "45 cm"] },
+    { title: "Pine & ash chair", handle: "", cells: ["Pine", ""] },
+  ],
+};
+
+function collection(meta: {
+  summary?: string;
+  criteria?: string[];
+  questions?: { q: string; a: string }[];
+  table?: typeof TABLE | null;
+}) {
+  const mf = (value: unknown) => (value === undefined || value === null ? undefined : { value });
+  return {
+    title: "Chairs",
+    handle: "chairs",
+    url: "/collections/chairs",
+    metafields: {
+      $app: {
+        summary: mf(meta.summary),
+        criteria: mf(meta.criteria),
+        questions: mf(meta.questions),
+        table: mf(meta.table),
+      },
+    },
+  };
+}
+
+const FULL_COLLECTION = collection({
+  summary: "Twelve chairs in oak and pine.",
+  criteria: ["Material", "Width"],
+  questions: [{ q: "Which is widest?", a: "The oak chair, at 45 cm." }],
+  table: TABLE,
+});
+
+describe("the visible collection block", () => {
+  const onCollection = (c: ReturnType<typeof collection>, settings = defaults) =>
+    renderBlock(EMBED, storefront({ template: "collection", collection: c, settings }));
+
+  it("prints summary, criteria, questions, then the table, under the collection heading", async () => {
+    const html = await onCollection(FULL_COLLECTION);
+    const t = text(html);
+    const order = ["About this collection", "Twelve chairs", "Material Width", "Which is widest?", "Oak chair"].map(
+      (s) => t.indexOf(s),
+    );
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).toContain("<li>Material</li>");
+    expect(html).toContain(`<a href="${SHOP_URL}/products/oak-chair">Oak chair</a>`);
+    expect(html).toContain("Pine &amp; ash chair");
+    expect(html).toContain(`<a href="${SHOP_URL}/apps/ai-visibility/llms.txt">All products as plain text</a>`);
+    expect(html).not.toContain("Plain-text version of this page");
+  });
+
+  it("sets no font and no colour on collection pages either", async () => {
+    const html = await onCollection(FULL_COLLECTION);
+    for (const style of html.matchAll(/style="([^"]*)"/g)) {
+      expect(style[1]).not.toMatch(/font-family|font-size|color|background/i);
+    }
+  });
+
+  it("renders nothing for a collection with nothing written, or an empty table only", async () => {
+    expect((await onCollection(collection({}))).trim()).toBe("");
+    expect((await onCollection(collection({ table: { columns: [], rows: [] } as any }))).trim()).toBe("");
+  });
+
+  it("with manual placement, keeps only the questions: the comparison block shows the rest", async () => {
+    const html = await onCollection(FULL_COLLECTION, { ...defaults, manual_placement: true });
+    expect(text(html)).toContain("Which is widest?");
+    expect(text(html)).not.toContain("Twelve chairs");
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("<li>");
+    const noQuestions = await onCollection(
+      collection({ summary: "Twelve chairs.", table: TABLE }),
+      { ...defaults, manual_placement: true },
+    );
+    expect(noQuestions.trim()).toBe("");
+  });
+});
+
+describe("the comparison-table block after the table moved into a snippet", () => {
+  it("still renders its heading, summary, criteria and the table, with its own borders", async () => {
+    const html = await renderBlock(
+      "comparison-table.liquid",
+      storefront({ template: "collection", collection: FULL_COLLECTION, settings: blockDefaults("comparison-table.liquid") }),
+    );
+    expect(html).toContain('<section class="ai-visibility-compare"');
+    expect(text(html)).toContain("Compare these products");
+    expect(html).toContain("<caption class=\"visually-hidden\">Chairs: product comparison</caption>");
+    expect(html).toContain("border-bottom: 1px solid currentColor;");
+    expect(html).toContain("border-bottom: 1px solid rgba(128,128,128,0.3);");
+    expect(html).toContain(`<a href="${SHOP_URL}/products/oak-chair">Oak chair</a>`);
+    expect((html.match(/<tr>/g) ?? []).length).toBe(3);
+  });
+
+  it("still renders nothing when there is no table", async () => {
+    const html = await renderBlock(
+      "comparison-table.liquid",
+      storefront({ template: "collection", collection: collection({ summary: "x" }), settings: {} }),
+    );
+    expect(html.trim()).toBe("");
+  });
+});

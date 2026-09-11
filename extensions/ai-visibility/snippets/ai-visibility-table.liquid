@@ -1,0 +1,64 @@
+{%- comment -%}
+  AI Visibility - the comparison table's markup, once (PRD §4.8,
+  PRD-AI-READABILITY P0.2).
+
+  Rendered by the comparison-table app block and by the visible content
+  snippet on collection pages, so the two cannot drift apart. Arguments:
+
+    table           the collection's $app.table value: columns, rows
+    caption         the caption text, read by screen readers
+    shop_url        shop.url, for the product links
+    product_column  label of the first column
+    header_border   CSS border under the header row
+    row_border      CSS border under each row, 'none' for none
+
+  The comparison-table block passes the borders it has always had. The
+  content block passes a plain rule under the header and none between rows,
+  so it sets no colour of its own.
+
+  Renders nothing unless there is at least one column and one row: an
+  empty table is worse than no table. Every value escaped.
+{%- endcomment -%}
+{%- if table and table.columns.size > 0 and table.rows.size > 0 -%}
+  {%- assign av_t_head = header_border | default: '1px solid' -%}
+  {%- assign av_t_row = row_border | default: 'none' -%}
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <caption class="visually-hidden">{{ caption | escape }}</caption>
+      <thead>
+        <tr>
+          <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: {{ av_t_head }};">
+            {{ product_column | default: 'Product' | escape }}
+          </th>
+          {%- for column in table.columns -%}
+            <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: {{ av_t_head }};">
+              {{ column | escape }}
+            </th>
+          {%- endfor -%}
+        </tr>
+      </thead>
+      <tbody>
+        {%- for row in table.rows -%}
+          <tr>
+            <th scope="row" style="text-align: left; font-weight: 400; padding: 0.5rem; border-bottom: {{ av_t_row }};">
+              {%- if row.handle != blank -%}
+                <a href="{{ shop_url }}/products/{{ row.handle }}">{{ row.title | escape }}</a>
+              {%- else -%}
+                {{ row.title | escape }}
+              {%- endif -%}
+            </th>
+            {%- for cell in row.cells -%}
+              <td style="padding: 0.5rem; border-bottom: {{ av_t_row }};">
+                {%- comment -%}
+                  A blank cell is honest: the description did not say. Filling
+                  it with a dash or a guess would be worse than the gap.
+                {%- endcomment -%}
+                {{ cell | escape }}
+              </td>
+            {%- endfor -%}
+          </tr>
+        {%- endfor -%}
+      </tbody>
+    </table>
+  </div>
+{%- endif -%}

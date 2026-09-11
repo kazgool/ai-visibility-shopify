@@ -12,6 +12,12 @@
 
   Renders nothing at all when there is nothing to compare. An empty table is
   worse than no table.
+
+  The table's markup is in snippets/ai-visibility-table.liquid since 11
+  September 2026, shared with the automatic content embed, which shows the
+  same table on collection pages unless the merchant ticks "I placed the
+  content block myself". Values are escaped there; before, they were printed
+  raw.
 {% endcomment %}
 
 {%- assign av_table = collection.metafields['$app'].table.value -%}
@@ -21,60 +27,30 @@
 {%- if av_table and av_table.columns.size > 0 and av_table.rows.size > 0 -%}
   <section class="ai-visibility-compare" style="margin: 2rem 0;">
     {%- if block.settings.heading != blank -%}
-      <h2 style="margin-bottom: 0.5rem;">{{ block.settings.heading }}</h2>
+      <h2 style="margin-bottom: 0.5rem;">{{ block.settings.heading | escape }}</h2>
     {%- endif -%}
 
     {%- if block.settings.show_summary and av_summary != blank -%}
-      <p style="margin-bottom: 1rem;">{{ av_summary }}</p>
+      <p style="margin-bottom: 1rem;">{{ av_summary | escape }}</p>
     {%- endif -%}
 
     {%- if block.settings.show_criteria and av_criteria and av_criteria.size > 0 -%}
       <ul style="margin-bottom: 1rem; padding-left: 1.25rem;">
         {%- for item in av_criteria -%}
-          <li>{{ item }}</li>
+          <li>{{ item | escape }}</li>
         {%- endfor -%}
       </ul>
     {%- endif -%}
 
-    <div style="overflow-x: auto;">
-      <table style="width: 100%; border-collapse: collapse;">
-        <caption class="visually-hidden">{{ collection.title }}: product comparison</caption>
-        <thead>
-          <tr>
-            <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid currentColor;">
-              {{ block.settings.product_column | default: 'Product' }}
-            </th>
-            {%- for column in av_table.columns -%}
-              <th scope="col" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid currentColor;">
-                {{ column }}
-              </th>
-            {%- endfor -%}
-          </tr>
-        </thead>
-        <tbody>
-          {%- for row in av_table.rows -%}
-            <tr>
-              <th scope="row" style="text-align: left; font-weight: 400; padding: 0.5rem; border-bottom: 1px solid rgba(128,128,128,0.3);">
-                {%- if row.handle != blank -%}
-                  <a href="{{ shop.url }}/products/{{ row.handle }}">{{ row.title }}</a>
-                {%- else -%}
-                  {{ row.title }}
-                {%- endif -%}
-              </th>
-              {%- for cell in row.cells -%}
-                <td style="padding: 0.5rem; border-bottom: 1px solid rgba(128,128,128,0.3);">
-                  {%- comment -%}
-                    A blank cell is honest: the description did not say. Filling
-                    it with a dash or a guess would be worse than the gap.
-                  {%- endcomment -%}
-                  {{ cell }}
-                </td>
-              {%- endfor -%}
-            </tr>
-          {%- endfor -%}
-        </tbody>
-      </table>
-    </div>
+    {%- assign av_caption = collection.title | append: ': product comparison' -%}
+    {%- render 'ai-visibility-table',
+      table: av_table,
+      caption: av_caption,
+      shop_url: shop.url,
+      product_column: block.settings.product_column,
+      header_border: '1px solid currentColor',
+      row_border: '1px solid rgba(128,128,128,0.3)'
+    -%}
   </section>
 {%- endif -%}
 

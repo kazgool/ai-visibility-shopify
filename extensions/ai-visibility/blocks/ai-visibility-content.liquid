@@ -34,6 +34,43 @@
   {%- endif -%}
 {%- endunless -%}
 
+{%- comment -%}
+  Collection pages (P0.2). The same embed rather than a second one: one
+  toggle for the merchant, one set of settings. When "I placed the content
+  block myself" is ticked, the page is taken to carry the comparison-table
+  block, which already shows the summary, what to choose between and the
+  table; only the questions, which that block cannot show, stay here.
+{%- endcomment -%}
+{%- if template.name == 'collection' and collection -%}
+  {%- if block.settings.manual_placement -%}
+    {%- render 'ai-visibility-content',
+      kind: 'collection',
+      collection: collection,
+      shop_url: shop.url,
+      heading: block.settings.collection_heading,
+      heading_level: block.settings.heading_level,
+      show_summary: false,
+      show_criteria: false,
+      show_questions: block.settings.show_questions,
+      show_table: false,
+      show_links: false
+    -%}
+  {%- else -%}
+    {%- render 'ai-visibility-content',
+      kind: 'collection',
+      collection: collection,
+      shop_url: shop.url,
+      heading: block.settings.collection_heading,
+      heading_level: block.settings.heading_level,
+      show_summary: block.settings.show_summary,
+      show_criteria: block.settings.show_criteria,
+      show_questions: block.settings.show_questions,
+      show_table: block.settings.show_table,
+      show_links: block.settings.show_links
+    -%}
+  {%- endif -%}
+{%- endif -%}
+
 {% schema %}
 {
   "name": "AI Visibility content",
@@ -87,9 +124,28 @@
       "default": true
     },
     {
+      "type": "text",
+      "id": "collection_heading",
+      "label": "Heading on collection pages",
+      "default": "About this collection"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_criteria",
+      "label": "Show what to choose between, on collection pages",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_table",
+      "label": "Show the comparison table, on collection pages",
+      "default": true
+    },
+    {
       "type": "checkbox",
       "id": "manual_placement",
       "label": "I placed the content block myself; hide the automatic one",
+      "info": "On product pages this hides everything above. On collection pages it hides all but the questions, which the comparison block does not show.",
       "default": false
     }
   ]

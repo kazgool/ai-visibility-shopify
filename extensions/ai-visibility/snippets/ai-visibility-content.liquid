@@ -94,3 +94,58 @@
     </section>
   {%- endif -%}
 {%- endif -%}
+
+{%- comment -%}
+  Collection pages (P0.2): summary, what to choose between, buyer questions,
+  then the comparison table, in that order. A collection has no plain-text
+  page of its own, so only the index link is offered. Same empty rule: one
+  switched-on part with content, or nothing at all.
+{%- endcomment -%}
+{%- if kind == 'collection' and collection -%}
+  {%- assign av_c_summary = collection.metafields['$app'].summary.value -%}
+  {%- assign av_c_criteria = collection.metafields['$app'].criteria.value -%}
+  {%- assign av_c_questions = collection.metafields['$app'].questions.value -%}
+  {%- assign av_c_table = collection.metafields['$app'].table.value -%}
+
+  {%- assign av_show_summary = false -%}
+  {%- if show_summary and av_c_summary != blank -%}{%- assign av_show_summary = true -%}{%- endif -%}
+  {%- assign av_show_criteria = false -%}
+  {%- if show_criteria and av_c_criteria and av_c_criteria.size > 0 -%}{%- assign av_show_criteria = true -%}{%- endif -%}
+  {%- assign av_show_questions = false -%}
+  {%- if show_questions and av_c_questions and av_c_questions.size > 0 -%}{%- assign av_show_questions = true -%}{%- endif -%}
+  {%- assign av_show_table = false -%}
+  {%- if show_table and av_c_table and av_c_table.columns.size > 0 and av_c_table.rows.size > 0 -%}{%- assign av_show_table = true -%}{%- endif -%}
+
+  {%- if av_show_summary or av_show_criteria or av_show_questions or av_show_table -%}
+    <section class="ai-visibility-content" style="margin:2rem 0;max-width:72rem;">
+      {%- if heading != blank -%}
+        <{{ av_h }} style="margin:0 0 0.75rem;">{{ heading | escape }}</{{ av_h }}>
+      {%- endif -%}
+      {%- if av_show_summary -%}
+        <p style="margin:0 0 1rem;">{{ av_c_summary | escape }}</p>
+      {%- endif -%}
+      {%- if av_show_criteria -%}
+        <ul style="margin:0 0 1rem;padding-left:1.25rem;">
+          {%- for item in av_c_criteria -%}
+            <li>{{ item | escape }}</li>
+          {%- endfor -%}
+        </ul>
+      {%- endif -%}
+      {%- if av_show_questions -%}
+        {%- for qa in av_c_questions -%}
+          <{{ av_hq }} style="margin:1rem 0 0.25rem;">{{ qa.q | escape }}</{{ av_hq }}>
+          <p style="margin:0 0 0.5rem;">{{ qa.a | escape }}</p>
+        {%- endfor -%}
+      {%- endif -%}
+      {%- if av_show_table -%}
+        {%- assign av_caption = collection.title | append: ': product comparison' -%}
+        <div style="margin:1rem 0 0;">
+          {%- render 'ai-visibility-table', table: av_c_table, caption: av_caption, shop_url: shop_url, product_column: 'Product' -%}
+        </div>
+      {%- endif -%}
+      {%- if show_links -%}
+        <p style="margin:1rem 0 0;"><a href="{{ shop_url }}/apps/ai-visibility/llms.txt">All products as plain text</a></p>
+      {%- endif -%}
+    </section>
+  {%- endif -%}
+{%- endif -%}
