@@ -376,7 +376,8 @@ describe("the fixes that cover the whole shop", () => {
   const readiness = readinessOf(oneEightyNine());
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the shop-wide check is B33, which replaced the hidden B12 in the fixture.
-  it("carries the shop-wide checks plus the two facts no product row holds", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: a barcode is the merchant's data, which this app can neither supply nor fix, so the card carries no barcode row.
+  it("carries the shop-wide checks plus the fact no product row holds, and no barcode row", () => {
     const items = shopWideItems(readiness, {
       deliveryStated: false,
       returnsStated: false,
@@ -388,7 +389,7 @@ describe("the fixes that cover the whole shop", () => {
       publishedReasons: null,
     });
     expect(items.map((i) => i.key)).toContain("business");
-    expect(items.map((i) => i.key)).toContain("barcode");
+    expect(items.map((i) => i.key)).not.toContain("barcode");
     expect(items.map((i) => i.key)).toContain("B33");
   });
 
@@ -440,22 +441,21 @@ describe("the fixes that cover the whole shop", () => {
 });
 
 describe("Google's free product listings", () => {
-  it("counts what was measured and refuses to state a condition nobody recorded", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: the card keeps only what this app publishes, labelled as Google's documentation labels it; barcode and condition left, Brand is Recommended.
+  it("counts what was measured, labels brand as recommended, and has no barcode or condition row", () => {
     const listing = listingReadiness(
       { products: 189, withVendor: 189, withImage: 171, withBarcode: 0 },
       { deliveryStated: false, returnsStated: false },
       189,
     );
     const by = new Map(listing.properties.map((p) => [p.key, p]));
-    expect(by.get("brand")).toMatchObject({ have: 189, of: 189 });
-    expect(by.get("photo")).toMatchObject({ have: 171, of: 189 });
-    expect(by.get("barcode")).toMatchObject({ have: 0, of: 189 });
+    expect(by.get("brand")).toMatchObject({ have: 189, of: 189, requirement: "recommended" });
+    expect(by.get("photo")).toMatchObject({ have: 171, of: 189, requirement: "required" });
     expect(by.get("delivery")).toMatchObject({ have: 0, of: 189 });
-    // Never a gauge, because the app deliberately publishes no condition.
-    expect(by.get("condition")?.have).toBeNull();
-    expect(by.get("condition")?.note).toBeTruthy();
+    expect(by.get("barcode")).toBeUndefined();
+    expect(by.get("condition")).toBeUndefined();
     expect(listing.inPlace).toBe(5);
-    expect(listing.total).toBe(10);
+    expect(listing.total).toBe(8);
   });
 
   it("says the catalogue has not been read rather than showing ten zeros", () => {
@@ -538,6 +538,7 @@ describe("the Google listing card answers from the same source as the rest of th
     });
   }
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: two counted rows now, brand and photo; the barcode row left the card.
   it("does not claim the catalogue is unread on a shop whose rows it has just counted", () => {
     const findings = aggregateFindings(fiftyProducts());
     expect(findings.bulkRead).toBe(50);
@@ -546,7 +547,8 @@ describe("the Google listing card answers from the same source as the rest of th
     // The four Shopify supplies are in place; the three counted ones say so
     // rather than showing a zero.
     expect(listing.inPlace).toBe(4);
-    for (const key of ["brand", "photo", "barcode"]) {
+    expect(listing.properties.find((p) => p.key === "barcode")).toBeUndefined();
+    for (const key of ["brand", "photo"]) {
       const property = listing.properties.find((p) => p.key === key)!;
       expect(property.have).toBeNull();
       expect(property.note).toContain("Not counted yet");
@@ -603,20 +605,20 @@ describe("the shop-wide card", () => {
   });
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the check row is B33, which replaced the hidden B12 in the fixture.
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: no barcode row any more, so the two rows left are one fact about the catalogue and one check over the read set.
   it("gives each row its own scope, because they are not all the same number", () => {
     const business = items.find((i) => i.key === "business")!;
-    const barcode = items.find((i) => i.key === "barcode")!;
     const check = items.find((i) => i.key === "B33")!;
-    // The catalogue is 355 and the read set is 189. Two of these three are
-    // facts about the catalogue.
+    // The catalogue is 355 and the read set is 189.
     expect(business.appliesTo).toContain("355");
-    expect(barcode.appliesTo).toContain("355");
     expect(check.appliesTo).toContain("189");
+    expect(items.find((i) => i.key === "barcode")).toBeUndefined();
   });
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one check among the three rows is B33, which replaced the hidden B12 in the fixture.
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: two rows, the business fact and B33; the barcode row left the card.
   it("counts the rows it renders in the sentence that points at it", () => {
-    expect(items.length).toBe(3);
+    expect(items.length).toBe(2);
     expect(shopWideCrossReference(readiness, items, "below")).toContain(`${items.length} fixes`);
     expect(shopWideCrossReference(readiness, items, "below")).toContain("1 of them from a check");
     expect(shopWideCrossReference(readiness, [], "below")).toBe("");

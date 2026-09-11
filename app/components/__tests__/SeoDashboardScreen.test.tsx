@@ -225,13 +225,13 @@ describe("a 189-product shop with one problem on every product", () => {
     expect(text).toContain("100 percent");
   });
 
-  it("lists the two shop-wide facts that no product row carries", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: the barcode row left the card (the merchant's data, which this app cannot supply), so one fact no product row carries is left.
+  it("lists the shop-wide fact that no product row carries, and no barcode", () => {
     expect(text).toContain("Your delivery time and return window are blank");
-    expect(text).toContain("No product in your catalogue carries a barcode");
-    // The scope of each row is its own, and two of the three are the whole
-    // catalogue rather than the products whose page was read.
+    // Its scope is the whole catalogue rather than the products whose page was read.
     expect(text).toContain("it applies to all 189 products in your catalogue");
-    expect(text).toContain("Not one of your 189 products carries one");
+    expect(text).not.toContain("No product in your catalogue carries a barcode");
+    expect(text).not.toContain("Not one of your 189 products carries one");
   });
 
   it("counts the checks that found nothing per column, against that column's own denominator", () => {
@@ -250,11 +250,12 @@ describe("a 189-product shop with one problem on every product", () => {
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one check among the three rows is B33, which replaced the hidden B12 in the fixture.
   it("counts the rows the shop-wide card renders, not the checks behind some of them", () => {
-    // The card lists three: two facts about the shop and one check. A method
-    // line saying "2" beside a card showing 3 is two true numbers
-    // contradicting each other on one screen.
-    expect(text).toContain("The shop-wide card below carries 3 fixes");
-    expect(text).toContain("The shop-wide card above carries 3 fixes");
+    // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: the
+    // card lists two, one fact about the shop and one check, since the barcode
+    // row left it. A method line saying "1" beside a card showing 2 is two
+    // true numbers contradicting each other on one screen.
+    expect(text).toContain("The shop-wide card below carries 2 fixes");
+    expect(text).toContain("The shop-wide card above carries 2 fixes");
     expect(text).toContain("1 of them from a check that flagged all 189 products");
   });
 
@@ -342,11 +343,12 @@ describe("a store where the live page read never ran", () => {
     expect(text).toContain("No product page has been read yet");
   });
 
-  it("still refuses to state a condition nobody recorded", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 14: a product's condition and its barcode are the merchant's data, which this app does not publish, so the Google card has no row for either.
+  it("puts no condition and no barcode row on the Google card", () => {
     const withFacts = render(data(rows, { since: { before: null, today: facts() } }));
-    expect(withFacts).toContain("New or used");
-    expect(withFacts).toContain("not published");
-    expect(withFacts).toContain("would be a claim you never made");
+    expect(withFacts).not.toContain("New or used");
+    expect(withFacts).not.toContain("would be a claim you never made");
+    expect(withFacts).toContain("Brand");
   });
 });
 

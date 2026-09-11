@@ -981,25 +981,8 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
     });
   }
 
-  if (facts.barcode && facts.barcode.of > 0 && facts.barcode.have === 0) {
-    items.push({
-      key: "barcode",
-      title: "No product in your catalogue carries a barcode",
-      what:
-        "Google strongly asks for the manufacturer's barcode where one exists, because it is " +
-        "how it matches your product to the same product elsewhere. It is a field in Shopify, " +
-        "under each product's variant. We will not make one up: a wrong barcode points Google " +
-        "at somebody else's product.",
-      where: "Shopify, Products, open one, the variant row.",
-      appliesTo:
-        (facts.barcode.of === 1
-          ? "Your one product does not carry one, which is why it is here "
-          : `Not one of your ${formatCount(facts.barcode.of)} products carries one, which is why it is here `) +
-        "rather than against individual products. The fix itself is one field per product.",
-      owner: "merchant",
-      ownerNote: "You, Shopify, per product",
-    });
-  }
+  // No barcode item (addendum items 9 and 14): a barcode is the merchant's
+  // data, which this app can neither supply nor fix.
 
   for (const code of readiness.shopWideCodes) {
     const owner = FINDING_OWNER[code];
@@ -1164,7 +1147,15 @@ export function shopWideCrossReference(
  * `have` is null wherever nothing measured it, and a null renders as a
  * sentence and never as a zero.
  */
-export type ListingRequirement = "required" | "recommended" | "strongly asked";
+/**
+ * What Google's merchant listing documentation calls each property, and
+ * nothing stronger: https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
+ * (read 11 September 2026). Required there: Product name, image and offers;
+ * the Offer's price and priceCurrency. Recommended: brand, availability,
+ * shippingDetails, hasMerchantReturnPolicy, gtin and itemCondition among
+ * others. "Strongly asked" was never a word the page used.
+ */
+export type ListingRequirement = "required" | "recommended";
 
 /**
  * Where a row's figure comes from. `byConstruction` is the one that had to be
@@ -1232,6 +1223,11 @@ export function listingReadiness(
     return stated ? of : 0;
   };
 
+  // Only what this app publishes in its own structured data (addendum item
+  // 14): name, image, brand, price, currency, availability, shipping and
+  // returns. A barcode and a product's condition are the merchant's data,
+  // which this app cannot supply, so they are not on the card; the labels
+  // are the documentation's (see ListingRequirement).
   const properties: ListingProperty[] = [
     {
       key: "name",
@@ -1263,7 +1259,8 @@ export function listingReadiness(
     {
       key: "brand",
       label: "Brand",
-      requirement: "required",
+      // brand.name is Recommended in the documentation, not Required.
+      requirement: "recommended",
       basis: "measured",
       have: facts ? facts.withVendor : null,
       of,
@@ -1288,18 +1285,6 @@ export function listingReadiness(
       ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
-      key: "condition",
-      label: "New or used",
-      requirement: "recommended",
-      basis: "notPublished",
-      have: null,
-      of,
-      note:
-        "Not published, on purpose. Shopify has no field saying whether a product is new, " +
-        "refurbished or second hand, so stating \"new\" on every product would be a claim you " +
-        "never made. Nothing here is invented.",
-    },
-    {
       key: "delivery",
       label: "Delivery cost and time",
       requirement: "recommended",
@@ -1320,15 +1305,6 @@ export function listingReadiness(
       ...(business && of !== null
         ? {}
         : { note: "Not filled in yet on the Business screen in this app." }),
-    },
-    {
-      key: "barcode",
-      label: "Barcode",
-      requirement: "strongly asked",
-      basis: "measured",
-      have: facts ? facts.withBarcode : null,
-      of,
-      ...(facts ? {} : { note: of === null ? "Your products have not been read yet." : NOT_COUNTED_YET }),
     },
   ];
 
