@@ -26,7 +26,7 @@ import {
   checkCitationReadiness, stopwordSet, type BusinessInfo,
 } from "../app/engine";
 import { buildAltText } from "../app/engine/alt-text";
-import { buildFaq } from "../app/engine/faq";
+import { buildFaq, liveFaqSources, type FaqOption } from "../app/engine/faq";
 import { parseCsv } from "./csv";
 
 const args = process.argv.slice(2);
@@ -47,7 +47,16 @@ const RB_BUSINESS: BusinessInfo = {
 };
 const business = flag("--business") === "rb" ? RB_BUSINESS : null;
 
-let products: { id: string; title: string; descriptionHtml: string; handle: string; price?: string; vendor?: string; productType?: string }[] = [];
+let products: {
+  id: string;
+  title: string;
+  descriptionHtml: string;
+  handle: string;
+  price?: string;
+  vendor?: string;
+  productType?: string;
+  options?: FaqOption[];
+}[] = [];
 let dict = "";
 if (which === "rb") {
   if (!positional[1] || !positional[2]) throw new Error("rb needs <products.json> <dictionary.txt>");
@@ -55,6 +64,9 @@ if (which === "rb") {
   products = raw.map((p: any) => ({
     id: String(p.id), title: p.title, descriptionHtml: p.body_html ?? "", handle: p.handle,
     price: p.variants?.[0]?.price, vendor: p.vendor, productType: p.product_type,
+    // The live path reads a product's options from its variants
+    // (live-questions.ts optionsOf); a products.json read carries them.
+    options: (p.options ?? []).map((o: any) => ({ name: String(o.name), values: (o.values ?? []).map(String) })),
   }));
   dict = fs.readFileSync(positional[2], "utf8");
 } else {
@@ -88,15 +100,19 @@ for (const [i, p] of products.entries()) {
     id: p.id, title: p.title, facts,
     summary: buildSummary(input),
     questions: buildQuestions(input),
-    // What the live path passes buildFaq: the shop's name, and the preset
-    // effectivePresetId gives a shop with no stored one (an empty dictionary
-    // reads as furniture). No mappings, the default cap, no options (a
-    // products.json read carries them, a CSV row does not; left out on both).
+    // What the live path passes buildFaq since CC-PROMPT-AI-READABILITY-4
+    // item 4c: the live sources only (liveFaqSources), the shop's name, the
+    // preset effectivePresetId gives a shop with no stored one (an empty
+    // dictionary reads as furniture), the product's options where the read
+    // carries them (products.json does, a CSV row does not), no mappings, the
+    // default cap. `source` is kept so the report can count per source.
     faq: buildFaq({
       title: p.title, descriptionHtml: p.descriptionHtml, facts, vendor: p.vendor,
+      productType: p.productType, options: p.options ?? null,
       shopName: which === "rb" ? "Republica BIO" : "Global Mobila",
       presetId: dict.trim() === "" ? "furniture" : null,
       business, language: lang,
+      sources: liveFaqSources(),
     }),
     fit_for: buildFitFor(input),
   });

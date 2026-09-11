@@ -170,7 +170,7 @@ function fallbackShopName(domain: string): string {
 /** The shop name persisted to Setting the last time extraction ran (see
  * catalogue.server.ts saveShopInfo). Null for a shop that has never run
  * extraction, so the caller falls back to the domain slug. */
-async function persistedShopName(shopId: string): Promise<string | null> {
+export async function persistedShopName(shopId: string): Promise<string | null> {
   const row = await db.setting.findUnique({
     where: { shopId_key: { shopId, key: SHOP_INFO_SETTING_KEY } },
   });

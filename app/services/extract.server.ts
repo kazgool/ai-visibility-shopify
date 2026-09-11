@@ -8,11 +8,14 @@ import {
   extractProduct,
   coverage,
   buildSummary,
-  buildQuestions,
   buildFitFor,
   splitFactsByLevel,
   type Fact,
 } from "../engine";
+import { faqSettingsFor } from "./faq-settings.server";
+import { effectivePresetId } from "./faq-settings";
+import { fieldsToWrite, liveQuestions, type LiveQuestionContext } from "./live-questions";
+import { persistedShopName } from "./llms-txt.server";
 import type { FieldValue } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
@@ -54,12 +57,7 @@ import type { BusinessInfo, Language } from "../engine";
  * The three companion fields, built from the same facts. Each is written only
  * if it has something honest to say — an empty capsule is worse than none.
  */
-function capsuleFields(
-  product: ProductInput,
-  facts: Fact[],
-  business: BusinessInfo | null = null,
-  language: Language = "en",
-): FieldValue[] {
+function capsuleFields(product: ProductInput, facts: Fact[], faq: LiveQuestionContext): FieldValue[] {
   const input = {
     title: product.title,
     descriptionHtml: product.descriptionHtml,
@@ -69,12 +67,15 @@ function capsuleFields(
     available: product.available,
     vendor: product.vendor ?? null,
     productType: product.productType ?? null,
-    business,
-    language,
+    business: faq.business,
+    language: faq.language,
   };
 
   const summary = buildSummary(input);
-  const questions = buildQuestions(input);
+  // The live list (CC-PROMPT-AI-READABILITY-4 item 4c): buildFaq with the
+  // sources that met the bar, where this used to be the business questions
+  // alone. The plain-text page below takes the same list.
+  const questions = liveQuestions(product, facts, faq);
   const fitFor = buildFitFor(input);
 
   // Empties are included on purpose: writeFacts uses them to withdraw a
@@ -96,6 +97,9 @@ async function cacheMirror(
   domain: string,
   product: ProductInput,
   facts: Fact[],
+  // The same live question list capsuleFields writes to the questions
+  // metafield, so the page, its FAQPage and this text never disagree.
+  faq: LiveQuestionContext,
   // BusinessRecord, not BusinessInfo: the mirror's Store section needs the
   // official profile URLs, which live on the record rather than on the
   // commercial answers the engine reads.
@@ -138,7 +142,7 @@ async function cacheMirror(
     url: product.onlineStoreUrl ?? `${publicBase}/products/${handle}`,
     description: product.descriptionHtml ?? "",
     summary: buildSummary(capsuleInput),
-    questions: buildQuestions(capsuleInput),
+    questions: liveQuestions(product, facts, faq),
     fitFor: buildFitFor(capsuleInput),
     business,
     facts,
@@ -264,6 +268,32 @@ export async function withdrawIfIneligible(
   return true;
 }
 
+/**
+ * What every product's buyer questions need from the shop, read once per
+ * pass (CC-PROMPT-AI-READABILITY-4 item 4c): the Dictionary screen's
+ * mappings, cap and preset, and the shop's name, which tells a third-party
+ * brand from the shop's own. The name comes from this pass's own read when
+ * it made one, else from the last one stored, so a product the pass does not
+ * publish still gets the same questions as one it does.
+ */
+async function liveQuestionContext(
+  shopId: string,
+  dictionary: string,
+  business: BusinessInfo | null,
+  language: Language,
+  shopInfo: ShopInfo | null,
+): Promise<LiveQuestionContext> {
+  const settings = await faqSettingsFor(shopId);
+  return {
+    business,
+    language,
+    presetId: effectivePresetId(settings.presetId, dictionary),
+    mappings: settings.mappings,
+    cap: settings.cap,
+    shopName: shopInfo?.name ?? (await persistedShopName(shopId)),
+  };
+}
+
 export async function dictionaryFor(shopId: string): Promise<string> {
   const row = await db.setting.findUnique({
     where: { shopId_key: { shopId, key: "dictionary" } },
@@ -368,6 +398,7 @@ export async function runBulkExtract(
   // Once per pass, after the store's language is known: every summary,
   // question and mirror heading below is written in it.
   const { language } = await contentLanguageFor(shopId);
+  const faqCtx = await liveQuestionContext(shopId, dictionary, business, language, shopInfo);
 
   // The merchant's toggles widen or narrow the read itself: with unlisted
   // products excluded they are not read by the pass at all, which is what the
@@ -454,7 +485,11 @@ export async function runBulkExtract(
     );
     if (humanRowCount(merge.human) > 0) report.wouldSkip += 1;
 
-    if (!options.dryRun && (facts.length > 0 || merge.facts.length > 0 || hasWithdrawableAutoValues(product))) {
+    // Every product enters since CC-PROMPT-AI-READABILITY-4 item 4c: its
+    // options, its brand and the business record answer buyer questions with
+    // no facts at all, so "nothing extracted" no longer means "nothing to
+    // write". fieldsToWrite keeps the rest as it was.
+    if (!options.dryRun) {
       // Push into the product-level write when there is something to write
       // (productFacts) OR something already written to withdraw. The old
       // `facts.length === 0` form missed the all-variant-level case: a
@@ -464,13 +499,13 @@ export async function runBulkExtract(
       // run) diverged from the metafields. A product with empty
       // productFacts and nothing withdrawable is still never pushed - the
       // no-op stays free.
-      if (merge.facts.length > 0 || merge.migrated || hasWithdrawableAutoValues(product)) {
-        batch.push({
-          product,
-          facts: merge.facts,
-          fields: capsuleFields(product, merge.facts, business, language),
-          human: merge,
-        });
+      const fields = fieldsToWrite(capsuleFields(product, merge.facts, faqCtx), {
+        facts: merge.facts.length,
+        migrated: merge.migrated,
+        withdrawable: hasWithdrawableAutoValues(product),
+      });
+      if (fields) {
+        batch.push({ product, facts: merge.facts, fields, human: merge });
         if (batch.length >= 8) await flush();
       }
       if (split.perVariant.size > 0) {
@@ -502,7 +537,7 @@ export async function runBulkExtract(
     // row one Admin round trip at a time - hundreds of jobs on a large store
     // to produce what the pass had in memory.
     if (!options.dryRun && eligibility(product, prefs) === "eligible") {
-      await cacheMirror(shopId, shop.domain, product, merge.facts, business, shopInfo, language);
+      await cacheMirror(shopId, shop.domain, product, merge.facts, faqCtx, business, shopInfo, language);
     }
 
     done += 1;
@@ -592,6 +627,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const { language } = await contentLanguageFor(shopId);
   const shopInfo = isPublished ? await fetchShopInfo(graphql) : null;
   if (shopInfo) await saveShopInfo(shopId, shopInfo);
+  const faqCtx = await liveQuestionContext(shopId, dictionary, business, language, shopInfo);
   const facts = extractProduct(product, dictionary, { extraStopwords });
 
   const split = splitFactsByLevel(facts, product.variants ?? []);
@@ -625,13 +661,13 @@ export async function extractOneProduct(shopId: string, productGid: string) {
     {
       product,
       facts: merge.facts,
-      fields: capsuleFields(product, merge.facts, business, language),
+      fields: capsuleFields(product, merge.facts, faqCtx),
       human: merge,
     },
   ]);
 
   if (isPublished) {
-    await cacheMirror(shopId, shop.domain, product, merge.facts, business, shopInfo, language);
+    await cacheMirror(shopId, shop.domain, product, merge.facts, faqCtx, business, shopInfo, language);
     if (outcome.written.length > 0 && product.handle) {
       await pingProducts(shopId, shop.domain, [product.handle]);
     }

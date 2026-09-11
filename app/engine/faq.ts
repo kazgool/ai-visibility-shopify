@@ -112,7 +112,61 @@ export type FaqInput = {
   shopName?: string | null;
   /** Questions per product. Absent is DEFAULT_FAQ_CAP. */
   cap?: number | null;
+  /**
+   * The sources this call publishes; absent is every source, which is what
+   * the corpus runs ask for. The live site passes liveFaqSources()
+   * (CC-PROMPT-AI-READABILITY-4 item 4c). A source left out is left out
+   * before anything is decided from it: its question neither suppresses a
+   * business question nor takes an answer another source would give.
+   */
+  sources?: readonly FaqSource[] | null;
 };
+
+/** Every source, in the order buildFaq builds them. */
+export const ALL_FAQ_SOURCES: readonly FaqSource[] = [
+  "section",
+  "merchant",
+  "mapping",
+  "preset",
+  "variants",
+  "vendor",
+  "business",
+];
+
+/**
+ * Section intents (b) on the live site, safety included: off, behind this one
+ * switch (CC-PROMPT-AI-READABILITY-4 item 4c). Hold-out run 4 judged them at
+ * 9.76% (section) and 9.86% (section:safety) against a 1% bar. Turned on only
+ * once they pass the hold-out bar on their own; the corpus runs ask for them
+ * whatever this says. While off, rubric rule 6 (a safety section with no
+ * safety question) does not apply to the live list: it is not the page's
+ * safety surface.
+ */
+export const FAQ_SECTION_INTENTS_LIVE = false;
+
+/**
+ * The merchant's own questions (a) on the live site: off. Judged with the
+ * batch-3 rubric on every one on Republica BIO (291, dev run 13) and on every
+ * hold-out store (29, hold-out run 4): 7 of 320 wrong, 2.19%, over the 1%
+ * bar. Five of the seven are the merchant's heading published as the
+ * question ("Ce continua?", "De ce alege produsul sau?"), which no rule can
+ * repair without rewriting the merchant's words; with every other class
+ * fixed the set would still not be under the bar on Republica BIO.
+ */
+export const FAQ_MERCHANT_QUESTIONS_LIVE = false;
+
+/** The sources the live site publishes: shop mappings, preset templates, options, brand, business record. */
+export function liveFaqSources(): FaqSource[] {
+  return [
+    ...(FAQ_SECTION_INTENTS_LIVE ? (["section"] as const) : []),
+    ...(FAQ_MERCHANT_QUESTIONS_LIVE ? (["merchant"] as const) : []),
+    "mapping",
+    "preset",
+    "variants",
+    "vendor",
+    "business",
+  ];
+}
 
 export const DEFAULT_FAQ_CAP = 8;
 export const MAX_ANSWER_CHARS = 600;
@@ -994,6 +1048,7 @@ type Ask = { q: string; intent: Intent | null; context: string | null; units: Un
 const partKey = (context: string | null) => context ?? "";
 
 export function buildFaq(input: FaqInput): FaqItem[] {
+  const enabled = new Set<FaqSource>(input.sources ?? ALL_FAQ_SOURCES);
   const p = phrases(input.language);
   const title = cleanOutput(input.title);
   const html = input.descriptionHtml ?? "";
@@ -1247,8 +1302,10 @@ export function buildFaq(input: FaqInput): FaqItem[] {
   // is not asked a second time from the business record.
   const b = input.business;
   const goods = !GIFT_CARD.test(title);
+  // Only a question that is published suppresses one: a merchant question
+  // left off the live list must not take the business answer with it.
   const shopAsked = ordered
-    .filter((x) => x.source === "merchant" || x.source === "mapping")
+    .filter((x) => (x.source === "merchant" || x.source === "mapping") && enabled.has(x.source))
     .map((x) => ` ${normalize(x.q)} `)
     .join(" ");
   const asked = (topic: keyof typeof BUSINESS_TOPICS) => BUSINESS_TOPICS[topic].test(shopAsked);
@@ -1275,10 +1332,12 @@ export function buildFaq(input: FaqInput): FaqItem[] {
     }
   }
 
-  // No question twice, no answer twice.
+  // No question twice, no answer twice - among the sources this call
+  // publishes, so a source left out cannot take an answer from one kept.
   const seenQ = new Set<string>();
   const seenA = new Set<string>();
   const unique = ordered.filter((item) => {
+    if (!enabled.has(item.source)) return false;
     const q = normalize(item.q);
     const a = normalize(item.a);
     if (q === "" || a === "" || seenQ.has(q) || seenA.has(a)) return false;
