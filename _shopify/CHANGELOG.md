@@ -32,6 +32,12 @@ nodes and 1,036 combinations - the full suite also green with `.env` renamed
 away, and `shopify theme check` on the extension, 11 files, no offenses.
 Nothing in it has been observed on a store either.
 
+A third batch, the same day and for the same deploy, built from
+`CC-PROMPT-AI-READABILITY-3.md`; its entries come first below. Its
+acceptance bar was not met: the FAQ engine is built, measured and committed,
+and wired into nothing live. What does reach the live path is that the
+question builder extraction already runs now asks business questions only.
+
 ### A corpus of other stores, split before any rule was written (11 September 2026)
 
 The FAQ engine of `CC-PROMPT-AI-READABILITY-3` had to work on any store, so
@@ -48,6 +54,26 @@ cocokind.com, wildone.com) chosen from their counts alone and never opened
 while writing them. The store data is gitignored; only the manifest, the
 rubrics and the reports are committed. `parseCsv` moved to `scripts/csv.ts`,
 shared by the audit runner and the corpus report.
+
+### The FAQ engine: the questions a product's own description answers (11 September 2026)
+
+`app/engine/faq.ts`, pure, English and Romanian. It asks, in this order: what
+the description's sections answer (warnings, use, composition, materials,
+storage, care, dimensions, contents, compatibility, who it is for,
+benefits), the merchant's own questions written in the description, the
+shop's mappings from the Dictionary screen, the clothing and fashion presets'
+templates for a dictionary group, the options a product really varies in, the
+maker when it is not the shop, and the shop's business answers. Eight per
+product by default; a warning question is never cut. A section is known by
+its heading's own words (`INTENT_KEYWORDS`; every keyword with its corpus
+count in `_shopify/corpus/intent-keywords.md`), never by a long heading that
+only mentions one, and a negated heading ("Fara alergeni", "No special care
+required") is no section. A bundle is answered per product or not at all.
+Romanian questions ask about "produsul X", so the verb agrees with a plural
+name ("Ce contine produsul Capsule cu pelin?"); the phrase table itself is
+unchanged. Every answer is the merchant's own text, cut only at a sentence,
+and a list or a set of warnings is whole or absent. The furniture preset's
+templates were written and removed again: the judge found them wrong.
 
 ### The shop's own questions, and which facts the product page shows (11 September 2026)
 
@@ -68,7 +94,71 @@ metafield fires no product webhook. Both content blocks pass it to the
 snippet, which counts the visible facts first so a product whose every fact
 is hidden prints no empty list. This is a new key on the existing shop
 metafield write, not a new kind of write; it is flagged for Marius all the
-same, against the letter of "no new write paths".
+same, against the letter of "no new write paths". The question mappings and
+the cap are stored but read by nothing live yet: only buildFaq reads them,
+and it is not wired (next entry).
+
+### The FAQ judge, and the bar not met (11 September 2026)
+
+Every question and answer judged by subagents against
+`_shopify/corpus/judge-rubric.md` (seven rules: answers the question, true
+to the data, meaning kept whole, plain language, no invented facts, no
+warning missed, no question twice), one verdict per item logged with store,
+product, question, answer, rule and reason (`_shopify/corpus/verdicts/`,
+gitignored with the store data). Reports: `_shopify/corpus/faq-judge-dev.md`
+and `faq-judge-holdout.md`. Dev, 29 stores, run dev13: 33 errors in 5,264,
+0.63%.
+
+The hold-out was run three times, each time on an engine frozen and
+committed before the run:
+
+| Run | Engine | Errors | Rate | Stores with 50+ Q&A over 1% |
+|---|---|---|---|---|
+| holdout2 | 6603cc7 | 105 of 1,087 | 9.66% | istyle.ro 24.90%, jlab.com 32.93%, animax.ro 2.56%, thesill.com 1.06% |
+| holdout3 | f92548f | 26 of 1,079 | 2.41% | terraissa.com 5.53%, thesill.com 1.06% |
+| holdout4 | c7af1cc | 108 of 1,293 | 8.35% | herbaris.ro 26.79%, miledy.ro 9.80%, gunner.com 2.38% |
+
+After each run the failing stores' errors were read, their classes fixed on
+dev, and those stores moved to dev with new unopened stores in their place,
+as the brief requires; `_shopify/corpus/manifest.md` records every move. The
+bar - 1% on the hold-out and on every hold-out store with 50 or more Q&A -
+was not met on any run. On holdout4, 57 of herbaris.ro's 86 errors are a
+warnings section the engine did not find; by source, options 0.23%, maker
+0.42%, merchant questions and preset templates 0%, description sections
+9.8%, and 59 missed warnings. Each new set of stores brought one or two with
+a convention not seen before, and no Romanian store was left unread, so the
+loop stopped after three runs for Marius to decide. Item 6, the wire-up, was
+not done: buildFaq reaches no FAQPage, no plain-text page and no llms.txt.
+
+### Questions on the live path: business only until the FAQ engine meets the bar (11 September 2026)
+
+buildQuestions, the builder extraction writes to the `questions` metafield
+and the plain-text page, asks from a fact's label no more. The generic
+"What {label} does X have?" was removed by the brief. The label-specific
+templates were to stay only if the judge found them within the bar, and it
+did not: "Ce dimensiuni are X?" was wrong on about a quarter of the furniture
+products it was asked of (about 83 of 316; the dimensions fact itself is
+the error), "Ce material are X?" on about one in ten (13 of 132); seats,
+contents and room were never shown to be within it. What is left is
+delivery, returns, warranty and payment. Measured with
+`scripts/audit-engine-run.ts` on the two catalogues, before (commit 0cc29d5)
+and now: Republica BIO, 189 products with its business answers, 1,124
+questions to 567; the furniture CSV, 355 products and no business record,
+676 to 0. Every removed question, by template:
+`scripts/audit-faq-compare.ts --after questions`. On the next extraction
+each product's auto-written questions are rewritten to the shorter list; a
+question a merchant wrote is never touched. The material and care questions
+of the clothing preset, which the judge found within the bar (0 of 610),
+live in buildFaq and arrive with it.
+
+### Visible facts, measured (11 September 2026)
+
+The same judge, rules 2 and 3, on every fact pair as the product page shows
+it. Dev, 29 stores: 37.4% wrong (3,044 of 8,132). Hold-out: 48.1% (1,047 of
+2,177). Per store and per dictionary group in
+`_shopify/corpus/facts-judge-dev.md` and `facts-judge-holdout.md`. Report
+only; no default changed. This is the number behind the "On the product
+page" switches, and the question whether facts should show by default.
 
 ### The engine measured before anything changed (11 September 2026)
 

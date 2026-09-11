@@ -4,23 +4,17 @@
 // Usage (from F:\ai-visibility-shopify):
 //   npx tsx scripts/corpus-headings.ts [--min 3] [--store <domain>]
 //
-// Only the dev stores listed in _shopify/corpus/manifest.md are read; the list
-// is fixed below so a hold-out file cannot be opened by accident. A heading is
+// Only the dev stores are read: the list comes from scripts/corpus-stores.ts,
+// the manifest's split as code, so a hold-out file cannot be opened by
+// accident and a store moved to dev is counted from then on. A heading is
 // what faq.ts treats as one: <h2>..<h6>, <strong>/<b> opening a paragraph, or a
 // text line ending in ":". Each heading counts once per product. Read only.
 import fs from "node:fs";
 import path from "node:path";
 import { csvProducts } from "./csv";
+import { CORPUS_STORES } from "./corpus-stores";
 
-export const DEV_STORES = [
-  "republicabio.ro", "globalmobila-fixture.csv", "secom.ro", "mobexpert.ro", "rusticart.ro",
-  "aquaframe.ro", "deathwishcoffee.com", "greatjonesgoods.com", "colourpop.com",
-  "beardbrand.com", "taylorstitch.com", "marialuciahohan.com", "zeedog.com",
-  "fablepets.com", "twelvesouth.com", "shokz.com",
-  // Moved from the reserves before any rule, to widen the English headings.
-  "brightland.co", "feals.com", "graza.co", "meowmeowtweet.com",
-  "moleculesofyouth.com", "toskovat.com", "truff.com",
-];
+export const DEV_STORES = CORPUS_STORES.filter((s) => s.set === "dev").map((s) => s.name);
 
 const DIR = "_shopify/corpus/stores";
 

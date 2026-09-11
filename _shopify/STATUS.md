@@ -61,6 +61,27 @@ products, Shella theme). Everything below section 0 was written on 3 August;
   reads as stuck.
 - The stray CSV capture and the audit tarball are out of the repo.
 
+**A third batch, same day, same deploy** (`CC-PROMPT-AI-READABILITY-3.md`):
+
+- A corpus of other stores' public `products.json` (38 stores by now, 11 of
+  them Romanian), split into dev and hold-out before any rule
+  (`_shopify/corpus/manifest.md`).
+- `app/engine/faq.ts`: the questions a product's own description answers,
+  plus the merchant's questions, the shop's mappings, options, maker and
+  business. Judged by subagents against a seven-rule rubric. Dev 0.63%.
+  **Hold-out bar (1%) not met** on three runs: 9.66%, 2.41%, 8.35%. Not
+  wired into anything live; the Dictionary screen's question mappings and cap
+  are stored and read by nothing live yet.
+- On the live path, buildQuestions asks business questions only: the
+  generic and the label-specific templates are gone (the judge found the
+  label ones about 26% and 10% wrong). Republica BIO 1,124 questions to 567;
+  the furniture CSV 676 to 0.
+- Dictionary screen: "Buyer questions" (heading and group mappings, cap) and
+  "On the product page" (a switch per group, mirrored to the shop metafield
+  `$app.facts_display`).
+- Visible facts measured, not changed: 37.4% wrong on dev, 48.1% on the
+  hold-out.
+
 Last full run: see the handover of 11 September and the CHANGELOG entries.
 
 **Not yet observed on a store**, and each needs Marius: the App embeds toggle
@@ -73,11 +94,14 @@ rewrite job after a language change, the nightly page read that fills B34,
 test in the PRD's success metrics.
 
 **Open decisions for Marius**: the refund policy text (SUPPORT.md promises
-only an answer); the phrase table, en and ro, as client-facing wording; the
-cap of six that cuts delivery, returns and payment from the questions on 183
-Republica BIO products (`engine-after.md`); the dictionary labels "Fara" and
-"Contine", which read badly as "Ce fara are X?"; and whether the head embed's
-deep link should move to the documented client_id form. The three PRD
+only an answer); the phrase table, en and ro, as client-facing wording,
+with the FAQ additions; whether the FAQ loop goes on (a fourth hold-out
+run needs herbaris.ro's and miledy.ro's errors read and new unopened
+Romanian stores) or the bar is amended; whether live questions should stay
+business-only until then (one revert brings the label templates back); and
+whether the head embed's deep link should move to the documented client_id
+form. The cap of six and the "Ce fara are X?" wording no longer arise: the
+templates that produced them are gone. The three PRD
 amendments were approved on 11 September. The new embed does not ship on for
 existing installs: app embeds are off until the merchant switches them on.
 

@@ -171,7 +171,10 @@ describe("the product text in the content language", () => {
     expect(qa).toEqual([]);
   });
 
-  it("keeps the label-specific questions, then business", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 item 2: the label-specific
+  // templates were outside the judge's 1% bar (dimensions about 26% wrong on
+  // the furniture stores, material about 10%), so only business is asked.
+  it("asks no label question, only business", () => {
     const qa = buildQuestions({
       title: "Masa",
       facts: [
@@ -186,11 +189,7 @@ describe("the product text in the content language", () => {
       business: { returnDays: 14 },
       language: "en",
     });
-    expect(qa.map((x) => x.q)).toEqual([
-      "What is Masa made of?",
-      "What are the dimensions of Masa?",
-      "Can I return Masa?",
-    ]);
+    expect(qa.map((x) => x.q)).toEqual(["Can I return Masa?"]);
   });
 
   it("asks no price question in either language", () => {

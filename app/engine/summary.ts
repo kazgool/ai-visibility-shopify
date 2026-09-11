@@ -139,47 +139,25 @@ export const MAX_QUESTIONS = 6;
  * The questions people actually ask an assistant, answered from the facts we
  * hold. A question without a real answer is never emitted.
  *
- * Order: the label-specific templates, then the business questions; at most
- * MAX_QUESTIONS in all.
+ * The business questions only, at most MAX_QUESTIONS.
+ *
+ * No question built from a fact's label any more (CC-PROMPT-AI-READABILITY-3
+ * item 2). The generic "What {label} does X have?" restated the facts list
+ * and published every extraction error twice. The label-specific templates
+ * were to stay only if the judge found them within the 1% bar, and it did
+ * not: "Ce dimensiuni are X?" was wrong on about a quarter of the furniture
+ * products it was asked of (the dimensions fact itself is the error), "Ce
+ * material are X?" on one in ten; seats, contents and room were never shown
+ * to be within it (_shopify/corpus/faq-judge-dev.md). The material and care
+ * questions of the clothing preset, which the judge did find within the bar,
+ * live in faq.ts, which replaces this builder once it meets the bar.
  */
 export function buildQuestions(input: CapsuleInput): QA[] {
   const p = phrases(input.language);
-  // "What is Set Masa &amp; 6 Scaune made of?" is the exact failure the
+  // "Can I return Set Masa &amp; 6 Scaune?" is the exact failure the
   // plain-characters rule exists for; clean the title once, at the top.
   const title = cleanOutput(input.title);
   const out: QA[] = [];
-  const byLabel = new Map(input.facts.map((f) => [f.k.toLowerCase(), f]));
-
-  const material =
-    byLabel.get("material") ?? byLabel.get("materials") ?? byLabel.get("fabric");
-  if (material) out.push({ q: p.qMaterial(title), a: `${material.v}.` });
-
-  const size =
-    byLabel.get("dimensions") ?? byLabel.get("dimensiuni") ?? byLabel.get("size");
-  if (size) out.push({ q: p.qDimensions(title), a: `${size.v}.` });
-
-  // Seats (people/places) and set contents (6 chairs) are different facts.
-  // The presets keep them under separate labels; each gets its own question.
-  const seats = byLabel.get("seats") ?? byLabel.get("locuri");
-  if (seats) out.push({ q: p.qSeats(title), a: `${seats.v}.` });
-
-  const includes = byLabel.get("includes") ?? byLabel.get("continut") ?? byLabel.get("set");
-  if (includes) out.push({ q: p.qIncludes(title), a: `${includes.v}.` });
-
-  // A merchant's own dictionary may still use one combined "Capacity" label;
-  // stay neutral there rather than guess which meaning they intended.
-  const capacity = byLabel.get("capacity") ?? byLabel.get("capacitate");
-  if (capacity && !seats && !includes) {
-    out.push({ q: p.qIncludesOrSeats(title), a: `${capacity.v}.` });
-  }
-
-  const room = byLabel.get("room") ?? byLabel.get("camera") ?? byLabel.get("occasion");
-  if (room) out.push({ q: p.qRoom(title), a: `${room.v}.` });
-
-  // No generic "What {label} does X have?" question any more
-  // (CC-PROMPT-AI-READABILITY-3 item 2): it restated the facts list, published
-  // every extraction error twice, and under the cap cut safety labels while
-  // trivia stayed. faq.ts replaces this builder once it meets the bar.
 
   // Commercial questions (WP 1.6.7/1.6.9 port). Everything here is a product
   // for sale, so the 1.6.9 "only about things you actually sell" rule is

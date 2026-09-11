@@ -51,8 +51,11 @@ describe("buildSummary", () => {
 describe("buildQuestions", () => {
   const qa = buildQuestions(base);
 
-  it("answers what it is made of", () => {
-    expect(qa.some((q) => /made of/i.test(q.q))).toBe(true);
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 item 2: the judge did not
+  // find the label-specific templates within the 1% bar, so a fact's label
+  // asks nothing here; buildFaq's clothing preset asks material where it was.
+  it("asks nothing from a fact's label", () => {
+    expect(qa.some((q) => /made of/i.test(q.q))).toBe(false);
   });
 
   // Changed deliberately with the summary test above: no price question.

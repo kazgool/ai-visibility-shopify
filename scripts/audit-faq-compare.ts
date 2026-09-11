@@ -1,12 +1,13 @@
 // Before and after the FAQ builder changed (CC-PROMPT-AI-READABILITY-3 item 6).
 //
 // Usage (from F:\ai-visibility-shopify):
-//   npx tsx scripts/audit-faq-compare.ts <before-dump.json> <after-dump.json> [--out file.md]
+//   npx tsx scripts/audit-faq-compare.ts <before-dump.json> <after-dump.json> [--after faq|questions] [--out file.md]
 //
 // Both files are scripts/audit-engine-run.ts --dump outputs of the same
 // catalogue. "Before" is the question list the live path wrote (the
-// `questions` field, buildQuestions); "after" is the list it writes now (the
-// `faq` field, buildFaq, when present, else `questions`). Prints the totals per
+// `questions` field, buildQuestions); "after" is, with `--after faq` (the
+// default), what buildFaq would write once wired, and with `--after questions`
+// what the live path writes now. Prints the totals per
 // source after, and every question that was there before and is gone, grouped
 // by its template (the product title replaced by {title}), with counts and the
 // products it left. Read only.
@@ -14,7 +15,9 @@ import fs from "node:fs";
 
 const args = process.argv.slice(2);
 const outIdx = args.indexOf("--out");
-const [beforeFile, afterFile] = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1] === "--out"));
+const afterIdx = args.indexOf("--after");
+const afterField = afterIdx === -1 ? "faq" : args[afterIdx + 1];
+const [beforeFile, afterFile] = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
 if (!beforeFile || !afterFile) throw new Error("usage: audit-faq-compare.ts <before.json> <after.json> [--out file.md]");
 
 type Q = { q: string; a: string; source?: string };
@@ -22,7 +25,8 @@ const load = (f: string) => JSON.parse(fs.readFileSync(f, "utf8"));
 const before = load(beforeFile);
 const after = load(afterFile);
 const afterById = new Map<string, any>(after.products.map((p: any) => [p.id, p]));
-const listOf = (p: any, useFaq: boolean): Q[] => (useFaq && Array.isArray(p.faq) ? p.faq : p.questions ?? []);
+const listOf = (p: any, after: boolean): Q[] =>
+  after && afterField === "faq" && Array.isArray(p.faq) ? p.faq : p.questions ?? [];
 // Titles in a CSV export keep their entities ("&amp;"); the questions carry
 // the cleaned title, so both spellings stand for {title}.
 const template = (q: string, title: string) =>
@@ -58,7 +62,7 @@ for (const p of before.products) {
 }
 
 const lines = [
-  `# FAQ before and after: ${before.which} (${before.products.length} products)`,
+  `# FAQ before and after: ${before.which} (${before.products.length} products), after = ${afterField === "faq" ? "buildFaq, if wired" : "the live buildQuestions"}`,
   "",
   `Questions before: ${beforeTotal}. After: ${afterTotal}.`,
   "",
