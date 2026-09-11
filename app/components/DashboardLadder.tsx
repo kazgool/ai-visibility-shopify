@@ -48,7 +48,7 @@ export type LadderProps = {
   /** Client-side navigation when the route supplies it; a plain anchor
    *  otherwise, which is what a test gets. */
   linkTo?: (to: string, children: ReactNode) => ReactNode;
-  /** Everything the five steps do not own, reachable and out of the way. */
+  /** Everything the six steps do not own, reachable and out of the way. */
   everythingElse?: ReactNode;
 };
 
@@ -342,8 +342,8 @@ export function DashboardLadder(props: LadderProps) {
           </Text>
           <Text as="p" variant="bodySm" tone="subdued">
             {remaining === 0
-              ? "All five steps are finished. Nothing here needs you."
-              : `Five steps, in this order. ${remaining} still to do; each one says what it is for and only the next one is open.`}
+              ? "All six steps are finished. Nothing here needs you."
+              : `Six steps, in this order. ${remaining} still to do; each one says what it is for and only the next one is open.`}
           </Text>
         </BlockStack>
 

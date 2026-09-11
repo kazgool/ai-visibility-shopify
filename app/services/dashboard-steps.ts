@@ -32,7 +32,7 @@ import { formatDay, type PassState } from "./report-metrics";
 import { describeJobKind } from "./job-kinds";
 import { passProblem } from "./dashboard-metrics";
 
-export type StepKey = "reach" | "publish" | "right" | "everywhere" | "yours";
+export type StepKey = "reach" | "publish" | "right" | "everywhere" | "show" | "yours";
 
 export type StepStatus =
   /** Finished. Collapses to one line with its result. */
@@ -109,6 +109,12 @@ export type LadderInput = {
   crawlers: CrawlerVerdict[];
   embed: EmbedLike;
   embedLink: string;
+  /** The "AI Visibility content" embed, which embed-check reports apart from
+   *  the head embed (CC-PROMPT-AI-READABILITY-2 item 8), and the theme editor
+   *  link that opens it ready to switch on. Off after every deploy that adds
+   *  it, on every store, until the merchant switches it on. */
+  contentEmbed: EmbedLike;
+  contentEmbedLink: string;
   hasAccess: boolean;
   freeProductsRemaining: number;
   /** The last dry run, through readPass. Step three's action queues it. */
@@ -208,6 +214,25 @@ function embedSentence(embed: EmbedLike): string {
   return 'Turn on "AI Visibility" under App embeds. Nothing is published until you do, however much the app has written.';
 }
 
+/** Step five's result: the content embed has the same three states as the
+ *  head embed, and the same rule that an unknown is never said to be an off. */
+function contentEmbedSentence(embed: EmbedLike): string {
+  const state = embedState(embed);
+  if (state === "active") {
+    return `Verified in ${embed?.themeName || "your published theme"}. Every product with something written shows it on its page.`;
+  }
+  if (state === "unknown") {
+    return "We could not read your theme settings, so we do not know whether this is on. That is an unknown, not an off - open the theme editor and check.";
+  }
+  if (embed?.staleReference) {
+    return 'Enabled, but pointing at an old development version, so it shows nothing. Open the theme editor, switch "AI Visibility content" off and on again, and save.';
+  }
+  if (embed?.presentButDisabled) {
+    return 'Added but switched off. Open the theme editor, turn on "AI Visibility content" and save.';
+  }
+  return 'Turn on "AI Visibility content" under App embeds. The summary, facts and buyer questions this app wrote reach your product pages only when you do.';
+}
+
 /** The "Make it yours" line shown while the content language is unknown. */
 export const LANGUAGE_STEP_LABEL = "Choose the language your product pages are written in";
 
@@ -225,6 +250,8 @@ export function resolveLadder(input: LadderInput): Ladder {
     crawlers,
     embed,
     embedLink,
+    contentEmbed,
+    contentEmbedLink,
     hasAccess,
     freeProductsRemaining,
     previewPass,
@@ -270,10 +297,14 @@ export function resolveLadder(input: LadderInput): Ladder {
     publish: embedStatus === "active" ? "done" : "open",
     right: rightNotNeeded ? "not_needed" : rightDone ? "done" : "open",
     everywhere: everywhereDone ? "done" : "open",
+    show: embedState(contentEmbed) === "active" ? "done" : "open",
     yours: yoursDone ? "done" : "open",
   };
 
-  const order: StepKey[] = ["reach", "publish", "right", "everywhere", "yours"];
+  // "show" sits after the catalogue pass and before the optional settings:
+  // the visible block prints what the pass wrote, so it has nothing to show
+  // before step four, and "Make it yours" is optional and last (item 8).
+  const order: StepKey[] = ["reach", "publish", "right", "everywhere", "show", "yours"];
   const currentKey = order.find((k) => statuses[k] === "open") ?? null;
   const currentIndex = currentKey ? order.indexOf(currentKey) : order.length;
 
@@ -282,6 +313,7 @@ export function resolveLadder(input: LadderInput): Ladder {
     publish: "Can you publish at all",
     right: "Is it right",
     everywhere: "Do it everywhere",
+    show: "Show this app's content on your product pages",
     yours: "Make it yours",
   };
 
@@ -294,6 +326,8 @@ export function resolveLadder(input: LadderInput): Ladder {
       "See the coverage score and three products of your choosing fully processed, on your own catalogue, before any money moves.",
     everywhere:
       "One pass over the whole catalogue, writing the attributes into your own Shopify metafields, where they stay whatever happens to us.",
+    show:
+      "Search engines and AI assistants read the text on a page. This puts the summary, the key facts and the buyer questions on each product page, in your theme's own fonts.",
     yours:
       "The settings that make the output match your trade, your terms and your collection pages. Every one of them is optional.",
   };
@@ -415,6 +449,36 @@ export function resolveLadder(input: LadderInput): Ladder {
                 disabled: false,
                 disabledReason: null,
               },
+      };
+    }
+
+    if (key === "show") {
+      const locked = index > currentIndex;
+      const active = embedState(contentEmbed) === "active";
+      return {
+        ...base,
+        result: contentEmbedSentence(contentEmbed),
+        action: active
+          ? null
+          : {
+              label: "Open theme editor",
+              kind: "external",
+              url: contentEmbedLink,
+              primary: key === currentKey,
+              disabled: locked,
+              disabledReason: locked
+                ? lockedBecause(titles[order[currentIndex]], currentIndex + 1)
+                : null,
+            },
+        extra: active
+          ? null
+          : {
+              label: "Check again",
+              kind: "revalidate",
+              primary: false,
+              disabled: false,
+              disabledReason: null,
+            },
       };
     }
 

@@ -60,6 +60,16 @@ async function main() {
   console.log(`  staleReference      ${embed.staleReference}`);
   console.log(`  mode                ${embed.mode}`);
   console.log(`  output switched off ${embed.outputDisabled}`);
+  // The visible-content embed, counted apart since 11 September 2026: it
+  // carries the same uid, and before it was read by handle it was counted as
+  // a second copy of the block above.
+  console.log("");
+  console.log(`  "AI Visibility content" embed`);
+  console.log(`    blocks present    ${embed.content.instances}`);
+  console.log(`    rendering         ${embed.content.activeInstances}`);
+  console.log(`    active            ${embed.content.active}`);
+  console.log(`    presentButDisabled ${embed.content.presentButDisabled}`);
+  console.log(`    staleReference    ${embed.content.staleReference}`);
 
   console.log("");
   if (embed.unreadable) {

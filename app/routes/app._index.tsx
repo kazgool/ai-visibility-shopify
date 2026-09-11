@@ -27,7 +27,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
-import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
+import { checkAppEmbed, contentEmbedDeepLink, embedDeepLink } from "../services/embed-check.server";
 import { businessFor } from "../services/business.server";
 import { hasPaidAccess, freeProductIds } from "../services/billing.server";
 import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
@@ -269,6 +269,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     crawlers: crawlerVerdicts,
     embed,
     embedLink: embedDeepLink(session.shop),
+    contentEmbed: embed.content,
+    contentEmbedLink: contentEmbedDeepLink(session.shop),
     hasAccess,
     freeProductsRemaining,
     previewPass: asPass(lastDry),

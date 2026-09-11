@@ -47,6 +47,9 @@ function input(over: Partial<LadderInput> = {}): LadderInput {
     crawlers: [],
     embed: { active: false },
     embedLink: "https://example.myshopify.com/admin/themes/1/editor",
+    contentEmbed: { active: false },
+    contentEmbedLink:
+      "https://example.myshopify.com/admin/themes/current/editor?context=apps&template=product&activateAppId=key/ai-visibility-content",
     hasAccess: false,
     freeProductsRemaining: 3,
     previewPass: NONE,
@@ -81,7 +84,9 @@ function allText(ladder: Ladder): string {
 }
 
 describe("the order is fixed and there is exactly one primary", () => {
-  it("has five steps in the specified order, always", () => {
+  // Six since 11 September 2026 (CC-PROMPT-AI-READABILITY-2 item 8): the
+  // content embed's step sits between the catalogue pass and the settings.
+  it("has six steps in the specified order, always", () => {
     for (const over of [
       {},
       { crawlerJob: { status: "done" } },
@@ -93,9 +98,10 @@ describe("the order is fixed and there is exactly one primary", () => {
         "publish",
         "right",
         "everywhere",
+        "show",
         "yours",
       ]);
-      expect(ladder.steps.map((s) => s.number)).toEqual([1, 2, 3, 4, 5]);
+      expect(ladder.steps.map((s) => s.number)).toEqual([1, 2, 3, 4, 5, 6]);
     }
   });
 
@@ -123,11 +129,12 @@ describe("a fresh store with no runs", () => {
     expect(step(ladder, "publish").status).toBe("locked");
     expect(step(ladder, "right").status).toBe("locked");
     expect(step(ladder, "everywhere").status).toBe("locked");
+    expect(step(ladder, "show").status).toBe("locked");
     expect(step(ladder, "yours").status).toBe("locked");
   });
 
   it("disables every locked action and says why in words", () => {
-    for (const key of ["publish", "right", "everywhere", "yours"] as StepKey[]) {
+    for (const key of ["publish", "right", "everywhere", "show", "yours"] as StepKey[]) {
       const s = step(ladder, key);
       expect(s.action?.disabled).toBe(true);
       expect(s.action?.disabledReason).toBe("Step 1, can they reach you, comes first.");
@@ -311,6 +318,7 @@ describe("a paid store with everything done", () => {
       crawlerJob: { status: "done" },
       crawlers: [{ agent: "GPTBot", cause: "ok" }],
       embed: { active: true, themeName: "Dawn" },
+      contentEmbed: { active: true, themeName: "Dawn" },
       hasAccess: true,
       lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
       hasDictionary: true,
@@ -330,7 +338,7 @@ describe("a paid store with everything done", () => {
     expect(primaryCount(ladder)).toBe(0);
   });
 
-  it("collapses all five to a result line", () => {
+  it("collapses all six to a result line", () => {
     for (const s of ladder.steps) {
       expect(["done", "not_needed"]).toContain(s.status);
       expect(s.result).toBeTruthy();
@@ -344,6 +352,50 @@ describe("a paid store with everything done", () => {
       .flatMap((s) => [s.action?.disabledReason, s.extra?.disabledReason])
       .filter(Boolean);
     expect(reasons).toEqual([]);
+  });
+});
+
+describe("step five: the content embed (item 8)", () => {
+  const afterThePass = {
+    crawlerJob: { status: "done" },
+    embed: { active: true, themeName: "Shella" },
+    hasAccess: true,
+    lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
+  } as const;
+
+  it("is current after the catalogue pass while the content embed is off, with the theme editor link", () => {
+    const ladder = resolveLadder(input(afterThePass));
+    const show = step(ladder, "show");
+    expect(ladder.currentKey).toBe("show");
+    expect(show.title).toBe("Show this app's content on your product pages");
+    expect(show.action).toMatchObject({
+      label: "Open theme editor",
+      kind: "external",
+      primary: true,
+      url: expect.stringContaining("activateAppId=key/ai-visibility-content"),
+    });
+    expect(show.extra?.label).toBe("Check again");
+    expect(show.result).toContain('Turn on "AI Visibility content" under App embeds');
+    expect(primaryCount(ladder)).toBe(1);
+    expect(step(ladder, "yours").action?.disabledReason).toBe(
+      "Step 5, show this app's content on your product pages, comes first.",
+    );
+  });
+
+  it("is done when embed-check sees the content embed active, and names the theme", () => {
+    const show = step(resolveLadder(input({ ...afterThePass, contentEmbed: { active: true, themeName: "Shella" } })), "show");
+    expect(show.status).toBe("done");
+    expect(show.result).toBe("Verified in Shella. Every product with something written shows it on its page.");
+    expect(show.action).toBeNull();
+  });
+
+  it("says switched off, stale, or unknown, never guessing", () => {
+    const off = step(resolveLadder(input({ ...afterThePass, contentEmbed: { active: false, presentButDisabled: true } })), "show");
+    expect(off.result).toContain('Added but switched off. Open the theme editor, turn on "AI Visibility content"');
+    const stale = step(resolveLadder(input({ ...afterThePass, contentEmbed: { active: false, staleReference: true } })), "show");
+    expect(stale.result).toContain("old development version");
+    const unknown = step(resolveLadder(input({ ...afterThePass, contentEmbed: { active: false, unreadable: true } })), "show");
+    expect(unknown.result).toContain("an unknown, not an off");
   });
 });
 
@@ -365,12 +417,14 @@ describe("the one-at-a-time guard is kind-agnostic and names the job", () => {
   });
 });
 
-describe("step five is three separate decisions", () => {
+// Step six since item 8; the content embed is on here so the step is reached.
+describe("the last step is three separate decisions", () => {
   it("carries one sub-line per setting, each with its own done state", () => {
     const ladder = resolveLadder(
       input({
         crawlerJob: { status: "done" },
         embed: { active: true },
+        contentEmbed: { active: true },
         hasAccess: true,
         lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
         hasDictionary: true,
@@ -394,6 +448,7 @@ describe("step five is three separate decisions", () => {
     const everythingElse = {
       crawlerJob: { status: "done" },
       embed: { active: true },
+      contentEmbed: { active: true },
       hasAccess: true,
       lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
       hasDictionary: true,

@@ -28,6 +28,9 @@ function input(over: Partial<LadderInput> = {}): LadderInput {
     crawlers: [],
     embed: { active: false },
     embedLink: "https://example.myshopify.com/admin/themes/1/editor",
+    contentEmbed: { active: false },
+    contentEmbedLink:
+      "https://example.myshopify.com/admin/themes/current/editor?context=apps&template=product&activateAppId=key/ai-visibility-content",
     hasAccess: false,
     freeProductsRemaining: 3,
     previewPass: NONE,
@@ -93,13 +96,15 @@ describe("a fresh store", () => {
     expect(primary).not.toContain("2. Can you publish at all");
   });
 
-  it("shows all five steps, numbered, in order", () => {
+  // Six since item 8 of CC-PROMPT-AI-READABILITY-2.
+  it("shows all six steps, numbered, in order", () => {
     const positions = [
       "1. Can they reach you",
       "2. Can you publish at all",
       "3. Is it right",
       "4. Do it everywhere",
-      "5. Make it yours",
+      "5. Show this app's content on your product pages",
+      "6. Make it yours",
     ].map((s) => t.indexOf(s));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -196,6 +201,7 @@ describe("a paid store with everything done", () => {
   const html = markup({
     crawlerJob: { status: "done" },
     embed: { active: true, themeName: "Dawn" },
+    contentEmbed: { active: true, themeName: "Dawn" },
     hasAccess: true,
     lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
     hasDictionary: true,
@@ -218,7 +224,7 @@ describe("a paid store with everything done", () => {
   });
 
   it("says the path is finished", () => {
-    expect(t).toContain("All five steps are finished");
+    expect(t).toContain("All six steps are finished");
   });
 
   it("keeps the paid shop's preview reachable even though the step is not needed", () => {
@@ -227,7 +233,7 @@ describe("a paid store with everything done", () => {
 });
 
 describe("everything else", () => {
-  it("is rendered behind one disclosure at the bottom, below step five", () => {
+  it("is rendered behind one disclosure at the bottom, below the last step", () => {
     const html = renderToStaticMarkup(
       <AppProvider i18n={{}}>
         <DashboardLadder
@@ -242,7 +248,7 @@ describe("everything else", () => {
       </AppProvider>,
     );
     expect(text(html)).toContain("Everything else");
-    expect(html.indexOf("Everything else")).toBeGreaterThan(html.indexOf("5. Make it yours"));
+    expect(html.indexOf("Everything else")).toBeGreaterThan(html.indexOf("6. Make it yours"));
     // Closed, so its contents are not rendered; the disclosure is what is on
     // the screen. Nothing is removed - it is one click away.
     expect(html).toContain('id="ladder-everything-else"');

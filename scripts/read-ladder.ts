@@ -15,7 +15,7 @@ import db from "../app/db.server";
 import { adminGraphql } from "../app/services/admin.server";
 import { businessFor, contentLanguageFor } from "../app/services/business.server";
 import { hasPaidAccess, freeProductIds } from "../app/services/billing.server";
-import { checkAppEmbed, embedDeepLink } from "../app/services/embed-check.server";
+import { checkAppEmbed, contentEmbedDeepLink, embedDeepLink } from "../app/services/embed-check.server";
 import { readPass } from "../app/services/report-metrics";
 import { resolveLadder } from "../app/services/dashboard-steps";
 
@@ -99,6 +99,8 @@ async function main() {
     crawlers: Array.from(latest.values()).map((c) => ({ agent: c.agent, cause: c.cause ?? "unknown" })),
     embed,
     embedLink: embedDeepLink(shop.domain),
+    contentEmbed: embed.content,
+    contentEmbedLink: contentEmbedDeepLink(shop.domain),
     hasAccess,
     freeProductsRemaining: Math.max(0, 3 - freeUsed),
     previewPass: asPass(lastDry),
