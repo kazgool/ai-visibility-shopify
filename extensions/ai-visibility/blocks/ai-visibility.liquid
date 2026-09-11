@@ -1,5 +1,5 @@
 {% comment %}
-  AI Visibility — app embed block.
+  AI Visibility - app embed block.
 
   Static markup only: no JavaScript, no fetch, no external requests. Everything
   needed is already in the metafields at render time (PRD §5.2). Built for
@@ -7,9 +7,9 @@
   cheapest way to guarantee that is to ship nothing that executes.
 
   Two modes, chosen by the merchant after we detect what the theme already does:
-    extend  — emit only the properties the theme's Product node omits, linked
+    extend  - emit only the properties the theme's Product node omits, linked
               to it by @id. Default, and the honest choice.
-    full    — emit a complete Product node, for themes with none of their own.
+    full    - emit a complete Product node, for themes with none of their own.
 {% endcomment %}
 
 {%- if block.settings.enabled -%}
@@ -19,6 +19,7 @@
   {%- assign av_questions = product.metafields['$app'].questions.value -%}
   {%- assign av_business = shop.metafields['$app'].business.value -%}
   {%- assign av_org_id = shop.metafields['$app'].theme_scan.value.organizationId -%}
+  {%- assign av_theme_product_id = shop.metafields['$app'].theme_scan.value.productId -%}
   {%- comment -%}
     The @id our own Organization node carries when we emit one below. The
     theme scan recognises this suffix as ours and excludes it when deciding
@@ -158,7 +159,30 @@
   {%- endif -%}
 
   {%- if template.name == 'product' and product -%}
-    {%- if block.settings.mode == 'full' -%}
+    {%- comment -%}
+      Extend needs something to extend. The scan records the @id of the
+      theme's own Product node; a theme that emits one carrying no @id gives
+      us nothing to attach to. Extending it anyway emitted a fragment under
+      an @id we invented, which nothing else references: the theme's
+      complete node plus an orphan of ours, read as two products, with
+      everything this module adds hanging off the orphan.
+
+      Emitting our own complete node instead would be worse, not better -
+      two complete Product nodes is the thing this app refuses outright, and
+      the reason it has an extend mode at all. So in that one case the
+      Product node is skipped entirely and the SEO screen says so (B33): the
+      merchant turns the theme's own product schema off, which most themes
+      including Shella offer, and the next scan finds no theme node, which
+      is the ordinary full-mode case and needs no special handling here.
+
+      The mirror link, the llms.txt link and the snippet directive below are
+      unaffected: they are not schema and cannot collide.
+    {%- endcomment -%}
+    {%- assign av_product_ld = true -%}
+    {%- if block.settings.mode == 'extend' and av_theme_product_id == blank -%}
+      {%- assign av_product_ld = false -%}
+    {%- endif -%}
+    {%- if av_product_ld and block.settings.mode == 'full' -%}
       <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -243,7 +267,7 @@
           {%- endif %}
         }
       </script>
-    {%- elsif av_facts or av_summary -%}
+    {%- elsif av_product_ld and av_facts or av_product_ld and av_summary -%}
       {%- comment -%}
         Extend mode: never a second complete Product node. We add only what
         themes almost never emit, referencing the theme's node by @id so an
@@ -253,7 +277,11 @@
         {
           "@context": "https://schema.org",
           "@type": "Product",
-          "@id": {{ shop.url | append: product.url | append: '#product' | json }},
+          {%- comment -%}
+            The theme's own @id, recorded by the scan. Never one of ours:
+            an invented id merges with nothing and makes a second product.
+          {%- endcomment -%}
+          "@id": {{ av_theme_product_id | json }},
           {%- comment -%} Our emitter marker - see the Organization node above. {%- endcomment -%}
           {%- comment -%}
             Every optional field below carries a LEADING comma, and the last

@@ -92,7 +92,8 @@ export type FindingCode =
   | "B29"
   | "B30"
   | "B31"
-  | "B32";
+  | "B32"
+  | "B33";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -184,6 +185,7 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   B30: "Blog post that links to no product and no collection",
   B31: "The first image on the page is lazy-loaded",
   B32: "Scripts the product page loads, by origin",
+  B33: "The theme's Product node carries no @id, so ours is held back",
 };
 
 /**
@@ -263,6 +265,12 @@ export const CHECK_METHOD: Partial<Record<FindingCode, string>> = {
     "identify - what paints largest depends on the viewport and this app " +
     "fetches HTML with no browser. On many themes the first image is the shop " +
     "logo, which is a smaller fact than a lazy hero image.",
+  B33:
+    "Raised only when the theme emits a Product node with no @id of its own. " +
+    "An @id is what lets two sets of data describe one product; without it " +
+    "nothing can be attached, and a second complete node would be read as a " +
+    "second product. So this app publishes no Product node on that page at " +
+    "all, and says so here rather than leaving the absence unexplained.",
   B32:
     "A count of the script tags on the page by the host they load from, with " +
     "inline scripts as their own group. Break The Web's \"ghost code\" is the " +
@@ -433,6 +441,7 @@ export const FINDING_OWNER: Record<FindingCode, FindingOwner> = {
   B30: "merchant",
   B31: "theme",
   B32: "theme",
+  B33: "theme",
 };
 
 /**
@@ -491,6 +500,7 @@ export const OWNER_LABEL: Record<FindingCode, string> = {
   B30: "Blog posts that link to no product and no collection",
   B31: "The main product photo waits before it loads",
   B32: "Code your product page loads, by source",
+  B33: "Your theme's product description blocks ours from being added",
 };
 
 /**
@@ -832,6 +842,17 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
       "number, so this is here to be watched and not to be fixed.",
     where: "Nothing to do. It is on the screen so you can see when it changes.",
   },
+  B33: {
+    what:
+      "Your theme already describes this product to search engines, in a way that leaves nowhere " +
+      "for our details to attach. Two descriptions of one product on one page are worse than " +
+      "one, so this app publishes none here rather than compete with your theme. Everything else " +
+      "it does on this page is unaffected.",
+    where:
+      "Switch off your theme's own product description for search engines, then run this check " +
+      "again. Most themes have that switch; on some it is a line a developer removes. This app " +
+      "then publishes the whole description, with the details read from your own product text.",
+  },
 };
 
 /**
@@ -897,6 +918,7 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   B30: "No blog post links to a product or a collection",
   B31: "The main product photo waits before it loads, on every page",
   B32: "Code your product page loads, by source",
+  B33: "Your theme's product description blocks ours, on every product page",
 };
 
 /**
@@ -968,4 +990,5 @@ export const FIX_SHAPE: Record<FindingCode, FixShape> = {
   // asks how a fix is made. They carry a value because the record is total.
   B29: "onceForTheShop",
   B32: "onceForTheShop",
+  B33: "onceForTheShop",
 };

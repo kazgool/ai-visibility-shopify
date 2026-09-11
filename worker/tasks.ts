@@ -952,16 +952,51 @@ export const seo_watch: Task = async (_payload, helpers) => {
  * logged and skipped. Both inside the try, because the second calls the Admin
  * API and an expired token throws.
  */
-export const seo_scan_products: Task = async (_payload, helpers) => {
-  const shops = await db.shop.findMany({ where: { uninstalledAt: null } });
+/**
+ * The nightly page read, and the same read on demand.
+ *
+ * With no payload it is the cron: every installed shop, in turn. With a
+ * `shopId` it is one shop, asked for from the SEO screen - a merchant who has
+ * just installed the app should not have to wait until 03:45 UTC to see their
+ * own pages read, which is what "the rest by tomorrow night" meant on a paid
+ * setup day. The budget is the same either way: the per-shop cap inside
+ * `scanProductPagesForShop` is what stops a manual run from spending a week
+ * of reads in one afternoon.
+ */
+export const seo_scan_products: Task = async (payload, helpers) => {
+  const { shopId, jobRunId } = (payload ?? {}) as { shopId?: string; jobRunId?: string };
+  const shops = await db.shop.findMany({
+    where: shopId ? { id: shopId, uninstalledAt: null } : { uninstalledAt: null },
+  });
 
+  if (jobRunId) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: { status: "running", startedAt: new Date(), total: shops.length },
+    });
+  }
+
+  let failure: string | null = null;
   for (const shop of shops) {
     try {
       await scanProductPagesForShop(shop, helpers.logger);
     } catch (error) {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
-      helpers.logger.error(`seo_scan_products failed for ${shop.domain}: ${describeError(error)}`);
+      failure = describeError(error);
+      helpers.logger.error(`seo_scan_products failed for ${shop.domain}: ${failure}`);
     }
+  }
+
+  if (jobRunId) {
+    await db.jobRun.update({
+      where: { id: jobRunId },
+      data: {
+        status: failure ? "failed" : "done",
+        finishedAt: new Date(),
+        progress: shops.length,
+        report: failure ? ({ error: failure } as any) : undefined,
+      },
+    });
   }
 };
 

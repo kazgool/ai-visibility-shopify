@@ -31,6 +31,7 @@ import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
 import { describeFinding, findingsForProduct } from "../services/seo-aggregate";
+import { checkMetaFields } from "../services/seo-scan";
 import { CHECK_METHOD } from "../services/seo-findings";
 import { scanRowFor } from "../services/seo-aggregate.server";
 import { pageBudget, scanOneProductPage } from "../services/seo-page.server";
@@ -280,15 +281,36 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       noindex: (row as any)?.noindex ?? null,
       appBlock: (row as any)?.appBlock ?? null,
       cacheControl: (row as any)?.cacheControl ?? null,
-      findings: findingsForProduct(row).map((f) => ({
-        code: String(f.code),
-        source: f.source,
-        text: describeFinding(f),
-        // Where a threshold comes from, in the source's own words, on the
-        // rows that quote one. Absent on every other check rather than a
-        // sentence written to fill the space.
-        method: CHECK_METHOD[f.code as keyof typeof CHECK_METHOD] ?? null,
-      })),
+      // A5 says whether the meta title and description are empty. The row
+      // was written by the last catalogue pass, so on a product whose fields
+      // this app has since filled, the stored A5 claims a field is missing
+      // while the editor two cards above shows it set. The check is pure and
+      // the live product is already in hand, so it is recomputed here and
+      // the stale one dropped: the screen states one thing, not two. Every
+      // other finding stays as the row recorded it - they read the page, and
+      // the page is not refetched here.
+      findings: findingsForProduct(row)
+        .filter((f) => f.code !== "A5")
+        .concat(
+          // The flat `metafields` array read above, not product.metafields,
+          // which is the GraphQL { nodes } shape and would leave the state
+          // entry unfound.
+          checkMetaFields({
+            id: product.id,
+            title: product.title,
+            metafields,
+            seo: product.seo ?? null,
+          }) ?? [],
+        )
+        .map((f) => ({
+          code: String(f.code),
+          source: f.source,
+          text: describeFinding(f),
+          // Where a threshold comes from, in the source's own words, on the
+          // rows that quote one. Absent on every other check rather than a
+          // sentence written to fill the space.
+          method: CHECK_METHOD[f.code as keyof typeof CHECK_METHOD] ?? null,
+        })),
       budget: { budget: budget.budget, spent: budget.spent, remaining: budget.remaining },
     };
   }

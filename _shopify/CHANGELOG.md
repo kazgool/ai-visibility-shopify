@@ -143,6 +143,75 @@ a reader; they are pollution in the merchant's data, and a one-time sweep is
 the right way to remove them rather than reading 2,491 collections on every
 pass to keep looking for them.
 
+### Read my pages now (10 September 2026)
+
+The page read ran on one schedule only: `seo_scan_products`, nightly at 03:45
+UTC. Nothing in the app enqueued it. So on the day Republica BIO was set up,
+the SEO screen read four pages of 189 and said "the rest by tomorrow night" -
+true, and useless to somebody who has just paid for a setup and wants to see
+their own shop in the report. "Check again" reads the theme, "Preview" builds
+the write queue from the catalogue read; neither opens a product page, which
+is why pressing them changed nothing.
+
+`seo_scan_products` now takes an optional `shopId` and `jobRunId`: with no
+payload it is still the cron over every shop, with one it is a single shop
+asked for from the screen. The button sits under the pages-read sentence it
+answers, behind the SEO key and a subscription like every other write on that
+screen, refuses while one is already running, and reports through a `seo_pages`
+JobRun the card polls - progress lives in the row, never in the browser. The
+per-shop budget inside `scanProductPagesForShop` is untouched, so a manual run
+cannot read more than the night would.
+
+`enqueue`'s task union gained `seo_scan_products`; 14 call sites, all
+unaffected, a union only widened.
+
+### The second Product node was ours (10 September 2026)
+
+Found on the first paying store's own SEO screen, reporting the app to its
+merchant: "2 Product nodes on this page (theme and app), where there should
+be one." The thing the app refuses in its own hard rules, on the storefront
+it had just been installed on.
+
+Extend mode emitted `"@id": shop.url + product.url + "#product"` - an
+identifier it invented - and assumed the theme's node carried the same one.
+Shella's Product node carries no `@id` at all, and a node with no `@id`
+merges with nothing. So the page held the theme's complete node plus a
+fragment of ours under an id nothing references: two products to a reader,
+and every attribute this module adds hanging off the orphan. On that theme
+the SEO module was publishing into a void.
+
+The Organization node has had the guard since 1 September: the scan records
+the theme's `organizationId`, and the block extends only a real id,
+otherwise emitting its own complete node. Product had no equivalent. It does
+now: `theme_scan` records `productId` the same way, and `productNodes` in the
+scan excludes our own node first, the same exclusion `organizationEmitters`
+has always had - without it scan 2 reads our own output back as the theme's.
+
+The third case is the one worth writing down. A theme that emits a Product
+node with no `@id` cannot be extended, and emitting our own complete node
+instead would be two complete Product nodes, which is worse and is the rule
+itself. So the block publishes no Product node there at all, and B33 says so
+on the screen: which theme setting to turn off, and that this app then
+publishes the full set. Publishing nothing silently would have been the
+other failure - the merchant cannot delete what they never saw.
+
+The first version of this fix did emit full in that case. It was wrong, and
+what caught it was Marius noticing the theme has a switch for its own product
+schema, which is the actual fix on the merchant's side. The mirror link, the
+llms.txt link and the snippet directive are untouched: none is schema and
+none can collide.
+
+Also recorded, because the audit that ran hours earlier did not find this:
+its five gates all ask whether a write is allowed. None asks whether what is
+published is correct. That is a second axis - schema nodes, mirrors,
+llms.txt, collection tables - and it needs its own pass. The Liquid extension
+was in that audit's scope and was cleared, because the brief asked which
+metafields it reads and never what it emits.
+
+Engine and services 342 tests green, Liquid syntax and the 8,221-combination
+JSON check green, tsc clean. `seo-aggregate.test.ts` grew B33 in the
+found-nothing list, over the pages read.
+
 ### Two gates the audit found missing (10 September 2026)
 
 From `AUDIT-WRITE-PATHS-2026-09-10.md`, findings 3 and 4. The audit asked one

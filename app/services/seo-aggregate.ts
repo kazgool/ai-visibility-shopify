@@ -195,6 +195,7 @@ export const CHECKS: {
   // it renders A10 and A11 from the collections report.
   { code: "B31", source: "B", basis: "pagesRead" },
   { code: "B32", source: "B", basis: "pagesRead", reports: true },
+  { code: "B33", source: "B", basis: "pagesRead" },
 ];
 
 /**
@@ -996,6 +997,15 @@ export function describeFinding(finding: Finding): string {
         "The first image inside the page body carries loading=\"lazy\", so the browser defers it " +
         "until layout says it is near the viewport."
       );
+    case "B33": {
+      const n = Number(d.themeNodes ?? 1);
+      return (
+        `Your theme describes this product to search engines ${n === 1 ? "once" : `${n} times`}, ` +
+        "in a way that leaves nowhere for ours to attach, so this app publishes none of its own " +
+        "on this page rather than describe the same product twice. Switch the theme's own " +
+        "product description off and run this check again."
+      );
+    }
     case "B32": {
       const top = Array.isArray(d.top) ? d.top : [];
       const named = top.map((o: any) => `${o.origin} (${o.count})`).join(", ");

@@ -160,11 +160,16 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     expect(aggregate.clean.map((r) => r.code)).toEqual([
       "A12", "A13", "A15", "A16", "A2", "A4", "A5", "A7", "B1", "B10", "B11",
       "B12", "B13", "B14", "B15", "B16", "B17", "B18", "B19", "B20", "B21",
-      "B22", "B23", "B24", "B25", "B26", "B28", "B3", "B31", "B4", "B5", "B6",
-      "B7", "B8", "B9",
+      "B22", "B23", "B24", "B25", "B26", "B28", "B3", "B31", "B33", "B4", "B5",
+      "B6", "B7", "B8", "B9",
     ]);
+    // B33 joined on 10 September: the theme emits a Product node with no @id
+    // of its own, so the storefront block holds its own back rather than
+    // publish a second product. It states a verdict, so unlike B29 and B32 it
+    // belongs in this list, and its denominator is the pages read, which is
+    // why the first group grows and not the catalogue one.
     expect(cleanSentence(aggregate)).toBe(
-      "27 checks found nothing on 20 products; 8 checks found nothing on 50 products.",
+      "28 checks found nothing on 20 products; 8 checks found nothing on 50 products.",
     );
   });
 

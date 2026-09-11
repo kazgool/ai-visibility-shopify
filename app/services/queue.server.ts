@@ -21,6 +21,7 @@ export async function enqueue(
     | "bulk_collections"
     | "reconcile_mirrors"
     | "seo_snapshot"
+    | "seo_scan_products"
     | "seo_queue_build"
     | "seo_apply"
     | "seo_collection_queue"

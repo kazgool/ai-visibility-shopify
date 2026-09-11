@@ -179,7 +179,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the queue build (read-only, also carries the term-gap card's data) and
   // the apply (writes the approved rows). Read here, not recomputed in the
   // browser - JobRun is the record.
-  const [queueJob, applyJob, collectionQueueJob, collectionApplyJob] = shop
+  const [queueJob, applyJob, collectionQueueJob, collectionApplyJob, pagesJob] = shop
     ? await Promise.all([
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_queue" }, orderBy: { createdAt: "desc" } }),
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_apply" }, orderBy: { createdAt: "desc" } }),
@@ -194,8 +194,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           where: { shopId: shop.id, kind: "seo_collection_apply" },
           orderBy: { createdAt: "desc" },
         }),
+        // The on-demand page read. The nightly cron leaves no JobRun, so this
+        // is null until someone presses the button, which is exactly right:
+        // the card speaks about what a person asked for.
+        db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "seo_pages" },
+          orderBy: { createdAt: "desc" },
+        }),
       ])
-    : [null, null, null, null];
+    : [null, null, null, null, null];
 
   // Per-product SEO scan (PRD-SEO-PER-PRODUCT build step 4). Both cards below
   // read one aggregate over the whole SeoScan table, so the Findings card and
@@ -281,6 +288,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     embed,
     embedLink: embedDeepLink(session.shop),
     queueJob,
+    pagesJob,
     applyJob,
     hasStorefrontPassword,
     scan,
@@ -335,6 +343,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // loader, the scan intent, the password settings) are unaffected.
   if (
     intent === "seo_build_queue" ||
+    intent === "seo_scan_pages" ||
     intent === "seo_apply" ||
     intent === "seo_collection_preview" ||
     intent === "seo_collection_apply"
@@ -348,6 +357,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           "This shop has no active subscription, so writing search listings is not available. Everything already written stays written; nothing is cleared or reverted.",
       };
     }
+  }
+
+  // Read my pages now. The nightly cron does the same work at 03:45 UTC; on
+  // the day a shop is set up, waiting until tomorrow night is the difference
+  // between a screen that reports on the shop and a screen that reports on
+  // nothing. Same per-shop budget as the cron, so this cannot spend more.
+  if (intent === "seo_scan_pages") {
+    const active = await db.jobRun.findFirst({
+      where: { shopId: shop.id, kind: "seo_pages", status: { in: ["queued", "running"] } },
+    });
+    if (active) return { error: "A page read is already running." };
+
+    const jobRun = await db.jobRun.create({ data: { shopId: shop.id, kind: "seo_pages" } });
+    await enqueue("seo_scan_products", { shopId: shop.id, jobRunId: jobRun.id });
+    return { queued: true };
   }
 
   if (intent === "seo_build_queue") {
@@ -1546,6 +1570,7 @@ function FindingsPerProductCard({
   aggregate,
   budget,
   blockedBy,
+  pagesJob,
   collectionReport,
   staleSitemap,
   homeRedirects,
@@ -1575,6 +1600,8 @@ function FindingsPerProductCard({
   blogPosts: { read: number; withoutLinks: number; available: number } | null;
   /** B32's other half, from the theme's settings file. Counts only. */
   appEmbeds: { total: number; enabled: number; byApp: { app: string; count: number }[] } | null;
+  /** The last on-demand page read, so the button can say what it is doing. */
+  pagesJob: JobRunLike;
 }) {
   const clean = cleanSentence(aggregate);
   const found = aggregate.rows.filter((r) => r.state === "found");
@@ -1582,6 +1609,18 @@ function FindingsPerProductCard({
   const notApplicable = aggregate.rows.filter((r) => r.state === "notApplicable");
   const couldNotRun = aggregate.rows.filter((r) => r.state === "couldNotRun");
   const counted = aggregate.rows.filter((r) => r.state === "counted");
+  const readingPages = pagesJob?.status === "queued" || pagesJob?.status === "running";
+
+  // This card polls on its own rather than through the effect further up:
+  // that one belongs to the preview and apply pair, and a page read can run
+  // while neither of those does. Progress lives in the JobRun row, so the
+  // figures above are what refreshes, not anything held in the browser.
+  const pagesRevalidator = useRevalidator();
+  useEffect(() => {
+    if (!readingPages) return;
+    const id = setInterval(() => pagesRevalidator.revalidate(), 3000);
+    return () => clearInterval(id);
+  }, [readingPages, pagesRevalidator]);
 
   return (
     <Card>
@@ -1600,6 +1639,25 @@ function FindingsPerProductCard({
         <Text as="p" variant="bodySm">
           {pagesReadSentence(aggregate, budget, blockedBy)}
         </Text>
+
+        {/* The same read the nightly pass does, asked for now. Without it the
+            sentence above says "the rest by tomorrow night" on the day a shop
+            is set up, which is true and useless. The per-shop budget is
+            unchanged, so this cannot read more than the night would. */}
+        <InlineStack gap="200" blockAlign="center">
+          <Form method="post">
+            <input type="hidden" name="intent" value="seo_scan_pages" />
+            <Button submit loading={readingPages} disabled={readingPages}>
+              {readingPages ? "Reading your pages" : "Read my pages now"}
+            </Button>
+          </Form>
+          {readingPages ? (
+            <Text as="p" tone="subdued" variant="bodySm">
+              This runs on our servers. Close the tab if you like; the figures
+              above fill in as pages are read.
+            </Text>
+          ) : null}
+        </InlineStack>
 
         {aggregate.products === 0 ? (
           <Text as="p" tone="subdued">
@@ -2035,6 +2093,7 @@ export default function Seo() {
             aggregate={data.scan.findings as unknown as FindingsAggregate}
             budget={data.scanBudget}
             blockedBy={data.scanRobotsBlock}
+            pagesJob={data.pagesJob}
             collectionReport={data.collections.report as unknown as CollectionSeoQueue | null}
             staleSitemap={data.staleSitemap}
             homeRedirects={data.homeRedirects}

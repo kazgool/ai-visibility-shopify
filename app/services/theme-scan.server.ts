@@ -444,7 +444,13 @@ export async function scanThemeForProductLd(
     };
   }
 
-  const productNodes = page.nodes.filter((n) => n.types.includes("Product"));
+  // Our own Product node is excluded for the same reason the Organization
+  // one is: without it the flag oscillates, scan 2 reading our own output
+  // back as the theme's. `emitters` is what the block extends by @id, so it
+  // must name the theme's node, never ours.
+  const productNodes = page.nodes.filter(
+    (n) => n.types.includes("Product") && !isOurNode(n),
+  );
   // hasOrganizationLd means "the THEME emits an Organization node", so our
   // own node (recognisable by its #organization @id) is excluded here.
   // Without this exclusion the flag oscillated: scan 1 finds no theme node,
@@ -767,10 +773,19 @@ async function mirrorThemeScanMetafield(
   if (!shopGid) return;
 
   const organizationId = result.organizationEmitters.find((id) => id !== "") ?? "";
+  // The same rule the Organization node has followed since 1 September, now
+  // for Product: a node with no @id of its own gives the block nothing to
+  // reference. Extend mode used to invent an @id and emit a fragment against
+  // it, so on a theme whose Product node carries no @id - Shella, on the
+  // first paying store - the page ended with the theme's complete node and
+  // an orphan of ours, which is the second Product node this app exists to
+  // avoid, and the fields the SEO module adds attached to nothing.
+  const productId = result.emitters.find((id) => id !== "") ?? "";
 
   const value = JSON.stringify({
     hasOrganizationLd: result.hasOrganizationLd,
     organizationId,
+    productId,
   });
 
   const res = await named("SetShopThemeScan", () =>

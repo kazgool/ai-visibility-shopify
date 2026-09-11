@@ -1547,6 +1547,20 @@ export function readingOf(
     });
   }
 
+  // B33: the theme emits a Product node carrying no @id of its own, so the
+  // storefront block holds its own node back rather than publish a second
+  // one. Raised from the same nodes B1 counted, and only when our block is
+  // on the page at all - on a page without it there is nothing being held
+  // back and nothing to say.
+  const themeProductNodes = productNodes.filter((n) => !isOurNode(n));
+  if (ours && themeProductNodes.length > 0 && themeProductNodes.every((n) => !n.id)) {
+    findings.push({
+      code: "B33",
+      source: "B",
+      detail: { themeNodes: themeProductNodes.length },
+    });
+  }
+
   // B7, over every node type and not only Product: the same node twice on one
   // page. Raised from the raw ids, so B1's merge cannot hide it.
   const duplicates = duplicateNodes(nodes);

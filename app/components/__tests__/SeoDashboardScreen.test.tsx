@@ -247,7 +247,9 @@ describe("a 189-product shop with one problem on every product", () => {
 
   it("accounts for every check in the vocabulary, on both sides", () => {
     expect(text).toContain("That is all 13 checks on this side");
-    expect(text).toContain("That is all 31 checks on this side");
+    // B33 joined on 10 September, over the pages read, so the page side
+    // is 32 rather than 31. The admin side is unchanged at 13.
+    expect(text).toContain("That is all 32 checks on this side");
   });
 
   it("shows what moved since the snapshot, in plain words", () => {
