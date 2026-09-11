@@ -19,6 +19,11 @@ pnpm-lock.yaml
 
 /extensions/*/dist
 
+# Not source: a mistyped redirect's capture and audit snapshots.
+/ibility-shopify
+/_shopify/repo-snapshot-080e0d6.tar.gz
+_shopify/*.tar.gz
+
 # Ignore shopify files created during app dev
 .shopify/*
 .shopify.lock

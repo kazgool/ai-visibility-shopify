@@ -69,7 +69,7 @@ installed, and they are gone when you uninstall. Our copy of your settings
 and job history is deleted within 48 hours of Shopify's redact webhook.
 
 **Can I get a refund?**
-Billing runs through Shopify. Write to us at hello@mrdigital.ro and we will answer within two working days.
+Billing runs through Shopify. Write to us at hello@mrdigital.ro and we will answer within one working day.
 
 ## What we do not offer
 
