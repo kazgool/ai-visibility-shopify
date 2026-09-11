@@ -141,6 +141,34 @@ describe("the visible product block: when it renders nothing at all", () => {
   });
 });
 
+// The block a merchant places by hand (P1.1): the same snippet, so the same
+// markup, and unaffected by the embed's manual placement tick.
+
+describe("the placeable product block", () => {
+  const BLOCK = "product-content.liquid";
+  const blockSettings = blockDefaults(BLOCK);
+
+  it("declares the embed's content settings with the same defaults, and no manual placement", () => {
+    const { manual_placement, collection_heading, show_criteria, show_table, ...embedProduct } = defaults;
+    void manual_placement;
+    void collection_heading;
+    void show_criteria;
+    void show_table;
+    expect(blockSettings).toEqual(embedProduct);
+  });
+
+  it("prints exactly the markup the embed prints, for the same settings and product", async () => {
+    const fromEmbed = await render({ data: FULL });
+    const fromBlock = await renderBlock(BLOCK, storefront({ settings: blockSettings, data: FULL }));
+    expect(fromBlock.trim()).toBe(fromEmbed.trim());
+    expect(fromBlock).toContain('class="ai-visibility-content"');
+  });
+
+  it("renders nothing for a product with nothing written", async () => {
+    expect((await renderBlock(BLOCK, storefront({ settings: blockSettings, data: {} }))).trim()).toBe("");
+  });
+});
+
 // Collection pages (P0.2).
 
 const TABLE = {
@@ -238,6 +266,14 @@ describe("the comparison-table block after the table moved into a snippet", () =
     expect(html).toContain("border-bottom: 1px solid rgba(128,128,128,0.3);");
     expect(html).toContain(`<a href="${SHOP_URL}/products/oak-chair">Oak chair</a>`);
     expect((html.match(/<tr>/g) ?? []).length).toBe(3);
+  });
+
+  it("keeps rendering nothing off the collection template", async () => {
+    const html = await renderBlock(
+      "comparison-table.liquid",
+      storefront({ template: "collection", collection: collection({}), settings: {} }),
+    );
+    expect(html.trim()).toBe("");
   });
 
   it("still renders nothing when there is no table", async () => {

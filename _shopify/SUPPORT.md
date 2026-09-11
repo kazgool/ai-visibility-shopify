@@ -40,6 +40,13 @@ Three things in order: (1) Collections screen - does this collection show
 block added? (3) Is the app embed enabled? The dashboard's Setup card
 verifies this against your live theme.
 
+**Can I choose where the product details appear on the page?**
+Yes: in the theme editor, add the "AI Visibility details" block to your
+product template wherever you want it, then open App embeds, AI Visibility
+content, and tick "I placed the content block myself; hide the automatic
+one". The app cannot see where you placed the block, so without that tick
+the details appear twice.
+
 **The crawler check says assistants cannot read my store.**
 The check tells you the cause it found - most often password protection
 or a firewall rule. Diagnostics explains each cause and what to change.
