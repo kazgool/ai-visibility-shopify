@@ -30,7 +30,7 @@ import {
   foldReadinessRow,
   type Readiness,
 } from "./seo-readiness";
-import { findingsOf } from "./seo-findings";
+import { findingsOf, merchantVisible } from "./seo-findings";
 import { unavailableChecks } from "./seo-scan.server";
 import { marketsInfo } from "./seo-page.server";
 
@@ -184,7 +184,7 @@ export async function productsWithFinding(
   const productIds: string[] = [];
   let total = 0;
   await forEachRow(shopId, false, (row) => {
-    if (!findingsOf(row.findings).some((f) => f.code === code)) return;
+    if (!findingsOf(row.findings).some((f) => f.code === code && merchantVisible(f))) return;
     total += 1;
     if (productIds.length < cap) productIds.push(row.productId);
   });

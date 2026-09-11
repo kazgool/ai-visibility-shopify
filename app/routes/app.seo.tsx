@@ -65,7 +65,7 @@ import {
   type CollectionJobLike,
 } from "../components/SeoCollectionsPanel";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
-import { CHECK_LABEL, CHECK_METHOD } from "../services/seo-findings";
+import { CHECK_LABEL, CHECK_METHOD, codeCanShow } from "../services/seo-findings";
 import { homeRedirectsFor } from "../services/seo-scan.server";
 import {
   describeGraphqlError,
@@ -1781,7 +1781,10 @@ function FindingsPerProductCard({
                 ["A10", collectionReport?.thinDescription?.length ?? null],
                 ["A11", collectionReport?.thinMembership?.length ?? null],
               ] as const
-            ).map(([code, count]) => (
+            )
+              // Neither is a check a merchant sees (addendum item 9).
+              .filter(([code]) => codeCanShow(code))
+              .map(([code, count]) => (
               <InlineStack key={code} align="space-between" blockAlign="center" wrap={false}>
                 <BlockStack gap="050">
                   <Text as="p" variant="bodySm">

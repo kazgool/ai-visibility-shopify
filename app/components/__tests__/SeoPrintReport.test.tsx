@@ -27,6 +27,16 @@ import type { FactsRow } from "../../services/seo-since";
 const DAY = "2026-09-04T03:45:00.000Z";
 const PRODUCED = "2026-09-05T09:00:00.000Z";
 
+/**
+ * The detail a finding needs to reach a merchant surface (addendum item 9):
+ * B1 and B22 are shown only when this app's own output is involved, so a
+ * fixture that uses them as ordinary findings carries that detail.
+ */
+const VISIBLE_DETAIL: Record<string, Record<string, unknown>> = {
+  B1: { emitters: ["theme", "app"], productNodes: 2 },
+  B22: { ours: true },
+};
+
 function row(
   id: number,
   codes: string[],
@@ -42,7 +52,7 @@ function row(
     findings: codes.map((code) => ({
       code,
       source: code.startsWith("A") ? "A" : "B",
-      detail: {},
+      detail: VISIBLE_DETAIL[code] ?? {},
     })),
     nodes: [],
   };
@@ -116,13 +126,18 @@ function renderPrint(value: SeoPrintData): string {
   return renderToStaticMarkup(<SeoPrintReport data={value} />);
 }
 
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the
+// stores carried hidden codes, which now render nothing. Each is replaced by a
+// visible code with the same basis and owner: B17 by B10 (page, merchant), B2
+// and B25 by B1 (page, theme), B12 by B33 (page, theme). The counts are
+// unchanged.
 function fiftyProducts(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 50; i += 1) {
     const codes: string[] = [];
-    if (i < 12) codes.push("B17");
+    if (i < 12) codes.push("B10");
     if (i < 8) codes.push("A5");
-    if (i >= 12 && i < 20) codes.push("B2");
+    if (i >= 12 && i < 20) codes.push("B1");
     if (i >= 20 && i < 24) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -132,10 +147,10 @@ function fiftyProducts(): ScanRowLike[] {
 function oneEightyNine(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 189; i += 1) {
-    const codes: string[] = ["B12"];
-    if (i < 38) codes.push("B17");
+    const codes: string[] = ["B33"];
+    if (i < 38) codes.push("B10");
     if (i < 23) codes.push("A5");
-    if (i >= 100 && i < 114) codes.push("B25");
+    if (i >= 100 && i < 114) codes.push("B1");
     if (i >= 150 && i < 161) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -145,7 +160,7 @@ function oneEightyNine(): ScanRowLike[] {
 function twentyThousand(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 20000; i += 1) {
-    if (i < 500) rows.push(row(i, i < 120 ? ["B17"] : []));
+    if (i < 500) rows.push(row(i, i < 120 ? ["B10"] : []));
     else rows.push(row(i, ["A5"], { page: false }));
   }
   return rows;
@@ -418,9 +433,10 @@ function everyCode(): ScanRowLike[] {
 }
 
 /** 46 pages that answered and 4 that did not, so B5's denominator is 50. */
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B17 is hidden, so the 20 read pages carry B10 (page, merchant).
 function fourPagesUnread(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
-  for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B17"] : []));
+  for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B10"] : []));
   for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
   return rows;
 }
@@ -530,6 +546,7 @@ describe("the vocabulary rule, asserted on what is rendered", () => {
     });
   }
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: only visible checks make group steps, so the every-code store renders exactly the 11 visible groupable codes rather than more than 30.
   it("reads the group steps on the screen, because they are in the server markup", () => {
     // <details>/<summary>, not Collapsible: the steps are on the page with
     // no script, so this guard can actually see them (R2-14, R2-26).
@@ -541,7 +558,9 @@ describe("the vocabulary rule, asserted on what is rendered", () => {
     );
     const screen = text(html);
     const steps = value.readiness.groups.flatMap((g) => g.rows);
-    expect(steps.length).toBeGreaterThan(30);
+    expect(steps.map((s) => s.code).sort()).toEqual([
+      "A3", "A5", "B1", "B10", "B11", "B15", "B22", "B33", "B4", "B6", "B7",
+    ]);
     for (const step of steps) {
       expect(screen, step.code).toContain(step.what);
       expect(screen, step.code).toContain(`${step.label}: ${step.count} of ${step.denominator}.`);
@@ -682,9 +701,10 @@ describe("every pointer on a surface points at something rendered on it", () => 
 // if the thing that was on paper comes back.
 
 describe("the printed page, read on paper", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 and B25 are hidden, so every product also carries A5 (catalogue, merchant, per product) and B33 (page, theme, once); A1 and B25 stay to show they make no row.
   const shopWide = () => {
     const rows: ScanRowLike[] = [];
-    for (let i = 0; i < 12; i += 1) rows.push(row(i, ["A1", "B25"]));
+    for (let i = 0; i < 12; i += 1) rows.push(row(i, ["A1", "B25", "A5", "B33"]));
     return rows;
   };
   const shopWideValue = data(shopWide(), {
@@ -739,43 +759,39 @@ describe("the printed page, read on paper", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 and B25 are hidden and make no shop-wide row, so the per-product fix is A5 and the once-for-the-shop theme fix is B33.
   it("states the true shape of each shop-wide fix (6)", () => {
     const derived = dashboardDerived(printFrom(shopWideValue));
     expect(derived.wide.length).toBeGreaterThan(0);
-    const perProduct = derived.wide.filter((w) => w.key === "A1");
+    const perProduct = derived.wide.filter((w) => w.key === "A5");
     expect(perProduct.length).toBe(1);
-    // A1 is one field per product. It must not be sold as a setting.
+    // A5 is one field per product. It must not be sold as a setting.
     expect(perProduct[0].appliesTo).toContain("one field per product");
     expect(perProduct[0].appliesTo).not.toContain("One setting");
-    // B25 is a theme change and genuinely is made once.
-    const theme = derived.wide.find((w) => w.key === "B25");
+    // B33 is a theme change and genuinely is made once.
+    const theme = derived.wide.find((w) => w.key === "B33");
     expect(theme?.appliesTo).toContain("One change to the theme");
+    expect(derived.wide.find((w) => w.key === "B25")).toBeUndefined();
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden, so although every product carries it there is no A1 row and no breakdown of the four identifiers, on the card or on paper.
   it("names which of the four identifiers is actually absent (7)", () => {
     const derived = dashboardDerived(printFrom(shopWideValue));
-    const a1 = derived.wide.find((w) => w.key === "A1")!;
-    // The row may not read as a claim about all four.
-    expect(a1.title).toContain("at least one of");
-    // Brand is on every product, so the row says so rather than leaving the
-    // Google table two pages later to contradict it.
-    expect(a1.why).toContain("Already on every product: a brand");
-    expect(a1.why).toContain("a barcode, on 50 of 50");
-    expect(a1.why).toContain("a product code, on 38 of 50");
-    expect(text(renderPrint(printFrom(shopWideValue)))).toContain("Already on every product");
+    expect(derived.wide.find((w) => w.key === "A1")).toBeUndefined();
+    const paper = text(renderPrint(printFrom(shopWideValue)));
+    expect(paper).not.toContain("Every product is missing at least one of four details");
+    expect(paper).not.toContain("Already on every product");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B5 is hidden and was the only row counted against a different total, so neither paper nor screen carries a scope line now.
   it("says so when a row is counted against a different total (8)", () => {
     const value = data(fourPagesUnread());
-    const b5 = value.findings.rows.find((r) => r.code === "B5")!;
-    expect(b5.state).toBe("found");
-    expect(b5.denominator).toBe(50);
+    expect([...value.findings.rows, ...value.findings.clean].find((r) => r.code === "B5")).toBeUndefined();
     expect(value.findings.pagesRead).toBe(46);
     const paper = text(renderPrint(printFrom(value)));
-    expect(paper).toContain("is counted out of 50, not 46");
-    // And on the screen, which the CHANGELOG had claimed and the screen had
-    // not (R2-17).
-    expect(renderScreen(value)).toContain("is counted out of 50, not 46");
+    expect(paper).not.toContain("is counted out of");
+    // And not on the screen either (R2-17 made the two carry the same line).
+    expect(renderScreen(value)).not.toContain("is counted out of");
   });
 
   it("states the unchecked products as a number on paper, with the reason (R2-11, M2)", () => {

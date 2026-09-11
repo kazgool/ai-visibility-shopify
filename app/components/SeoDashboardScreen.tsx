@@ -53,6 +53,7 @@ import {
 import {
   FINDING_OWNER,
   OWNER_LABEL,
+  codeCanShow,
   type FindingCode,
   type FindingOwner,
 } from "../services/seo-findings";
@@ -1063,7 +1064,7 @@ function CollectionRows({ collections }: { collections: CollectionSeoQueue | nul
       { code: "A10", count: collections.thinDescription?.length ?? 0 },
       { code: "A11", count: collections.thinMembership?.length ?? 0 },
     ] as { code: FindingCode; count: number }[]
-  ).filter((r) => r.count > 0);
+  ).filter((r) => r.count > 0 && codeCanShow(r.code));
   if (rows.length === 0) {
     return (
       <Text as="p" variant="bodySm" tone="subdued">
@@ -1097,6 +1098,9 @@ function BlogRow({
 }: {
   blogPosts: { read: number; withoutLinks: number } | null;
 }) {
+  // B30 is a check this app can neither fix nor causes (addendum item 9), so
+  // the merchant's screen carries no line about blog posts at all.
+  if (!codeCanShow("B30")) return null;
   // The same sentence the collections row prints in the same state, rather
   // than nothing: the column's accounting names a check that counts blog
   // posts, and a reader looked for it here and found no line (R2-06).

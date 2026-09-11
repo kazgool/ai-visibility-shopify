@@ -75,6 +75,16 @@ const SCREEN: SurfaceContext = {
   readLine: true,
 };
 
+/**
+ * The detail a finding needs to reach a merchant surface (addendum item 9):
+ * B1 and B22 are shown only when this app's own output is involved, so a
+ * fixture that uses them as ordinary findings carries that detail.
+ */
+const VISIBLE_DETAIL: Record<string, Record<string, unknown>> = {
+  B1: { emitters: ["theme", "app"], productNodes: 2 },
+  B22: { ours: true },
+};
+
 /** One row, with the codes it carries. `page: false` means never read. */
 function row(
   id: number,
@@ -89,31 +99,41 @@ function row(
     bulkAt: catalogue ? DAY : null,
     scannedAt: page ? DAY : null,
     status: page ? (options.status ?? "ok") : null,
-    findings: codes.map((code) => ({ code, source: code.startsWith("A") ? "A" : "B", detail: {} })),
+    findings: codes.map((code) => ({
+      code,
+      source: code.startsWith("A") ? "A" : "B",
+      detail: VISIBLE_DETAIL[code] ?? {},
+    })),
   };
 }
 
 // --- the five fixture stores ------------------------------------------------
+//
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the five
+// stores carried hidden codes, which now count nothing. Each is replaced by a
+// visible code with the same basis and owner: B17 by B10 (page, merchant), B2
+// and B25 by B1 (page, theme), B12 by B33 (page, theme), A15 by A3 (catalogue,
+// merchant). The counts are unchanged.
 
 /** 50 products, every page read, a spread of findings and no shop-wide one. */
 function fiftyProducts(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 50; i += 1) {
     const codes: string[] = [];
-    if (i < 12) codes.push("B17");
+    if (i < 12) codes.push("B10");
     if (i < 8) codes.push("A5");
-    if (i >= 12 && i < 20) codes.push("B2");
+    if (i >= 12 && i < 20) codes.push("B1");
     if (i >= 20 && i < 24) codes.push("B15");
     // A product with a merchant gap and a theme gap at once, so the
     // "most immediate owner" rule has something to decide.
-    if (i >= 24 && i < 28) codes.push("A15", "B25");
+    if (i >= 24 && i < 28) codes.push("A3", "B33");
     rows.push(row(i, codes));
   }
   return rows;
 }
 
 /**
- * 189 products, every page read, and B12 on every one of them. This is the
+ * 189 products, every page read, and B33 on every one of them. This is the
  * shape amendment 1 was written for: without it the dial reads zero and the
  * screen says nothing useful about a shop whose only shop-wide fault is one
  * line in a theme.
@@ -121,10 +141,10 @@ function fiftyProducts(): ScanRowLike[] {
 function oneEightyNine(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 189; i += 1) {
-    const codes: string[] = ["B12"];
-    if (i < 38) codes.push("B17");
+    const codes: string[] = ["B33"];
+    if (i < 38) codes.push("B10");
     if (i < 23) codes.push("A5");
-    if (i >= 100 && i < 114) codes.push("B25");
+    if (i >= 100 && i < 114) codes.push("B1");
     if (i >= 150 && i < 161) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -136,7 +156,7 @@ function twentyThousand(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 20000; i += 1) {
     if (i < 500) {
-      rows.push(row(i, i < 120 ? ["B17"] : i < 200 ? ["B2"] : []));
+      rows.push(row(i, i < 120 ? ["B10"] : i < 200 ? ["B1"] : []));
     } else {
       rows.push(row(i, ["A5"], { page: false }));
     }
@@ -147,7 +167,7 @@ function twentyThousand(): ScanRowLike[] {
 /** A store where source B has never run: catalogue rows, no page ever fetched. */
 function pageReadNeverRan(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
-  for (let i = 0; i < 120; i += 1) rows.push(row(i, ["A5", "A15"], { page: false }));
+  for (let i = 0; i < 120; i += 1) rows.push(row(i, ["A5", "A3"], { page: false }));
   return rows;
 }
 
@@ -193,16 +213,17 @@ describe("a code no product row can carry is never grouped (R2 U6, 5 September 2
   // no writer of this app puts them on a product row. A row carrying one is
   // a JSON column holding a hand-made shape, and grouping it would count a
   // product under a label that names collections.
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden and groups nothing, so the groupable finding beside the off-table codes is A5 (catalogue, merchant).
   it("ignores A6, A10, A11 and B30 on a product row, and groups everything CHECKS lists", () => {
     for (const code of ["A6", "A10", "A11", "B30"]) expect(groupsOn(code)).toBe(false);
     for (const check of CHECKS) {
       if (check.reports) continue;
       expect(groupsOn(String(check.code)), String(check.code)).toBe(true);
     }
-    const readiness = readinessOf([row(1, ["A6", "A10", "A11", "B30"]), row(2, ["A1"])]);
+    const readiness = readinessOf([row(1, ["A6", "A10", "A11", "B30"]), row(2, ["A5"])]);
     const clean = readiness.groups.find((g) => g.group === "clean")!;
     expect(clean.count).toBe(1);
-    expect(readiness.groups.flatMap((g) => g.rows.map((r) => r.code))).toEqual(["A1"]);
+    expect(readiness.groups.flatMap((g) => g.rows.map((r) => r.code))).toEqual(["A5"]);
   });
 });
 
@@ -242,22 +263,24 @@ describe("the read set is both reads, never either", () => {
 });
 
 describe("amendment 1: a finding on the whole read set leaves the grouping", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the code on every product is B33 (page, theme), which replaced the hidden B12 in the fixture.
   it("removes a code at exactly 100 percent and lists it as shop-wide", () => {
     const readiness = readinessOf(oneEightyNine());
     expect(readiness.readSet).toBe(189);
-    expect(readiness.shopWideCodes).toContain("B12");
+    expect(readiness.shopWideCodes).toContain("B33");
     // The dial is not pinned at zero, which is the whole reason for the rule.
     expect(readiness.clean).toBeGreaterThan(0);
     expect(readiness.clean + readiness.needSomething).toBe(189);
-    // And B12 does not appear inside any group's steps.
+    // And B33 does not appear inside any group's steps.
     for (const group of readiness.groups) {
-      expect(group.rows.map((r) => r.code)).not.toContain("B12");
+      expect(group.rows.map((r) => r.code)).not.toContain("B33");
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B12 is hidden and groups nothing, so the theme code on nine of ten products is B33.
   it("keeps a code on all but one product as a per-product finding", () => {
     const rows = [];
-    for (let i = 0; i < 10; i += 1) rows.push(row(i, i === 9 ? [] : ["B12"]));
+    for (let i = 0; i < 10; i += 1) rows.push(row(i, i === 9 ? [] : ["B33"]));
     const readiness = readinessOf(rows);
     expect(readiness.shopWideCodes).toEqual([]);
     expect(readiness.theme).toBe(9);
@@ -276,20 +299,23 @@ describe("group assignment is a total function on the owner order", () => {
   // shop-wide card before the owner order is asked anything.
   const beside = [row(90, []), row(91, []), row(92, [])];
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A15 and B25 are hidden, so the merchant gap is A3 and the theme gap is B33.
   it("puts a product with a merchant gap and a theme gap under the merchant", () => {
-    const readiness = readinessOf([row(1, ["A15", "B25"]), ...beside]);
+    const readiness = readinessOf([row(1, ["A3", "B33"]), ...beside]);
     expect(readiness.merchant).toBe(1);
     expect(readiness.theme).toBe(0);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B25 is hidden, so this passed with no theme gap at all; the theme gap is now B33, so the owner order is actually decided.
   it("puts a product with an app gap and a theme gap under the app", () => {
-    const readiness = readinessOf([row(1, ["B15", "B25"]), ...beside]);
+    const readiness = readinessOf([row(1, ["B15", "B33"]), ...beside]);
     expect(readiness.app).toBe(1);
     expect(readiness.theme).toBe(0);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B29 and B32 are hidden, so this passed for the wrong reason; B34 is the only visible check that states no verdict.
   it("counts a product whose only codes state no verdict as having nothing to fix", () => {
-    const readiness = readinessOf([row(1, ["B29", "B32"]), ...beside]);
+    const readiness = readinessOf([row(1, ["B34"]), ...beside]);
     expect(readiness.clean).toBe(4);
     expect(readiness.needSomething).toBe(0);
   });
@@ -304,11 +330,12 @@ describe("group assignment is a total function on the owner order", () => {
   // the read set, so it is a shop-wide fix and the product is clean. That
   // reads oddly and is exactly what the amendment says, so it is asserted
   // here rather than left to be discovered.
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A15 and B25 are hidden, so the one product carries A3 (catalogue, merchant) and B33 (page, theme).
   it("treats every finding on a one-product read set as shop-wide", () => {
-    const readiness = readinessOf([row(1, ["A15", "B25"])]);
+    const readiness = readinessOf([row(1, ["A3", "B33"])]);
     expect(readiness.readSet).toBe(1);
     expect(readiness.clean).toBe(1);
-    expect(readiness.shopWideCodes).toEqual(["A15", "B25"]);
+    expect(readiness.shopWideCodes).toEqual(["A3", "B33"]);
   });
 
   it("folds a row at a time to the same answer as folding the array", () => {
@@ -348,6 +375,7 @@ describe("the closed state of a group carries its own count and one line", () =>
 describe("the fixes that cover the whole shop", () => {
   const readiness = readinessOf(oneEightyNine());
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the shop-wide check is B33, which replaced the hidden B12 in the fixture.
   it("carries the shop-wide checks plus the two facts no product row holds", () => {
     const items = shopWideItems(readiness, {
       deliveryStated: false,
@@ -361,9 +389,10 @@ describe("the fixes that cover the whole shop", () => {
     });
     expect(items.map((i) => i.key)).toContain("business");
     expect(items.map((i) => i.key)).toContain("barcode");
-    expect(items.map((i) => i.key)).toContain("B12");
+    expect(items.map((i) => i.key)).toContain("B33");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one shop-wide check is B33, which replaced the hidden B12 in the fixture.
   it("says nothing about delivery, returns or barcodes when nobody measured them", () => {
     const items = shopWideItems(readiness, {
       deliveryStated: null,
@@ -375,9 +404,10 @@ describe("the fixes that cover the whole shop", () => {
       catalogue: 189,
       publishedReasons: null,
     });
-    expect(items.map((i) => i.key)).toEqual(["B12"]);
+    expect(items.map((i) => i.key)).toEqual(["B33"]);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one shop-wide check is B33, which replaced the hidden B12 in the fixture.
   it("does not list a barcode fix on a shop where some products carry one", () => {
     const items = shopWideItems(readiness, {
       deliveryStated: true,
@@ -389,9 +419,10 @@ describe("the fixes that cover the whole shop", () => {
       catalogue: 189,
       publishedReasons: null,
     });
-    expect(items.map((i) => i.key)).toEqual(["B12"]);
+    expect(items.map((i) => i.key)).toEqual(["B33"]);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the fixture's shop-wide check is now B33 (was hidden B12), so the method line has a check at 100 percent to state.
   it("states the 100 percent threshold in its own method line", () => {
     const items = shopWideItems(readiness, {
       deliveryStated: true,
@@ -474,6 +505,7 @@ describe("every check in the vocabulary is accounted for in a column", () => {
   });
 
   for (const store of STORES) {
+    // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the two columns now account for the 13 codes a merchant can see (A side A3, A5, A6, B6; B side B1, B4, B7, B10, B11, B15, B22, B33, B34), not the whole vocabulary.
     it(`balances both columns on ${store.name}`, () => {
       const findings = aggregateFindings(store.rows);
       const readiness = readinessOf(store.rows);
@@ -487,9 +519,10 @@ describe("every check in the vocabulary is accounted for in a column", () => {
           ctx: SCREEN,
         });
         expect(account.balanced, `${source} column on ${store.name}`).toBe(true);
+        expect(account.total, `${source} column on ${store.name}`).toBe(source === "A" ? 4 : 9);
         total += account.total;
       }
-      expect(total).toBe(codes.length);
+      expect(total).toBe(13);
     });
   }
 });
@@ -569,10 +602,11 @@ describe("the shop-wide card", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the check row is B33, which replaced the hidden B12 in the fixture.
   it("gives each row its own scope, because they are not all the same number", () => {
     const business = items.find((i) => i.key === "business")!;
     const barcode = items.find((i) => i.key === "barcode")!;
-    const check = items.find((i) => i.key === "B12")!;
+    const check = items.find((i) => i.key === "B33")!;
     // The catalogue is 355 and the read set is 189. Two of these three are
     // facts about the catalogue.
     expect(business.appliesTo).toContain("355");
@@ -580,7 +614,9 @@ describe("the shop-wide card", () => {
     expect(check.appliesTo).toContain("189");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one check among the three rows is B33, which replaced the hidden B12 in the fixture.
   it("counts the rows it renders in the sentence that points at it", () => {
+    expect(items.length).toBe(3);
     expect(shopWideCrossReference(readiness, items, "below")).toContain(`${items.length} fixes`);
     expect(shopWideCrossReference(readiness, items, "below")).toContain("1 of them from a check");
     expect(shopWideCrossReference(readiness, [], "below")).toBe("");
@@ -640,20 +676,21 @@ describe("the row that says this app is not working", () => {
 
 describe("the shop-wide threshold is 100 percent of the total the check is measured over (M1)", () => {
   /** 50 catalogue rows, 46 pages read; a catalogue check on all 50, a page check on all 46. */
-  function fortySixOfFifty(catalogueCode = "A5", pageCode = "B12"): ScanRowLike[] {
+  function fortySixOfFifty(catalogueCode = "A5", pageCode = "B33"): ScanRowLike[] {
     const rows: ScanRowLike[] = [];
     for (let i = 0; i < 46; i += 1) rows.push(row(i, [catalogueCode, pageCode]));
     for (let i = 46; i < 50; i += 1) rows.push(row(i, [catalogueCode], { status: "error" }));
     return rows;
   }
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the page check is B33 (page, theme), which replaced the hidden B12 as the fixture's default.
   it("measures a catalogue check over the catalogue and a page check over the read set", () => {
     const readiness = readinessOf(fortySixOfFifty());
     expect(readiness.catalogueRead).toBe(50);
     expect(readiness.readSet).toBe(46);
-    expect(readiness.shopWideCodes).toEqual(["A5", "B12"]);
+    expect(readiness.shopWideCodes).toEqual(["A5", "B33"]);
     expect(shopWideScope("A5", readiness)).toEqual({ over: "catalogue", of: 50 });
-    expect(shopWideScope("B12", readiness)).toEqual({ over: "readSet", of: 46 });
+    expect(shopWideScope("B33", readiness)).toEqual({ over: "readSet", of: 46 });
     const items = shopWideItems(readiness, {
       deliveryStated: true,
       returnsStated: true,
@@ -665,7 +702,7 @@ describe("the shop-wide threshold is 100 percent of the total the check is measu
       publishedReasons: null,
     });
     expect(items.find((i) => i.key === "A5")!.appliesTo).toContain("Found on all 50 products in your catalogue.");
-    expect(items.find((i) => i.key === "B12")!.appliesTo).toContain("Found on all 46 products whose page we read.");
+    expect(items.find((i) => i.key === "B33")!.appliesTo).toContain("Found on all 46 products whose page we read.");
     // The method line names both totals rather than one for all.
     const method = shopWideMethod(readiness, items, SCREEN);
     expect(method).toContain("all 50 products in your catalogue");
@@ -699,14 +736,14 @@ describe("the shop-wide threshold is 100 percent of the total the check is measu
 });
 
 describe("the clean line groups by denominator (R1 1.1)", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B5 was the only check with a second page denominator and is hidden, so the page column now has one total and the clean line names only it.
   it("names both totals when the page column has two", () => {
     const rows: ScanRowLike[] = [];
     for (let i = 0; i < 46; i += 1) rows.push(row(i, []));
     for (let i = 46; i < 50; i += 1) rows.push(row(i, [], { status: "error" }));
     const findings = aggregateFindings(rows);
     const readiness = readinessOf(rows);
-    const b5 = findings.clean.find((r) => r.code === "B5")!;
-    expect(b5.denominator).toBe(50);
+    expect(findings.clean.find((r) => r.code === "B5")).toBeUndefined();
     expect(findings.pagesRead).toBe(46);
     const account = columnAccount({
       source: "B",
@@ -716,7 +753,7 @@ describe("the clean line groups by denominator (R1 1.1)", () => {
       ctx: SCREEN,
     });
     const clean = account.lines[0];
-    expect(clean).toMatch(/\d+ checks found nothing at all on 46 pages; 1 check found nothing at all on 50 pages, so there is nothing to show\./);
+    expect(clean).toBe("8 checks found nothing at all on 46 pages, so there is nothing to show.");
     expect(account.balanced).toBe(true);
   });
 });
@@ -768,14 +805,18 @@ describe("sentences point only at what the surface renders (root cause A)", () =
     expect(b({ surface: "paper", counted: true }).lines.join(" ")).toContain("at the foot of this report");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B30, the blog post check, is hidden, so the page column carries no blog line in either context; the collections line stays, for A6.
   it("points at a collections or blog total only when one is rendered", () => {
     const a = columnAccount({ source: "A", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: { ...SCREEN, collectionsTotal: false } });
     expect(a.lines.join(" ")).toContain("counted against your collections");
     expect(a.lines.join(" ")).not.toContain("own total above");
     const b = columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: { ...SCREEN, blogTotal: false } });
-    expect(b.lines.join(" ")).toContain("counted against your blog posts");
+    expect(b.lines.join(" ")).not.toContain("blog posts");
     expect(b.lines.join(" ")).not.toContain("own total above");
-    expect(columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: SCREEN }).lines.join(" ")).toContain("own total above");
+    const bScreen = columnAccount({ source: "B", rows: findings.rows, clean: findings.clean, shopWideCodes: [], ctx: SCREEN });
+    expect(bScreen.offTable).toBe(0);
+    expect(bScreen.lines.join(" ")).not.toContain("blog posts");
+    expect(bScreen.lines.join(" ")).not.toContain("own total above");
   });
 
   it("says where the groups are, or nothing, from the shop-wide method line", () => {
@@ -838,8 +879,9 @@ describe("counts in words (R2-24, R2-27)", () => {
     expect(allOf(46, "whose page we read")).toBe("all 46 products whose page we read");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A15 and B25 are hidden and make no shop-wide row, so the one product carries A3 and B33, whose rows are the sentences under test.
   it("reads as English on a one-product store", () => {
-    const readiness = readinessOf([row(1, ["A15", "B25"])]);
+    const readiness = readinessOf([row(1, ["A3", "B33"])]);
     const items = shopWideItems(readiness, {
       deliveryStated: true,
       returnsStated: true,

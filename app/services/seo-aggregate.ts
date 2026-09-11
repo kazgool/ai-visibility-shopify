@@ -23,7 +23,7 @@
 // say (EXPERIENCE-PRD section 2).
 
 import { isOurNode } from "./conflicts";
-import { CHECK_LABEL, findingsOf, type Finding, type FindingCode } from "./seo-findings";
+import { CHECK_LABEL, codeCanShow, findingsOf, merchantVisible, type Finding, type FindingCode } from "./seo-findings";
 import { formatCount, formatDay } from "./report-metrics";
 
 /**
@@ -386,7 +386,9 @@ export function foldFindingsRow(counters: FindingsCounters, row: ScanRowLike): v
   }
   // A product is counted once per code however many findings carry it.
   const seen = new Set<string>();
-  for (const finding of findingsOf(row.findings)) {
+  // Visible findings only (addendum item 9): the row keeps every finding, and
+  // a check nobody on the merchant's side can act on counts nothing here.
+  for (const finding of findingsOf(row.findings).filter(merchantVisible)) {
     if (seen.has(finding.code)) continue;
     seen.add(finding.code);
     counters.counts.set(finding.code, (counters.counts.get(finding.code) ?? 0) + 1);
@@ -435,7 +437,9 @@ export function buildFindingsAggregate(
   const singleMarket =
     typeof applicability.markets === "number" && applicability.markets <= 1;
 
-  const built: CheckRow[] = CHECKS.map(({ code, source, basis, reports }) => {
+  // A check no merchant sees has no row at all, rather than a "clean" one: a
+  // clean row would still put it on the screen (addendum item 9).
+  const built: CheckRow[] = CHECKS.filter((c) => codeCanShow(c.code)).map(({ code, source, basis, reports }) => {
     const denominator = basisOf(basis);
     const notRead = products - denominator;
     const count = counts.get(code) ?? 0;
@@ -841,7 +845,7 @@ export const PAGE_STATE_TONE: Record<PageState, "success" | "attention" | "criti
 
 /** Findings that came from reading the page, which is what the column is about. */
 export function pageFindings(row: Pick<ScanRowLike, "findings">): Finding[] {
-  return findingsOf(row.findings).filter((f) => f.source !== "A");
+  return findingsOf(row.findings).filter((f) => f.source !== "A" && merchantVisible(f));
 }
 
 /**
@@ -859,7 +863,7 @@ export function pageStateOf(row: ScanRowLike | null | undefined): PageState {
 /** Every finding on one product, page half first, for the editor's section. */
 export function findingsForProduct(row: ScanRowLike | null | undefined): Finding[] {
   if (!row) return [];
-  const all = findingsOf(row.findings);
+  const all = findingsOf(row.findings).filter(merchantVisible);
   return [...all.filter((f) => f.source !== "A"), ...all.filter((f) => f.source === "A")];
 }
 

@@ -70,15 +70,16 @@ function row(i: number, over: Partial<ScanRowLike> = {}): ScanRowLike {
 }
 
 /** Shape 1: 50 products, source A on all of them, 20 pages read so far. */
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 and B2 are hidden, so the fixture carries A5 (catalogue, merchant) and B10 (page, merchant) in their place, same counts.
 function fixture50(): ScanRowLike[] {
   return Array.from({ length: 50 }, (_, i) => {
     const scanned = i < 20;
     const findings: Finding[] = [];
-    // 30 of the 50 are missing an identifier; 6 share a meta title.
-    if (i < 30) findings.push(f("A1", "A", { missing: ["barcode", "sku"] }));
+    // 30 of the 50 have no meta description; 6 share a meta title.
+    if (i < 30) findings.push(f("A5", "A", { missing: ["description"] }));
     if (i < 6) findings.push(f("A3", "A", { fields: [{ field: "title", sharedWith: 5 }] }));
-    // Of the 20 pages read, 4 have no canonical of their own.
-    if (scanned && i < 4) findings.push(f("B2", "B", { canonical: null, page: "x" }));
+    // Of the 20 pages read, 4 have no title tag.
+    if (scanned && i < 4) findings.push(f("B10", "B", { present: false }));
     return row(i, {
       scannedAt: scanned ? SCAN : null,
       status: scanned ? "ok" : null,
@@ -105,9 +106,10 @@ function store20k(): ScanRowLike[] {
 }
 
 /** Shape 4: source A has run over the whole catalogue, source B never. */
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden, so the seven catalogue findings are A5 (catalogue, merchant).
 function neverScanned(n = 50): ScanRowLike[] {
   return Array.from({ length: n }, (_, i) =>
-    row(i, { findings: i < 7 ? [f("A1", "A", { missing: ["vendor"] })] : [] }),
+    row(i, { findings: i < 7 ? [f("A5", "A", { missing: ["title"] })] : [] }),
   );
 }
 
@@ -116,26 +118,29 @@ function neverScanned(n = 50): ScanRowLike[] {
 describe("a 50-product fixture, part-way through its first page pass", () => {
   const aggregate = aggregateFindings(fixture50());
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the two denominators are asserted on A5 and B10, which replaced the hidden A1 and B2 in the fixture.
   it("counts every A check against the catalogue and every B check against the pages read", () => {
     expect(aggregate.products).toBe(50);
     expect(aggregate.bulkRead).toBe(50);
     expect(aggregate.pagesRead).toBe(20);
 
-    const a1 = aggregate.rows.find((r) => r.code === "A1")!;
-    expect(a1).toMatchObject({ count: 30, denominator: 50, state: "found" });
+    const a5 = aggregate.rows.find((r) => r.code === "A5")!;
+    expect(a5).toMatchObject({ count: 30, denominator: 50, state: "found" });
 
-    const b2 = aggregate.rows.find((r) => r.code === "B2")!;
-    expect(b2).toMatchObject({ count: 4, denominator: 20, state: "found" });
+    const b10 = aggregate.rows.find((r) => r.code === "B10")!;
+    expect(b10).toMatchObject({ count: 4, denominator: 20, state: "found" });
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the found rows are A5, A3 and B10, which replaced the hidden A1 and B2 in the fixture, same counts.
   it("orders rows by the count this store actually has, nothing hard-coded", () => {
     const found = aggregate.rows.filter((r) => r.state === "found").map((r) => r.code);
-    expect(found).toEqual(["A1", "A3", "B2"]);
+    expect(found).toEqual(["A5", "A3", "B10"]);
     expect(aggregate.rows.filter((r) => r.state === "found").map((r) => r.count)).toEqual([
       30, 6, 4,
     ]);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: only visible checks have a row, so the clean list is the visible codes that ran and found nothing, 7 over the pages read and 1 (B6) over the catalogue.
   it("collapses the checks that ran and found nothing, with their own denominators", () => {
     // Every check that ran and found nothing. A2 needs the page as well as
     // the catalogue, so it is counted over the 20 pages read, not over 50 -
@@ -157,11 +162,11 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // into "found nothing" would be inventing the verdict their whole design
     // refuses to state. B30 is absent because its denominator is the blog
     // posts a pass read, which is neither of these two.
+    // Since addendum item 9 (11 September 2026) a check no merchant sees has
+    // no row at all, so the list is the visible checks only: B6 over the
+    // catalogue, and seven over the pages read. B34 is counted, never clean.
     expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A12", "A13", "A15", "A16", "A2", "A4", "A5", "A7", "B1", "B10", "B11",
-      "B12", "B13", "B14", "B15", "B16", "B17", "B18", "B19", "B20", "B21",
-      "B22", "B23", "B24", "B25", "B26", "B28", "B3", "B31", "B33", "B4", "B5",
-      "B6", "B7", "B8", "B9",
+      "B1", "B11", "B15", "B22", "B33", "B4", "B6", "B7",
     ]);
     // B33 joined on 10 September: the theme emits a Product node with no @id
     // of its own, so the storefront block holds its own back rather than
@@ -169,7 +174,7 @@ describe("a 50-product fixture, part-way through its first page pass", () => {
     // belongs in this list, and its denominator is the pages read, which is
     // why the first group grows and not the catalogue one.
     expect(cleanSentence(aggregate)).toBe(
-      "28 checks found nothing on 20 products; 8 checks found nothing on 50 products.",
+      "7 checks found nothing on 20 products; 1 check found nothing on 50 products.",
     );
   });
 
@@ -253,10 +258,11 @@ describe("a 20,000-product store, one night in", () => {
 describe("an empty store", () => {
   const aggregate = aggregateFindings([]);
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: only the 12 CHECKS a merchant can see have a row (A3, A5, B1, B4, B6, B7, B10, B11, B15, B22, B33, B34), not all of CHECKS.
   it("reads every check as not yet read, never as a clean zero", () => {
     expect(aggregate.products).toBe(0);
     expect(aggregate.clean).toEqual([]);
-    expect(aggregate.rows).toHaveLength(CHECKS.length);
+    expect(aggregate.rows).toHaveLength(12);
     expect(aggregate.rows.every((r) => r.state === "notYetRead")).toBe(true);
     expect(cleanSentence(aggregate)).toBeNull();
   });
@@ -285,14 +291,15 @@ describe("an empty store", () => {
 describe("a store where source B has never run", () => {
   const aggregate = aggregateFindings(neverScanned());
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the found A check is A5 (replacing hidden A1), and the page checks asserted are every visible page-basis check, since A2, B2, B3 and B5 are hidden and have no row.
   it("answers every A check and refuses to answer any B check", () => {
     expect(aggregate.pagesAttempted).toBe(0);
     expect(aggregate.neverScanned).toBe(50);
 
-    const a1 = aggregate.rows.find((r) => r.code === "A1")!;
-    expect(a1).toMatchObject({ count: 7, denominator: 50, state: "found" });
+    const a5 = aggregate.rows.find((r) => r.code === "A5")!;
+    expect(a5).toMatchObject({ count: 7, denominator: 50, state: "found" });
 
-    for (const code of ["A2", "B1", "B2", "B3", "B4", "B5"]) {
+    for (const code of ["B1", "B4", "B7", "B10", "B11", "B15", "B22", "B33", "B34"]) {
       const check = aggregate.rows.find((r) => r.code === code)!;
       expect(check.state).toBe("notYetRead");
       expect(check.denominator).toBe(0);
@@ -300,19 +307,19 @@ describe("a store where source B has never run", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: of the visible catalogue checks, A5 found something and A3 and B6 found nothing; B6 still shows a B-numbered check answered over the catalogue (B28 is hidden).
   it("collapses only the A checks that ran, and says 50 rather than 0", () => {
-    // B28 is in the catalogue group and not the page group: it is a B-numbered
-    // check that fetches no page, so a store where source B has never run
+    // B6 is in the catalogue group and not the page group: it is a B-numbered
+    // check that source A computes, so a store where source B has never run
     // still has an answer for it. That is the whole reason CHECKS carries a
     // basis separately from a source.
-    expect(aggregate.clean.map((r) => r.code)).toEqual([
-      "A12", "A13", "A15", "A16", "A3", "A4", "A5", "B28", "B6",
-    ]);
-    expect(cleanSentence(aggregate)).toBe("9 checks found nothing on 50 products.");
+    expect(aggregate.clean.map((r) => r.code)).toEqual(["A3", "B6"]);
+    expect(cleanSentence(aggregate)).toBe("2 checks found nothing on 50 products.");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one found row is A5, which replaced the hidden A1 in the fixture.
   it("puts the not-yet-read rows after the ones that found something", () => {
-    expect(aggregate.rows[0].code).toBe("A1");
+    expect(aggregate.rows[0].code).toBe("A5");
     expect(aggregate.rows.slice(1).every((r) => r.state === "notYetRead")).toBe(true);
   });
 
@@ -341,10 +348,12 @@ describe("a store whose pages answered with the password form", () => {
     expect(aggregate.couldNotBeRead).toBe(12);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B2, B3 and B5 are hidden and have no row, so every visible page check is asserted instead, and B5 is asserted absent.
   it("says not yet read for every page check, never 'no Product node'", () => {
-    for (const code of ["B1", "B2", "B3", "B4", "B5"]) {
+    for (const code of ["B1", "B4", "B7", "B10", "B11", "B15", "B22", "B33", "B34"]) {
       expect(aggregate.rows.find((r) => r.code === code)!.state).toBe("notYetRead");
     }
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B5")).toBeUndefined();
   });
 
   // The pages-read sentence used to count attempted pages as read, so this
@@ -457,32 +466,33 @@ describe("B5 over pages that did not answer", () => {
     row(5, { scannedAt: SCAN, status: "ok", findings: [] }),
   ]);
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B5 is hidden and is the only pagesTried check, so no visible row can show this denominator; B5 now has no row and counts nothing, while the page counters still see both failures.
   it("counts the failures inside a denominator that contains them", () => {
-    const check = aggregate.rows.find((r) => r.code === "B5")!;
-    expect(check.state).toBe("found");
-    expect(check.count).toBe(2);
-    expect(check.denominator).toBe(5);
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B5")).toBeUndefined();
+    expect(aggregate.rows.filter((r) => r.state === "found")).toEqual([]);
+    expect(aggregate.pagesAttempted).toBe(5);
+    expect(aggregate.couldNotBeRead).toBe(2);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B2 and B3 are hidden, so every visible page-basis check is asserted over the 3 pages that answered.
   it("keeps every other page check on the pages that answered", () => {
-    for (const code of ["B1", "B2", "B3", "B4"]) {
+    for (const code of ["B1", "B4", "B7", "B10", "B11", "B15", "B22", "B33", "B34"]) {
       const check = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === code)!;
       expect(check.denominator).toBe(3);
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B5 is hidden, so a store where every page failed has no B5 row and no found row; the failures are still in the page counters.
   it("still reports a finding on a store where every page failed", () => {
     const all404 = aggregateFindings(
       Array.from({ length: 4 }, (_, i) =>
         row(i, { scannedAt: SCAN, status: "500", findings: [b5] }),
       ),
     );
-    const check = all404.rows.find((r) => r.code === "B5")!;
-    // With pagesRead as the basis this read "not yet read on 4" while every
-    // one of the four carried the finding.
-    expect(check.state).toBe("found");
-    expect(check.count).toBe(4);
-    expect(check.denominator).toBe(4);
+    expect([...all404.rows, ...all404.clean].find((r) => r.code === "B5")).toBeUndefined();
+    expect(all404.rows.filter((r) => r.state === "found")).toEqual([]);
+    expect(all404.pagesAttempted).toBe(4);
+    expect(all404.couldNotBeRead).toBe(4);
   });
 });
 
@@ -520,14 +530,16 @@ describe("the Page column's four states", () => {
     ).toBe("clean");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B3 is hidden, so the page finding is B10 (page, merchant); A2 is hidden too, so a page carrying only A2 now reads clean.
   it("is amber when the page read found something", () => {
     expect(
-      pageStateOf(row(1, { scannedAt: SCAN, status: "ok", findings: [f("B3", "B", { from: "meta" })] })),
+      pageStateOf(row(1, { scannedAt: SCAN, status: "ok", findings: [f("B10", "B", { present: false })] })),
     ).toBe("findings");
-    // A2 is computed from the page as well, so it colours this column too.
+    // A2 is computed from the page as well, but no merchant sees it, so it
+    // colours nothing.
     expect(
       pageStateOf(row(1, { scannedAt: SCAN, status: "ok", findings: [f("A2", "A+B", {})] })),
-    ).toBe("findings");
+    ).toBe("clean");
   });
 
   it("has its own state for a page that could not be read", () => {
@@ -543,13 +555,14 @@ describe("the Page column's four states", () => {
 // --- the editor's section ---------------------------------------------------
 
 describe("one product's findings, for the editor", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 and B3 are hidden, so the row carries A3 (catalogue) and B10 (page) in their place.
   it("puts the page half first and keeps the catalogue half", () => {
     const r = row(1, {
       scannedAt: SCAN,
       status: "ok",
-      findings: [f("A1", "A"), f("B3", "B", { from: "meta" }), f("A5", "A", { missing: ["title"] })],
+      findings: [f("A3", "A"), f("B10", "B", { present: false }), f("A5", "A", { missing: ["title"] })],
     });
-    expect(findingsForProduct(r).map((x) => x.code)).toEqual(["B3", "A1", "A5"]);
+    expect(findingsForProduct(r).map((x) => x.code)).toEqual(["B10", "A3", "A5"]);
   });
 
   it("is empty for a product with no row", () => {
@@ -582,18 +595,20 @@ describe("one product's findings, for the editor", () => {
 // --- a finding recorded twice on one product -------------------------------
 
 describe("counting", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden and has no row, so the product carries A5 twice instead.
   it("counts a product once per code however many findings carry it", () => {
     const aggregate = aggregateFindings([
-      row(1, { findings: [f("A1", "A", { missing: ["sku"] }), f("A1", "A", { missing: ["vendor"] })] }),
+      row(1, { findings: [f("A5", "A", { missing: ["title"] }), f("A5", "A", { missing: ["description"] })] }),
     ]);
-    expect(aggregate.rows.find((r) => r.code === "A1")!.count).toBe(1);
+    expect(aggregate.rows.find((r) => r.code === "A5")!.count).toBe(1);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden and has no clean row, so the catalogue check asserted clean is A5.
   it("survives a findings column that is not an array", () => {
     const aggregate = aggregateFindings([row(1, { findings: "not json" }), row(2, { findings: null })]);
     expect(aggregate.products).toBe(2);
-    // A1 ran over both rows and found nothing, so it is clean, not a row.
-    expect(aggregate.clean.find((r) => r.code === "A1")).toMatchObject({
+    // A5 ran over both rows and found nothing, so it is clean, not a row.
+    expect(aggregate.clean.find((r) => r.code === "A5")).toMatchObject({
       count: 0,
       denominator: 2,
     });
@@ -624,38 +639,42 @@ describe("B9 on a shop with one market", () => {
     return c;
   }
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B9 is hidden and is the only check that can be not applicable, so the state can only be asserted absent: no B9 row, no not-applicable row, and one market changes nothing.
   it("reads not applicable, and is never counted as clean", () => {
     const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: 1 });
-    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
 
-    expect(b9.state).toBe("notApplicable");
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")).toBeUndefined();
+    expect(aggregate.rows.filter((r) => r.state === "notApplicable")).toEqual([]);
     expect(aggregate.clean.map((r) => r.code)).not.toContain("B9");
     // The clean sentence counts the checks that ran and found nothing. A check
     // that never applied is not one of them.
     expect(cleanSentence(aggregate)).not.toContain("B9");
+    // With B9 on no surface, the number of markets moves nothing at all.
+    expect(aggregate).toEqual(buildFindingsAggregate(counters(fixture50()), { markets: 2 }));
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B9 is hidden, so a two-market shop has no B9 row either, clean or otherwise.
   it("stays a normal check on a two-market shop", () => {
     const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: 2 });
-    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
-    expect(b9.state).toBe("clean");
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")).toBeUndefined();
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B9 is hidden, so an unread markets fact leaves no B9 row either; it is not excused into another state, it is simply not shown.
   it("stays a normal check when the markets read could not be made", () => {
     // Null is "not established", which is not "does not apply". A shop whose
     // plan or scope hides `markets` must not have B9 quietly excused.
     const aggregate = buildFindingsAggregate(counters(fixture50()), { markets: null });
-    const b9 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")!;
-    expect(b9.state).toBe("clean");
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "B9")).toBeUndefined();
+    expect(aggregate.rows.filter((r) => r.state === "notApplicable")).toEqual([]);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A7 is hidden and no visible A-numbered check has a page basis, so A7 has no row while CHECKS still records it over the pages read.
   it("keeps A7 counted over the pages read, never over the catalogue", () => {
     // A7 is computed in source B's pass from a fetch, so its denominator is
     // the pages that answered - the same rule every B check follows.
     const aggregate = buildFindingsAggregate(counters(fixture50()), {});
-    const a7 = [...aggregate.rows, ...aggregate.clean].find((r) => r.code === "A7")!;
-    expect(a7.denominator).toBe(20);
-    expect(a7.denominator).not.toBe(50);
+    expect([...aggregate.rows, ...aggregate.clean].find((r) => r.code === "A7")).toBeUndefined();
+    expect(CHECKS.find((c) => c.code === "A7")).toEqual({ code: "A7", source: "B", basis: "pagesRead" });
   });
 
   it("has no A6 row at all, because A6 counts collections", () => {

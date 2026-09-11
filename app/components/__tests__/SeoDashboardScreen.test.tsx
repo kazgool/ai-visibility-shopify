@@ -26,6 +26,16 @@ import type { FactsRow } from "../../services/seo-since";
 
 const DAY = "2026-09-04T03:45:00.000Z";
 
+/**
+ * The detail a finding needs to reach a merchant surface (addendum item 9):
+ * B1 and B22 are shown only when this app's own output is involved, so a
+ * fixture that uses them as ordinary findings carries that detail.
+ */
+const VISIBLE_DETAIL: Record<string, Record<string, unknown>> = {
+  B1: { emitters: ["theme", "app"], productNodes: 2 },
+  B22: { ours: true },
+};
+
 function row(
   id: number,
   codes: string[],
@@ -41,7 +51,7 @@ function row(
     findings: codes.map((code) => ({
       code,
       source: code.startsWith("A") ? "A" : "B",
-      detail: {},
+      detail: VISIBLE_DETAIL[code] ?? {},
     })),
     nodes: [],
   };
@@ -105,14 +115,20 @@ function render(value: SeoDashboardData): string {
 }
 
 // --- the five stores --------------------------------------------------------
+//
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the
+// stores carried hidden codes, which now render nothing. Each is replaced by a
+// visible code with the same basis and owner: B17 by B10 (page, merchant), B2
+// and B25 by B1 (page, theme), B12 by B33 (page, theme). The counts are
+// unchanged.
 
 function fiftyProducts(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 50; i += 1) {
     const codes: string[] = [];
-    if (i < 12) codes.push("B17");
+    if (i < 12) codes.push("B10");
     if (i < 8) codes.push("A5");
-    if (i >= 12 && i < 20) codes.push("B2");
+    if (i >= 12 && i < 20) codes.push("B1");
     if (i >= 20 && i < 24) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -122,10 +138,10 @@ function fiftyProducts(): ScanRowLike[] {
 function oneEightyNine(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 189; i += 1) {
-    const codes: string[] = ["B12"];
-    if (i < 38) codes.push("B17");
+    const codes: string[] = ["B33"];
+    if (i < 38) codes.push("B10");
     if (i < 23) codes.push("A5");
-    if (i >= 100 && i < 114) codes.push("B25");
+    if (i >= 100 && i < 114) codes.push("B1");
     if (i >= 150 && i < 161) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -135,7 +151,7 @@ function oneEightyNine(): ScanRowLike[] {
 function twentyThousand(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 20000; i += 1) {
-    if (i < 500) rows.push(row(i, i < 120 ? ["B17"] : []));
+    if (i < 500) rows.push(row(i, i < 120 ? ["B10"] : []));
     else rows.push(row(i, ["A5"], { page: false }));
   }
   return rows;
@@ -167,17 +183,19 @@ describe("a 50-product fixture, every page read", () => {
     expect(text).toContain(String(readiness.clean));
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the fixture's merchant page code is B10 (replacing hidden B17), so B10 is the code asserted absent from the text.
   it("names the groups in the merchant's words and never a check code", () => {
     expect(text).toContain("Nothing to fix");
     expect(text).toContain("You can fix these yourself, no developer");
     expect(text).toContain("These need a change to your theme");
     expect(text).toContain("We can fix these, once you have read them");
-    expect(text).not.toMatch(/\bB17\b/);
+    expect(text).not.toMatch(/\bB10\b/);
     expect(text).not.toMatch(/\bA5\b/);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the 12-product row is B10, which replaced the hidden B17, so its label is the one on the screen.
   it("carries a denominator beside every count it states", () => {
-    expect(text).toContain("Products with very little text on the page");
+    expect(text).toContain("Titles that are missing, or get cut off in a search result on a phone");
     expect(text).toContain("12 of 50");
   });
 });
@@ -198,10 +216,11 @@ describe("a 189-product shop with one problem on every product", () => {
     expect(text).toContain("of 189 products");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the problem on every product is B33, which replaced the hidden B12, so its shop-wide sentence is the one on the card.
   it("moves the problem that flags every product into the shop-wide card", () => {
     expect(text).toContain("fixes that cover the whole shop");
     // A sentence, not a bar label with a count glued on the end.
-    expect(text).toContain("No product page uses the product as its largest heading");
+    expect(text).toContain("Your theme's product description blocks ours, on every product page");
     expect(text).not.toMatch(/, on all \d+/);
     expect(text).toContain("100 percent");
   });
@@ -229,6 +248,7 @@ describe("a 189-product shop with one problem on every product", () => {
     expect(text).toContain("Change");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the one check among the three rows is B33, which replaced the hidden B12 in the fixture.
   it("counts the rows the shop-wide card renders, not the checks behind some of them", () => {
     // The card lists three: two facts about the shop and one check. A method
     // line saying "2" beside a card showing 3 is two true numbers
@@ -238,19 +258,21 @@ describe("a 189-product shop with one problem on every product", () => {
     expect(text).toContain("1 of them from a check that flagged all 189 products");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the merchant and theme rows are B10 and B1, which replaced the hidden B17 and B25, so their labels carry the group words.
   it("names the group of every row in words and not only in colour", () => {
     // One row per group, each carrying its owner as a word.
-    expect(text).toContain("Products with very little text on the page You");
-    expect(text).toContain("Products whose main address nothing links to Your theme");
+    expect(text).toContain("Titles that are missing, or get cut off in a search result on a phone You");
+    expect(text).toContain("Pages that describe no product to search engines, or describe two Your theme");
     expect(text).toContain("Photos with no description of what is in them Us");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the columns account only for the 13 codes a merchant can see, 4 on the admin side (A3, A5, A6, B6) and 9 on the page side.
   it("accounts for every check in the vocabulary, on both sides", () => {
-    expect(text).toContain("That is all 13 checks on this side");
-    // B33 joined on 10 September, over the pages read, so the page side
-    // is 32 rather than 31, and B34 (the delivery counter, 11 September) makes
-    // it 33. The admin side is unchanged at 13.
-    expect(text).toContain("That is all 33 checks on this side");
+    // Since addendum item 9 only the checks a merchant can see are counted:
+    // A3, A5, A6 and B6 on the admin side (B6 is computed in source A's pass),
+    // and B1, B4, B7, B10, B11, B15, B22, B33 and B34 on the page side.
+    expect(text).toContain("That is all 4 checks on this side");
+    expect(text).toContain("That is all 9 checks on this side");
   });
 
   it("shows what moved since the snapshot, in plain words", () => {
@@ -275,6 +297,7 @@ describe("a 20,000-product store part-way through its first page read", () => {
     expect(text).not.toContain("20000");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the 120 read products with a gap carry B10, which replaced the hidden B17 in the fixture, so 380 of the 500 read are clean again.
   it("never claims a product nobody read is clean", () => {
     const readiness = readinessOf(rows);
     expect(readiness.clean).toBe(380);
@@ -328,6 +351,7 @@ describe("a store where the live page read never ran", () => {
 });
 
 describe("the counts that state no verdict", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B29 and B32 are hidden, so their averages are no longer drawn; the card renders B34, the only visible counted check, as its count of pages with the pages beside it.
   it("renders them apart, as an average with the pages beside it", () => {
     const rows = [
       {
@@ -339,13 +363,15 @@ describe("the counts that state no verdict", () => {
             detail: { breadcrumb: 2, related: 4, collection: 6, inDescription: 0, total: 12 },
           },
           { code: "B32", source: "B", detail: { scripts: 14, origins: 3 } },
+          { code: "B34", source: "B", detail: {} },
         ],
       },
       row(2, []),
     ];
     const text = render(data(rows));
     expect(text).toContain("Counted, with no verdict");
-    expect(text).toContain("average over 1 pages");
+    expect(text).toContain("Visible on the page: 1 of 2 eligible products");
+    expect(text).not.toContain("average over");
     expect(text).toContain("nobody credible states a target");
     // And it never turns into a finding: the product carrying them is clean.
     expect(readinessOf(rows).clean).toBe(2);
@@ -410,12 +436,13 @@ describe("the layout the admin iframe has room for", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B5 is hidden and was the only row with its own denominator, so the screen now carries no scope line at all; B17 in the fixture is B10.
   it("carries the B5 scope line on the screen, not only on paper (R2-17)", () => {
     const rows: ScanRowLike[] = [];
-    for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B17"] : []));
+    for (let i = 0; i < 46; i += 1) rows.push(row(i, i < 20 ? ["B10"] : []));
     for (let i = 46; i < 50; i += 1) rows.push(row(i, ["B5"], { status: "error" }));
     const text = render(data(rows));
-    expect(text).toContain("is counted out of 50, not 46");
+    expect(text).not.toContain("is counted out of");
     // And one sentence about those four pages, not three (R2-16).
     expect(text).toContain("46 of 50 pages read; 4 more could not be read");
     expect(text).toContain("the same 4 the line above counts as could not be read");

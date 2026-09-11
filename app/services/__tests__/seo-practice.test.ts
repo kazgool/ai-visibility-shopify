@@ -415,13 +415,24 @@ describe("a check that counts and does not judge", () => {
     detail: { breadcrumb: n, related: 0, collection: n, inDescription: 0, total: n },
   });
 
+  // B34 is the only counted check a merchant sees (addendum item 9). It
+  // carries no numbers today; the same five numeric fields stand in for any
+  // numeric detail, because the summing is the same for every counted code.
+  const b34 = (n: number): Finding => ({
+    code: "B34",
+    source: "B",
+    detail: { breadcrumb: n, related: 0, collection: n, inDescription: 0, total: n },
+  });
+
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B29 is hidden, so the counted mechanism is asserted on B34, the only visible counted check, and B29 now has no row.
   it("renders as counted rather than as found, whatever its count", () => {
     const counters = createFindingsCounters();
-    foldFindingsRow(counters, rowWith([b29(3)]));
-    foldFindingsRow(counters, rowWith([b29(1)]));
+    foldFindingsRow(counters, rowWith([b34(3), b29(3)]));
+    foldFindingsRow(counters, rowWith([b34(1), b29(1)]));
     const aggregate = buildFindingsAggregate(counters);
 
-    const row = aggregate.rows.find((r) => r.code === "B29")!;
+    expect(aggregate.rows.find((r) => r.code === "B29")).toBeUndefined();
+    const row = aggregate.rows.find((r) => r.code === "B34")!;
     expect(row.state).toBe("counted");
     // Two products carried it, and the numbers are summed across them: a row
     // that says nothing about pass or fail has only the numbers to say.
@@ -435,29 +446,34 @@ describe("a check that counts and does not judge", () => {
     });
     // Never in the clean group: "found nothing" is a verdict, and this row
     // states none.
-    expect(aggregate.clean.map((r) => r.code)).not.toContain("B29");
-    expect(aggregate.rows.filter((r) => r.state === "found").map((r) => r.code)).not.toContain("B29");
+    expect(aggregate.clean.map((r) => r.code)).not.toContain("B34");
+    expect(aggregate.rows.filter((r) => r.state === "found").map((r) => r.code)).not.toContain("B34");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B29 is hidden and has no row, so the not-yet-read rule for a counted check is asserted on B34.
   it("is still not-yet-read before any page has been read", () => {
     // A count of nothing measured is not a count of zero, and that rule does
     // not stop applying because a row states no verdict.
     const counters = createFindingsCounters();
     foldFindingsRow(counters, { bulkAt: new Date(), scannedAt: null, status: null, findings: [] } as any);
     const aggregate = buildFindingsAggregate(counters);
-    expect(aggregate.rows.find((r) => r.code === "B29")?.state).toBe("notYetRead");
+    expect(aggregate.rows.find((r) => r.code === "B34")?.state).toBe("notYetRead");
+    expect(aggregate.rows.find((r) => r.code === "B29")).toBeUndefined();
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B29, B32 and B3 are hidden, so the ordering is asserted with B34 (counted) after B10 (found); B34 is now the only counted row.
   it("sits after every row that does state a verdict", () => {
     const counters = createFindingsCounters();
-    foldFindingsRow(counters, rowWith([b29(1), { code: "B3", source: "B", detail: { from: "meta" } }]));
+    foldFindingsRow(counters, rowWith([b34(1), b29(1), { code: "B10", source: "B", detail: { present: false } }]));
     const aggregate = buildFindingsAggregate(counters);
     const codes = aggregate.rows.map((r) => r.code);
-    expect(codes.indexOf("B29")).toBeGreaterThan(codes.indexOf("B3"));
-    // The counted rows close the list. B34, the delivery counter, joined B29
-    // and B32 on 11 September 2026, so the last three rows are the three
-    // counts rather than B32 alone.
-    expect(codes.slice(-3).sort()).toEqual(["B29", "B32", "B34"]);
+    expect(codes.indexOf("B10")).toBeGreaterThanOrEqual(0);
+    expect(codes.indexOf("B34")).toBeGreaterThan(codes.indexOf("B10"));
+    // The counted rows close the list. B29 and B32 are on no merchant surface
+    // (addendum item 9), so B34, the delivery counter, is the one count left
+    // and the last row.
+    expect(codes[codes.length - 1]).toBe("B34");
+    expect(aggregate.rows.filter((r) => r.state === "counted").map((r) => r.code)).toEqual(["B34"]);
   });
 });
 

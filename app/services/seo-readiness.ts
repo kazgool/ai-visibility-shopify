@@ -50,7 +50,10 @@ import {
   OWNER_LABEL,
   OWNER_STEPS,
   SHOP_WIDE_LABEL,
+  codeCanShow,
   findingsOf,
+  merchantVisible,
+  type Finding,
   type FindingCode,
   type FindingOwner,
   type FixShape,
@@ -272,7 +275,16 @@ function later(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
-export function foldReadinessRow(counters: ReadinessCounters, row: ScanRowLike): void {
+/**
+ * `visible` decides which findings count; the app always passes the default,
+ * merchantVisible. scripts/read-dashboard-visibility.ts passes `() => true`
+ * to print the same headline as it read before that rule, beside it.
+ */
+export function foldReadinessRow(
+  counters: ReadinessCounters,
+  row: ScanRowLike,
+  visible: (finding: Finding) => boolean = merchantVisible,
+): void {
   counters.products += 1;
   const bulk = present(row.bulkAt);
   if (bulk) {
@@ -288,8 +300,11 @@ export function foldReadinessRow(counters: ReadinessCounters, row: ScanRowLike):
     // Every catalogue row, read or not, for the catalogue-basis checks. Only
     // codes with a catalogue basis are counted here; a page-basis code on a
     // row whose page was never read is not a measurement of anything.
+    // Only what a merchant sees is counted (addendum item 9): a check this app
+    // can neither fix nor causes moves no product between groups.
     const catalogueCodes = new Set(
       findingsOf(row.findings)
+        .filter(visible)
         .map((f) => String(f.code))
         .filter((code) => groupsOn(code) && CHECK_BASIS.get(code) === "catalogue"),
     );
@@ -303,7 +318,7 @@ export function foldReadinessRow(counters: ReadinessCounters, row: ScanRowLike):
   }
   counters.readSet += 1;
   const codes = [
-    ...new Set(findingsOf(row.findings).map((f) => String(f.code)).filter(groupsOn)),
+    ...new Set(findingsOf(row.findings).filter(visible).map((f) => String(f.code)).filter(groupsOn)),
   ].sort();
   for (const code of codes) {
     counters.codeCounts.set(code, (counters.codeCounts.get(code) ?? 0) + 1);
@@ -313,9 +328,12 @@ export function foldReadinessRow(counters: ReadinessCounters, row: ScanRowLike):
 }
 
 /** The whole fold over an array, for tests and for callers holding the rows. */
-export function readinessOf(rows: ScanRowLike[]): Readiness {
+export function readinessOf(
+  rows: ScanRowLike[],
+  visible: (finding: Finding) => boolean = merchantVisible,
+): Readiness {
   const counters = createReadinessCounters();
-  for (const row of rows) foldReadinessRow(counters, row);
+  for (const row of rows) foldReadinessRow(counters, row, visible);
   return buildReadiness(counters);
 }
 
@@ -1470,11 +1488,13 @@ export function columnAccount(input: {
   const couldNotRun = mine.filter((r) => r.state === "couldNotRun").length;
   const notApplicable = mine.filter((r) => r.state === "notApplicable").length;
   const counted = mine.filter((r) => r.state === "counted").length;
+  // Only the checks a merchant can see are "checks on this side" (addendum
+  // item 9); the others still run and are stored, and are on no screen.
   const offTable = (Object.keys(OFF_TABLE_SOURCE) as FindingCode[]).filter(
-    (code) => OFF_TABLE_SOURCE[code] === source,
+    (code) => OFF_TABLE_SOURCE[code] === source && codeCanShow(code),
   ).length;
   const total = (Object.keys(FINDING_OWNER) as FindingCode[]).filter(
-    (code) => codeSource(code) === source,
+    (code) => codeSource(code) === source && codeCanShow(code),
   ).length;
 
   const thing = source === "A" ? "product" : "page";

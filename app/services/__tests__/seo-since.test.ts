@@ -66,11 +66,12 @@ describe("shape 1: nothing changed", () => {
     pagesRead: 50,
     productNodeTheme: 48,
     productNodeNone: 2,
-    findingsByCode: { A1: 50 },
+    findingsByCode: { A5: 50 },
   };
   const before = facts(measured);
   const table = sinceTable(before, facts({ ...measured, takenAt: "2026-09-20T03:45:00.000Z" }));
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden and gets no then-and-now row, so the recorded finding is A5 (catalogue, merchant) and the count stays FIGURES plus one.
   it("puts every figure in the collapsed group and shows no rows", () => {
     expect(table.rows).toEqual([]);
     expect(table.unchanged.length).toBe(FIGURES.length + 1);
@@ -134,7 +135,7 @@ describe("shape 3: the catalogue shrank", () => {
 
 describe("shape 4: everything moved", () => {
   const table = sinceTable(
-    facts({ findingsByCode: { A1: 50, A5: 20 }, pagesRead: 0 }),
+    facts({ findingsByCode: { A3: 50, A5: 20 }, pagesRead: 0 }),
     facts({
       takenAt: "2026-09-20T03:45:00.000Z",
       metaTitleSet: 50,
@@ -145,17 +146,18 @@ describe("shape 4: everything moved", () => {
       pagesRead: 50,
       productNodeTheme: 48,
       productNodeNone: 2,
-      findingsByCode: { A1: 50, A5: 0, B1: 2 },
+      findingsByCode: { A3: 50, A5: 0, B10: 2 },
     }),
   );
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A1 is hidden and gets no row, so the unchanged finding is A3 (catalogue, merchant) instead.
   it("collapses nothing that actually moved", () => {
     expect(table.unchanged.map((r) => r.key)).toEqual([
       "products",
       "withBarcode",
       "withVendor",
       "withSku",
-      "finding:A1",
+      "finding:A3",
     ]);
   });
 
@@ -165,8 +167,9 @@ describe("shape 4: everything moved", () => {
     expect(figure(r.today, r.todayDenominator)).toBe("48 of 50");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B1 is visible only when ours and the stored count cannot say which, so it gets no row; the finding that appeared is B10 (page, merchant).
   it("keeps a finding that appeared since the snapshot, with the before as a measured zero", () => {
-    const r = row(table, "finding:B1")!;
+    const r = row(table, "finding:B10")!;
     // The snapshot's findingsByCode was an object, so a code absent from it was
     // measured at zero - not unmeasured.
     expect(r.before).toBe(0);
@@ -350,8 +353,9 @@ describe("the unchanged line the merchant reads counts only the rows the merchan
   const today = facts({ ...before, takenAt: "2026-09-20T03:45:00.000Z", metaTitleOurs: 7 });
   const table = sinceTable(before, today);
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: of B1 to B21 only B4, B6, B7, B10, B11 and B15 are visible "yes" codes, so the operator line counts 11 figures plus 6 finding rows, 17, and the merchant line still 11.
   it("counts eleven, not thirty-two", () => {
-    expect(table.unchangedLine).toBe("32 figures are unchanged.");
+    expect(table.unchangedLine).toBe("17 figures are unchanged.");
     expect(ownerUnchangedRows(table).length).toBe(11);
     expect(ownerUnchangedLine(table)).toBe("11 figures are unchanged.");
     expect(ownerSinceRows(table).map((r) => r.ownerLabel)).toEqual([

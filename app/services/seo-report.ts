@@ -25,6 +25,7 @@ import {
   OWNER_LABEL,
   OWNER_STEPS,
   findingsOf,
+  merchantVisible,
   type FindingCode,
 } from "./seo-findings";
 import {
@@ -657,7 +658,8 @@ export function productFindingsCsv(
   const body: (string | number)[][] = [];
   let truncated = false;
   for (const row of rows) {
-    for (const finding of findingsOf(row.findings)) {
+    // Visible findings only, like every other surface (addendum item 9).
+    for (const finding of findingsOf(row.findings).filter(merchantVisible)) {
       if (body.length >= cap) {
         truncated = true;
         break;

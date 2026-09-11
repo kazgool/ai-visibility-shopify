@@ -947,6 +947,98 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
 };
 
 /**
+ * Which checks a merchant sees (CC-PROMPT-AI-READABILITY-3 addendum, item 9).
+ *
+ * The merchant's screens show only what this app does or can do. A check is
+ * "yes" when (a) this app can fix it with a button or a setting it offers, or
+ * (b) this app's own output causes it; "ours" when that is true of some of its
+ * findings only, and the finding's detail says which; "no" otherwise. Every
+ * check keeps running and keeps its stored rows - nothing is taken out of the
+ * scan or the database - but a "no" finding appears on no merchant surface
+ * and changes no number on one: the headline, the four groups, the shop-wide
+ * card, the column sentences, the counted card, the Products filter, the
+ * product editor, the print view and every spreadsheet are all computed over
+ * visible findings only.
+ */
+export type MerchantVisibility = "yes" | "ours" | "no";
+
+export const MERCHANT_VISIBLE: Record<FindingCode, MerchantVisibility> = {
+  // (a) The SEO screen drafts and writes meta titles and descriptions, and
+  // B10 and B11 are the same two fields as the page shows them.
+  A3: "yes",
+  A5: "yes",
+  B10: "yes",
+  B11: "yes",
+  // (a) The collections meta writer.
+  A6: "yes",
+  // (a) "Write missing alt text".
+  B15: "yes",
+  // (b) This app's own output: its block missing from the page, its
+  // structured data missing or twice, its node held back by the theme's, and
+  // the counter of pages that show its content.
+  B4: "yes",
+  B6: "yes",
+  B7: "yes",
+  B33: "yes",
+  B34: "yes",
+  // (b) where one of the nodes is this app's, never when both are the theme's.
+  B1: "ours",
+  // (b) where the old-style data is this app's own FAQPage.
+  B22: "ours",
+  // Neither: a fix only the merchant, the theme or Shopify can make.
+  A1: "no",
+  A2: "no",
+  A4: "no",
+  A7: "no",
+  A10: "no",
+  A11: "no",
+  A12: "no",
+  A13: "no",
+  A15: "no",
+  A16: "no",
+  B2: "no",
+  B3: "no",
+  B5: "no",
+  B8: "no",
+  B9: "no",
+  B12: "no",
+  B13: "no",
+  B14: "no",
+  B16: "no",
+  B17: "no",
+  B18: "no",
+  B19: "no",
+  B20: "no",
+  B21: "no",
+  B23: "no",
+  B24: "no",
+  B25: "no",
+  B26: "no",
+  B28: "no",
+  B29: "no",
+  B30: "no",
+  B31: "no",
+  B32: "no",
+};
+
+/** A code some finding of which can reach a merchant surface. */
+export function codeCanShow(code: string): boolean {
+  const v = MERCHANT_VISIBLE[code as FindingCode];
+  return v === "yes" || v === "ours";
+}
+
+/** Whether this finding reaches a merchant surface. A code this release does
+ * not know is not shown: nothing on a merchant screen may be unexplained. */
+export function merchantVisible(finding: Pick<Finding, "code" | "detail">): boolean {
+  const v = MERCHANT_VISIBLE[finding.code as FindingCode];
+  if (v !== "ours") return v === "yes";
+  const d = (finding.detail ?? {}) as Record<string, unknown>;
+  if (finding.code === "B1") return Array.isArray(d.emitters) && d.emitters.includes("app");
+  if (finding.code === "B22") return d.ours === true;
+  return false;
+}
+
+/**
  * Whether the fix for a finding is one act for the whole shop, or one act per
  * product.
  *

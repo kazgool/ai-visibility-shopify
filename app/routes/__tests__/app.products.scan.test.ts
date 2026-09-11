@@ -197,6 +197,7 @@ describe("the second render, after the button", () => {
   // section is read off the row, so what the merchant sees after pressing the
   // button is what was actually written and not what the call happened to
   // return. Asserted by answering scanRowFor with a row the action never saw.
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: B2 and A1 are hidden, so the row carries B10 (page, merchant) and A3 (catalogue, merchant) instead; not A5, which the loader recomputes from the live product.
   it("shows the scannedAt and the findings from the row, not from the action", async () => {
     scanRowFor.mockResolvedValue({
       productId: "gid://shopify/Product/1",
@@ -210,8 +211,8 @@ describe("the second render, after the button", () => {
       cacheControl: "max-age=300",
       nodes: [],
       findings: [
-        { code: "B2", source: "B", detail: { canonical: "https://shop.example/x" } },
-        { code: "A1", source: "A", detail: { missing: ["barcode"] } },
+        { code: "B10", source: "B", detail: { present: false } },
+        { code: "A3", source: "A", detail: { fields: [{ field: "title", sharedWith: 1 }] } },
       ],
     });
 
@@ -223,7 +224,7 @@ describe("the second render, after the button", () => {
     expect(data.crawlerPage.cacheControl).toBe("max-age=300");
     // Both halves of the column, the page's own first: the section is what a
     // crawler sees on this page, and a catalogue finding is context for it.
-    expect(data.crawlerPage.findings.map((f: any) => f.code)).toEqual(["B2", "A1"]);
+    expect(data.crawlerPage.findings.map((f: any) => f.code)).toEqual(["B10", "A3"]);
   });
 
   it("says the page has never been read when the row has no scannedAt", async () => {

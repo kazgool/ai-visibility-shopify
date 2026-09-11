@@ -15,7 +15,7 @@
 // snapshot taken by hand after the key was already in use never says "since
 // the start".
 
-import { CHECK_LABEL, type FindingCode } from "./seo-findings";
+import { CHECK_LABEL, MERCHANT_VISIBLE, type FindingCode } from "./seo-findings";
 import { CHECKS } from "./seo-aggregate";
 import { csvRows, formatCount } from "./report-metrics";
 
@@ -169,6 +169,11 @@ function buildRows(before: FactsRow, today: FactsRow | null): SinceRow[] {
     ...Object.keys(today?.findingsByCode ?? {}),
   ]);
   for (const code of [...codes].sort()) {
+    // Only the checks a merchant sees (addendum item 9). A code visible for
+    // some findings only (B1, B22) is left out too: the stored count per code
+    // does not say which of its findings were ours, so showing it would let a
+    // hidden finding move a number.
+    if (MERCHANT_VISIBLE[code as FindingCode] !== "yes") continue;
     const b = before.findingsByCode ? (before.findingsByCode[code] ?? 0) : null;
     const t = today?.findingsByCode ? (today.findingsByCode[code] ?? 0) : null;
     const basis = CHECKS.find((c) => c.code === code)?.basis;
@@ -484,6 +489,33 @@ export function ownerUnchangedLine(table: SinceTable): string | null {
   const unchanged = ownerUnchangedRows(table).length;
   if (unchanged === 0) return null;
   return `${unchanged} ${unchanged === 1 ? "figure is" : "figures are"} unchanged.`;
+}
+
+/**
+ * "day N" in the dashboard's header: calendar days in the shop's own
+ * timezone, the snapshot's day being day 1 (CC-PROMPT-AI-READABILITY-3
+ * addendum, item 13). It used to be whole 24-hour blocks from the snapshot's
+ * instant, so a snapshot taken at 23:00 still read "day 1" at 22:00 the next
+ * evening, and one taken at 01:00 read "day 1" until 01:00 the day after.
+ * An unknown or invalid timezone counts in UTC rather than failing.
+ */
+export function calendarDayNumber(fromIso: string | Date, now: Date, timeZone: string | null | undefined): number {
+  const dayIndex = (at: Date): number => {
+    let text: string;
+    try {
+      text = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timeZone || "UTC",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(at);
+    } catch {
+      text = at.toISOString().slice(0, 10);
+    }
+    const [y, m, d] = text.split("-").map(Number);
+    return Date.UTC(y, m - 1, d) / 86_400_000;
+  };
+  return Math.max(1, dayIndex(now) - dayIndex(new Date(fromIso)) + 1);
 }
 
 /** The since figure on a merchant surface: "30 of 50", with a thousands separator. */

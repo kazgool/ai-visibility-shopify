@@ -30,3 +30,22 @@ Acceptance bar, set by Marius, non-negotiable: every question and answer the new
 7. Visible facts, measured not fixed: run the same judge on the facts list as it would show on the page (label: value), same rubric rules 2 and 3, on the same stores. Report the error rate per store and per group. This decides which groups the merchant should switch off and whether facts show by default; do not change defaults in this batch, report only.
 
 8. Docs and handover as before, plus: the corpus manifest and split, the intent keyword lists with their corpus counts, the phrase table additions in en and ro for approval, the judge results table (dev, hold-out, per store, per source), the facts error table, and a plain statement: bar met or not met, with the number.
+
+---
+
+Addendum, approved by Marius the same day: the merchant screens show only what this app does or can do. Do these after item 8, each a commit, same rules.
+
+9. One visibility rule, as data. In app/services/seo-findings.ts add one field per finding code, `merchantVisible`, true only when (a) this app can fix it with a button or setting it offers, or (b) this app's own output causes it. Every other check keeps running and keeps its stored rows (nothing deleted from the scan or the database), but appears on no merchant surface: SEO screen, SEO dashboard, Report screen, print view, every CSV/export, the shop-wide card, the headline dial and its four groups, the "N checks on this side" sentences, and the counted-with-no-verdict cards. Grep every reader of the findings registry and list each surface you changed with its count. The headline and group counts are recomputed over visible checks only; test that a hidden finding changes no number on any surface.
+   Starting classification, confirm each against the code and say where you disagree: visible A5, A3 and B10 and B11 restricted to fields this app wrote, B15 (after item 10), B34, collection meta checks this app writes, and B1, B22, B33 only where our output is involved (item 11). Hidden: A1, B5, B9, B12, B14, B17, B21, B25, B29, B32, the blog check, and B1 when both nodes are the theme's.
+
+10. B15 counts only product media, the images this app's alt writer can write, and never alt="" (correct markup for a decorative image, as the code's own comment says). The shop-wide sentence may not claim "no photo has a description" while the app has written descriptions: state the count with its denominator.
+
+11. Rows caused by our own output, told truthfully. B22: when `ours`, the row says it is this app's FAQPage, emitted on purpose, owner "app", never "your theme". B33: raised only in extend mode when our node is actually held back; in full mode with a theme node present, a different, visible row says "Two product descriptions on these pages: your theme's and this app's. Yours stays until your theme's is removed; ours is complete." (English UI; add to the jargon test). The structured data card's sentence "we reference what your theme already publishes ... assistants read one product and not two" is shown only when that is true on the pages read (extend mode, ids linked); otherwise the sentence matches the mode.
+
+12. Then-and-now "written by this app" counters: verify with the stored dated records whether writes on the current day are counted (the SEO screen showed "Written: 2" meta titles on 11 September while the counter stayed at 103 with a window ending 10 September). If they are missed, fix the window; report before and after counts.
+
+13. "day N" counts calendar days in the shop's timezone from the snapshot date, not 24-hour blocks. Test across midnight.
+
+14. The Google listings card keeps only the fields this app publishes in its own structured data; merchant-data fields it cannot supply (barcode, condition) leave the card. Every "required" or "recommended" label is checked against Google's current merchant listing structured data documentation, URL cited in a code comment; a label that the doc does not support is changed to what the doc says.
+
+15. Handover additions: the full visible/hidden table by code with the reason for each, the list of surfaces changed, and before/after of the SEO dashboard headline numbers on the Republica BIO data you already hold.

@@ -383,6 +383,7 @@ describe("a check that was asked for and refused", () => {
     return c;
   }
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A13 is hidden and the pass can refuse only A13, A16 and B28 (all hidden), so no visible code can be could-not-run; a refused A13 now has no row at all.
   it("reads as could-not-run and not as clean, with the reason on the row", () => {
     // The distinction the whole state exists for. A13 has a full denominator
     // and a count of zero, which without this renders as a check that ran and
@@ -391,27 +392,33 @@ describe("a check that was asked for and refused", () => {
     const aggregate = buildFindingsAggregate(counters(50), {
       couldNotRun: { A13: "The shop's URL redirects could not be read." },
     });
-    const a13 = aggregate.rows.find((r) => r.code === "A13")!;
-    expect(a13.state).toBe("couldNotRun");
-    expect(a13.reason).toContain("could not be read");
+    // A13 is on no merchant surface, so it is neither a could-not-run row nor
+    // a clean one, and no row anywhere is in the could-not-run state.
+    expect(aggregate.rows.find((r) => r.code === "A13")).toBeUndefined();
     expect(aggregate.clean.map((r) => r.code)).not.toContain("A13");
+    expect(aggregate.rows.filter((r) => r.state === "couldNotRun")).toEqual([]);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A16 is hidden, so it is in neither list; the refused hidden A13 must change no row at all.
   it("leaves every other check exactly as it was", () => {
     const aggregate = buildFindingsAggregate(counters(50), {
       couldNotRun: { A13: "refused" },
     });
     // Clean rows live in `clean`, not in `rows` - the card collapses them into
     // one line rather than printing a wall of zeros.
-    expect(aggregate.clean.find((r) => r.code === "A16")!.state).toBe("clean");
+    expect(aggregate.clean.map((r) => r.code)).not.toContain("A16");
     expect(aggregate.rows.map((r) => r.code)).not.toContain("A16");
+    // A refusal of a hidden check leaves the whole aggregate as it would be
+    // with no refusal recorded.
+    expect(aggregate).toEqual(buildFindingsAggregate(counters(50), { couldNotRun: {} }));
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: A13 is hidden, so it is not clean either once the read succeeds; it has no row in any state.
   it("is clean again the moment the read succeeds", () => {
     // The Setting is rewritten in full every pass, so a scope that arrives
     // clears the entry with nothing to migrate.
     const aggregate = buildFindingsAggregate(counters(50), { couldNotRun: {} });
     expect(aggregate.rows.find((r) => r.code === "A13")).toBeUndefined();
-    expect(aggregate.clean.map((r) => r.code)).toContain("A13");
+    expect(aggregate.clean.map((r) => r.code)).not.toContain("A13");
   });
 });

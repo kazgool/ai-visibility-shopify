@@ -35,6 +35,16 @@ import {
 const DAY = "2026-09-04T03:45:00.000Z";
 const NOW = new Date("2026-09-05T09:00:00.000Z");
 
+/**
+ * The detail a finding needs to reach a merchant surface (addendum item 9):
+ * B1 and B22 are shown only when this app's own output is involved, so a
+ * fixture that uses them as ordinary findings carries that detail.
+ */
+const VISIBLE_DETAIL: Record<string, Record<string, unknown>> = {
+  B1: { emitters: ["theme", "app"], productNodes: 2 },
+  B22: { ours: true },
+};
+
 function row(
   id: number,
   codes: string[],
@@ -50,7 +60,7 @@ function row(
     findings: codes.map((code) => ({
       code,
       source: code.startsWith("A") ? "A" : "B",
-      detail: {},
+      detail: VISIBLE_DETAIL[code] ?? {},
     })),
     nodes: [],
   };
@@ -106,13 +116,18 @@ function merchantFiles(data: DashboardSource, rows: ScanRowLike[]): [string, str
   return files;
 }
 
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the
+// stores carried hidden codes, which now count nothing. Each is replaced by a
+// visible code with the same basis and owner: B17 by B10 (page, merchant), B2
+// and B25 by B1 (page, theme), B12 by B33 (page, theme). The counts are
+// unchanged.
 function fiftyProducts(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 50; i += 1) {
     const codes: string[] = [];
-    if (i < 12) codes.push("B17");
+    if (i < 12) codes.push("B10");
     if (i < 8) codes.push("A5");
-    if (i >= 12 && i < 20) codes.push("B2");
+    if (i >= 12 && i < 20) codes.push("B1");
     if (i >= 20 && i < 24) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -122,10 +137,10 @@ function fiftyProducts(): ScanRowLike[] {
 function oneEightyNine(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 189; i += 1) {
-    const codes: string[] = ["B12"];
-    if (i < 38) codes.push("B17");
+    const codes: string[] = ["B33"];
+    if (i < 38) codes.push("B10");
     if (i < 23) codes.push("A5");
-    if (i >= 100 && i < 114) codes.push("B25");
+    if (i >= 100 && i < 114) codes.push("B1");
     if (i >= 150 && i < 161) codes.push("B15");
     rows.push(row(i, codes));
   }
@@ -135,7 +150,7 @@ function oneEightyNine(): ScanRowLike[] {
 function twentyThousand(): ScanRowLike[] {
   const rows: ScanRowLike[] = [];
   for (let i = 0; i < 20000; i += 1) {
-    if (i < 500) rows.push(row(i, i < 120 ? ["B17"] : []));
+    if (i < 500) rows.push(row(i, i < 120 ? ["B10"] : []));
     else rows.push(row(i, ["A5"], { page: false }));
   }
   return rows;
@@ -342,13 +357,14 @@ describe("the findings export", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: only visible checks are rows, so the page rows are exactly the 9 visible page-side checks (B1, B4, B7, B10, B11, B15, B22, B33, B34).
   it("never exports a zero for a check that could not be asked", () => {
     // The store whose pages were never read: every page check must be a
     // sentence in both columns, not a 0 out of 0.
     const data = source(pageReadNeverRan());
     const table = cells(findingsCsv(data, NOW)).slice(3);
     const pageRows = table.filter((l) => l[2] === "Found by reading your pages");
-    expect(pageRows.length).toBeGreaterThan(20);
+    expect(pageRows.length).toBe(9);
     for (const line of pageRows) {
       expect(line[3]).toBe("Not checked yet");
       expect(line[4]).toBe("No product page has been read yet");
@@ -388,6 +404,7 @@ describe("the findings export", () => {
     }
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the accounting covers only the 13 codes a merchant can see, 4 on the admin side (A3, A5, A6, B6) and 9 on the page side.
   it("says where every check went, so 40 rows is not read as 44 checks", () => {
     // CHECKS holds 40 codes; the vocabulary is 44. A6, A10 and A11 count
     // collections and B30 counts blog posts, each with its own denominator, so
@@ -395,11 +412,11 @@ describe("the findings export", () => {
     // rather than restated, so the file and the card cannot disagree.
     const text = findingsCsv(source(fiftyProducts()), NOW);
     expect(text).toContain("Where every check went");
-    expect(text).toContain("That is all 13 checks on this side");
-    // B33 joined on 10 September and B34 (the delivery counter) on 11
-    // September, both over the pages read, so the page side is 33. The admin
-    // side is unchanged at 13.
-    expect(text).toContain("That is all 33 checks on this side");
+    // Since addendum item 9 only the checks a merchant can see are counted:
+    // A3, A5, A6 and B6 on the admin side (B6 is computed in source A's pass),
+    // and B1, B4, B7, B10, B11, B15, B22, B33 and B34 on the page side.
+    expect(text).toContain("That is all 4 checks on this side");
+    expect(text).toContain("That is all 9 checks on this side");
   });
 
   it("says of a shop-wide check that it is one fix, rather than dropping it", () => {
@@ -416,6 +433,7 @@ describe("the findings export", () => {
     expect(line![5]).not.toContain("some");
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the shop-wide page check in the 189-product fixture is B33, which replaced the hidden B12.
   it("names the read set for a shop-wide page check (R2-23, M1)", () => {
     const data = source(oneEightyNine());
     const table = cells(findingsCsv(data, NOW)).slice(3);
@@ -585,15 +603,33 @@ describe("the Google listing export", () => {
 });
 
 describe("the per-product export", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the fixture now carries B10 and B1 in place of the hidden B17 and B2, so the 32 rows are all visible findings.
   it("names each product and what was found on it", () => {
     const data = source(fiftyProducts());
     const table = cells(productFindingsCsv(data, fiftyProducts(), NOW)).slice(4);
-    // 12 B17 + 8 A5 + 8 B2 + 4 B15
+    // 12 B10 + 8 A5 + 8 B1 + 4 B15
     expect(table.length).toBe(32);
     expect(table[0][0]).toBe("p-0");
     expect(table[0][1]).toBe("/products/p-0");
     expect(table[0][3]).toMatch(/^(You|Us|Your theme)$/);
-    expect(table.join(" ")).not.toMatch(/\bB17\b/);
+    expect(table.join(" ")).not.toMatch(/\bB10\b/);
+  });
+
+  // Addendum item 9: a check no merchant sees adds no row to this file either.
+  // Found by the test update: the loop read every stored finding.
+  it("leaves out a finding no merchant surface shows", () => {
+    const rows = fiftyProducts().map((r) => ({
+      ...r,
+      findings: [
+        ...((r.findings as unknown[]) ?? []),
+        { code: "A1", source: "A", detail: { missing: ["barcode"] } },
+        { code: "B17", source: "B", detail: { words: 12 } },
+      ],
+    })) as ScanRowLike[];
+    const data = source(rows);
+    const table = cells(productFindingsCsv(data, rows, NOW)).slice(4);
+    // The same 32 as the visible findings alone: 12 B10 + 8 A5 + 8 B1 + 4 B15.
+    expect(table.length).toBe(32);
   });
 
   it("is headings and a sentence on a store with no findings at all", () => {
