@@ -74,11 +74,41 @@ describe("themeScanMirror: hasWebSiteLd", () => {
   });
 });
 
+describe("themeScanMirror: ourProductNode (CC-PROMPT-AI-READABILITY-4 item 1)", () => {
+  const OURS = "https://shop.example/products/x#product";
+
+  it("is true when the product page carried our complete Product node", () => {
+    expect(themeScanMirror(scan([{ types: ["Product"], id: OURS, ours: true }])).ourProductNode).toBe(true);
+  });
+
+  it("is false when the only node of ours is the facts fragment, so the fragment never keeps itself on", () => {
+    const mirror = themeScanMirror(scan([{ types: ["Product"], id: OURS, ours: true, fragment: true }]));
+    expect(mirror.ourProductNode).toBe(false);
+  });
+
+  it("is false when the only Product node is the theme's", () => {
+    expect(themeScanMirror(scan([{ types: ["Product"], id: OURS }])).ourProductNode).toBe(false);
+  });
+
+  it("is false on a page that answered with the password wall, whatever it carried", () => {
+    const result = scan([]);
+    result.product = { url: OURS, nodes: [{ types: ["Product"], id: OURS, ours: true }], passwordProtected: true };
+    expect(themeScanMirror(result).ourProductNode).toBe(false);
+  });
+
+  it("is false when no product page was read", () => {
+    const result = scan([]);
+    result.product = undefined;
+    expect(themeScanMirror(result).ourProductNode).toBe(false);
+  });
+});
+
 describe("themeScanMirror: shape", () => {
-  it("carries exactly the five keys the block reads, and nothing from the scan's detail", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 1: six keys, ourProductNode added for the facts fragment.
+  it("carries exactly the six keys the blocks read, and nothing from the scan's detail", () => {
     const mirror = themeScanMirror(scan([{ types: ["Product"], id: "" }], [{ types: ["WebSite"], id: "" }]));
     expect(Object.keys(mirror).sort()).toEqual(
-      ["hasOrganizationLd", "hasProductLd", "hasWebSiteLd", "organizationId", "productId"],
+      ["hasOrganizationLd", "hasProductLd", "hasWebSiteLd", "organizationId", "ourProductNode", "productId"],
     );
   });
 });

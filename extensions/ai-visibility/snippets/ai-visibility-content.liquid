@@ -26,6 +26,9 @@
     hidden_groups   the dictionary group labels the facts list leaves out,
                     from shop.metafields['$app'].facts_display (the shop object
                     is not visible inside a rendered snippet, so it is passed)
+    our_product_node  theme_scan.ourProductNode: true when the last theme scan
+                    found our complete Product node on the product page, which
+                    is what the facts fragment below adds to
 
   Rules, all from the PRD and CLAUDE.md:
   - Renders nothing at all - no wrapper, no heading, no whitespace - unless
@@ -104,6 +107,62 @@
             {%- endunless -%}
           {%- endfor -%}
         </dl>
+        {%- comment -%}
+          The facts in structured data, published by the block that prints them
+          (CC-PROMPT-AI-READABILITY-4 item 1), like FAQPage below. The head block
+          stopped publishing them on 11 September 2026 (bdef342) because it
+          cannot see whether this list is on the page; Google: "Don't mark up
+          content that is not visible to readers of the page",
+          https://developers.google.com/search/docs/appearance/structured-data/sd-policies.
+          Here, and only here, the list is known to be shown, and exactly
+          which facts are in it: a group switched off on the Dictionary screen
+          is left out of both.
+
+          A Product fragment: @context, @type, the @id our complete node in the
+          head carries, our marker and additionalProperty. Nothing else, so it
+          describes no second product - it adds to the one node sharing its
+          @id. Emitted only when that node exists: `our_product_node` is the
+          theme scan's reading of the product page it last fetched, true when
+          our complete Product node was on it (full mode, or extend mode on a
+          theme with no Product node). A rendered block cannot see the head
+          embed's mode or whether that embed is on, so this is behaviour
+          observed on the storefront rather than a setting read. Unknown -
+          no scan yet, the password page, a scan from before this flag - is
+          not true, and emits nothing: a lone fragment would be a second,
+          incomplete Product.
+
+          Never under the theme's @id. The theme scan stores the @id of the one
+          product page it read, so that value names a different product on
+          every other page, and extend mode on a theme with an @id adds
+          nothing to the theme's node. Nothing a theme publishes is therefore
+          ever written into: our fragment merges only with our own node, which
+          carries no additionalProperty of its own, so an existing
+          additionalProperty is never overwritten (the WordPress rule,
+          _shopify/IDEAS-FROM-WORDPRESS.md section 7).
+
+          The separator is assigned inside the loop, not `forloop.last`: the
+          last fact can be a hidden one, and a comma before the closing
+          bracket is invalid JSON that every parser drops silently.
+        {%- endcomment -%}
+        {%- if our_product_node == true -%}
+          <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "Product",
+              "@id": {{ shop_url | append: product.url | append: '#product' | json }},
+              "https://mrdigital.ro/ns/ai-visibility": "1",
+              "additionalProperty": [
+                {%- assign av_ap_sep = "" -%}
+                {%- for fact in av_facts -%}
+                  {%- unless av_hidden contains fact.k -%}
+                  {{ av_ap_sep }}{ "@type": "PropertyValue", "name": {{ fact.k | json }}, "value": {{ fact.v | json }} }
+                  {%- assign av_ap_sep = "," -%}
+                  {%- endunless -%}
+                {%- endfor -%}
+              ]
+            }
+          </script>
+        {%- endif -%}
       {%- endif -%}
       {%- if av_show_fit -%}
         <p style="margin:0 0 1rem;">{{ 'content.suits' | t }}: {{ av_fit | escape }}</p>

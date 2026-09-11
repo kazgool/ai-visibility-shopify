@@ -1463,7 +1463,14 @@ export function duplicateNodes(nodes: LdNode[]): {
     for (const type of node.types) {
       // JSON, not a separator character: a URL may legally contain almost
       // anything, and a key that can collide would merge two different nodes.
-      const key = JSON.stringify([id, type]);
+      //
+      // The facts fragment is keyed apart (CC-PROMPT-AI-READABILITY-4 item 1):
+      // it shares our complete node's @id on purpose, the way extend mode
+      // shares the theme's, and carries only additionalProperty, so it is not
+      // the same node emitted twice. Two fragments under one @id still are -
+      // the embed and the hand-placed block both printing the facts - and are
+      // still a finding.
+      const key = JSON.stringify([id, type, node.fragment === true]);
       const entry = seen.get(key);
       if (entry) entry.count += 1;
       else seen.set(key, { type, count: 1, ours: isOurNode(node) });

@@ -30,6 +30,16 @@ export type LdNode = {
    * mode makes our node share the theme's address on purpose.
    */
   ours?: boolean;
+  /**
+   * True on a Product node of ours that carries no `name`: the facts fragment
+   * the content snippet adds to our complete Product node under the same @id
+   * (CC-PROMPT-AI-READABILITY-4 item 1). It describes no product of its own, so
+   * it is never a second node (B7) and never "our node is on the page" (the
+   * theme_scan mirror's ourProductNode). Product only: our Organization node
+   * in extend mode also carries no name, and nothing here changes how that one
+   * is read. Key omitted when false, as with the two flags above.
+   */
+  fragment?: boolean;
 };
 
 export type PageScan = {
@@ -139,6 +149,9 @@ export function extractLdNodes(html: string): LdNode[] {
       // Key omitted when absent, for the same reason: a stored node from
       // before the marker shipped keeps the shape it had.
       ...(objectCarriesOurMarker(node) ? { ours: true } : {}),
+      ...(objectCarriesOurMarker(node) && types.includes("Product") && node.name === undefined
+        ? { fragment: true }
+        : {}),
     });
   }
   return nodes;
@@ -792,6 +805,20 @@ export type ThemeScanMirror = {
   hasProductLd: boolean;
   /** The theme emits a WebSite node that is not ours, on either page read. */
   hasWebSiteLd: boolean;
+  /**
+   * The product page this scan read carried our complete Product node - ours,
+   * and not the facts fragment. The content snippet publishes the facts
+   * fragment only when this is true (CC-PROMPT-AI-READABILITY-4 item 1): a
+   * rendered block cannot see the head embed's mode or whether that embed is
+   * on, so the fragment follows what the storefront was seen to carry. False
+   * when the page was behind the password wall or never read, which emits no
+   * fragment - the safe direction, because a fragment with no node to join is
+   * a second, incomplete Product.
+   *
+   * No loop (CLAUDE.md rule 3): our complete node does not depend on this
+   * flag, and the fragment, which does, is excluded from it.
+   */
+  ourProductNode: boolean;
 };
 
 /**
@@ -831,12 +858,18 @@ export function themeScanMirror(result: ThemeScanResult): ThemeScanMirror {
     page.nodes.some((n) => n.types.includes("WebSite") && !isOurNode(n)),
   );
 
+  const productPage = result.product && !result.product.passwordProtected ? result.product : null;
+  const ourProductNode = Boolean(
+    productPage?.nodes.some((n) => n.types.includes("Product") && isOurNode(n) && n.fragment !== true),
+  );
+
   return {
     hasOrganizationLd: result.hasOrganizationLd,
     organizationId,
     productId,
     hasProductLd: result.hasProductLd,
     hasWebSiteLd,
+    ourProductNode,
   };
 }
 

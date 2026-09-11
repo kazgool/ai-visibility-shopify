@@ -90,6 +90,20 @@ const SWITCHES = [
     off: { av_facts: null },
   },
   {
+    // The facts fragment in the content snippet (CC-PROMPT-AI-READABILITY-4
+    // item 1) prints only the facts the visible list prints. Hiding the LAST
+    // fact is where a `forloop.last` comma would trail; hiding the first, on
+    // the one-fact list, leaves an empty array.
+    probe: "av_hidden",
+    on: { av_hidden: ["Width"] },
+    off: { av_hidden: [] },
+  },
+  {
+    probe: "av_hidden",
+    on: { av_hidden: ["Material"] },
+    off: { av_hidden: [] },
+  },
+  {
     probe: "av_rating",
     on: { av_rating: { value: 4.5 }, av_rating_count: 12 },
     off: { av_rating: null, av_rating_count: 0 },
@@ -187,6 +201,8 @@ function baseContext(patch) {
     av_c_criteria: ["Size"],
     av_c_questions: [{ q: "Q1", a: "A1" }],
     av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 },
+    shop_url: "https://shop.example",
+    av_hidden: [],
     ...patch,
   };
 }

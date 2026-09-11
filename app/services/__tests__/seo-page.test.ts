@@ -1276,6 +1276,46 @@ describe("B7, the same node twice on one page", () => {
   });
 });
 
+// CC-PROMPT-AI-READABILITY-4 item 1: the content snippet adds the printed facts
+// to our complete Product node as a fragment under the same @id. It is our
+// node, completed - never a second product description, never the same node
+// twice.
+describe("the facts fragment under our own @id", () => {
+  const ABS = `${URL_A}#product`;
+  const fragment = (id: string) =>
+    '<script type="application/ld+json">' +
+    `{"@context":"https://schema.org","@type":"Product","@id":"${id}","${OUR_NODE_MARKER}":"1",` +
+    '"additionalProperty":[{"@type":"PropertyValue","name":"Material","value":"Oak"}]}' +
+    "</script>";
+
+  function readOf(html: string) {
+    return readingOf(page(CANONICAL + html + MIRROR_LINK), null);
+  }
+
+  it("raises neither B1 nor B7 beside our complete node", () => {
+    const row = readOf(ourProductLd(ABS) + fragment(ABS));
+    expect(codes(row.findings)).not.toContain("B1");
+    expect(codes(row.findings)).not.toContain("B7");
+    expect(row.nodes.filter((n) => n.fragment === true)).toHaveLength(1);
+  });
+
+  it("still raises B7 when the fragment itself is printed twice, which is the embed and the placed block both on", () => {
+    const b7 = readOf(ourProductLd(ABS) + fragment(ABS) + fragment(ABS)).findings.find((f) => f.code === "B7");
+    expect(b7).toBeDefined();
+    expect((b7!.detail as any).duplicates).toEqual([{ type: "Product", count: 2, ours: true }]);
+  });
+
+  it("counts the theme's node and ours as two descriptions, not three, when the fragment is on the page too", () => {
+    const b1 = readOf(productLd("") + ourProductLd(ABS) + fragment(ABS)).findings.find((f) => f.code === "B1");
+    expect(b1?.detail).toMatchObject({ productNodes: 2, emitters: ["theme", "app"] });
+  });
+
+  it("marks only a nameless Product node of ours as the fragment, never our complete node or the theme's", () => {
+    const row = readOf(productLd(`${URL_A}#theme`) + ourProductLd(ABS));
+    expect(row.nodes.some((n) => n.fragment === true)).toBe(false);
+  });
+});
+
 // --- B19: the redirect chain, as the fetcher produces it ---------------------
 
 describe("B19, the chain readProductPage records", () => {
