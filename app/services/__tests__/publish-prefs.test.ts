@@ -5,7 +5,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const settings: { shopId: string; key: string; value: string }[] = [];
-const jobRuns: { id: string; shopId: string; kind: string; status: string }[] = [];
+const jobRuns: {
+  id: string;
+  shopId: string;
+  kind: string;
+  status: string;
+  startedAt?: Date | null;
+  updatedAt?: Date | null;
+}[] = [];
 const mirrorRows: { id: string; shopId: string; productId: string | null }[] = [];
 const seoScanRows: { id: string; shopId: string; productId: string }[] = [];
 const upsertCalls: unknown[] = [];
@@ -28,10 +35,32 @@ vi.mock("../../db.server", () => ({
       },
     },
     jobRun: {
-      findFirst: async ({ where }: any) =>
-        jobRuns.find(
-          (j) => j.shopId === where.shopId && where.status?.in?.includes(j.status),
-        ) ?? null,
+      // Evaluates the where clause the way Prisma does, for the operators the
+      // guards use: equality, `in`, `gte` and `null`, and an `OR` of those.
+      // The one-job-at-a-time guard reads liveJobFilter() (job-stale.ts)
+      // since 11 September 2026, so a fake that only knew `status.in` would
+      // match nothing and pass a guard that refuses in production.
+      findFirst: async ({ where }: any) => {
+        const matches = (row: any, clause: any): boolean =>
+          Object.entries(clause).every(([key, cond]: [string, any]) => {
+            const value = row[key] ?? null;
+            if (cond === null) return value === null;
+            if (cond && typeof cond === "object" && !(cond instanceof Date)) {
+              if (Array.isArray(cond.in)) return cond.in.includes(value);
+              if (cond.gte !== undefined) return value !== null && value >= cond.gte;
+            }
+            return value === cond;
+          });
+        const { shopId, OR, ...rest } = where;
+        return (
+          jobRuns.find(
+            (j) =>
+              j.shopId === shopId &&
+              matches(j, rest) &&
+              (!OR || (OR as any[]).some((clause) => matches(j, clause))),
+          ) ?? null
+        );
+      },
       create: async ({ data }: any) => {
         const row = { id: `job${jobRuns.length + 1}`, status: "queued", ...data };
         jobRuns.push(row);
@@ -189,6 +218,37 @@ describe("the publish_prefs action", () => {
 
   it("names a catalogue job when that is what is running", async () => {
     jobRuns.push({ id: "j0", shopId: "shop1", kind: "bulk_extract", status: "running" });
+    const result = (await reportAction(post({ intent: "publish_prefs" }))) as { error?: string };
+    expect(result.error).toContain("catalogue job is running");
+  });
+
+  it("is not blocked by a row a killed worker left running, with no sign of life for two hours", async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    jobRuns.push({
+      id: "j0",
+      shopId: "shop1",
+      kind: "bulk_extract",
+      status: "running",
+      startedAt: twoHoursAgo,
+      updatedAt: twoHoursAgo,
+    });
+    const result = (await reportAction(post({ intent: "publish_prefs" }))) as {
+      error?: string;
+      queued?: boolean;
+    };
+    expect(result.error).toBeUndefined();
+    expect(result.queued).toBe(true);
+  });
+
+  it("is still blocked by a running row that wrote progress a minute ago, however old its start", async () => {
+    jobRuns.push({
+      id: "j0",
+      shopId: "shop1",
+      kind: "bulk_extract",
+      status: "running",
+      startedAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      updatedAt: new Date(Date.now() - 60 * 1000),
+    });
     const result = (await reportAction(post({ intent: "publish_prefs" }))) as { error?: string };
     expect(result.error).toContain("catalogue job is running");
   });
