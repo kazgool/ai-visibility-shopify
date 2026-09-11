@@ -141,7 +141,9 @@ export const TITLE_PLACEHOLDER = "{title}";
  */
 export const INTENT_KEYWORDS: Record<Language, Partial<Record<Intent, string[]>>> = {
   en: {
-    safety: ["warning*", "precaution*", "safety", "caution"],
+    // No "caution": no dev heading uses it (intent-keywords.md), and a keyword
+    // with no evidence behind it has no place here.
+    safety: ["warning*", "precaution*", "safety"],
     usage: ["use"],
     composition: ["ingredient*"],
     storage: ["storage"],

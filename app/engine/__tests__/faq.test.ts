@@ -542,7 +542,9 @@ describe("classes from the first hold-out run (stores moved to dev)", () => {
     expect(classifyHeading("Safety & Features")).toBeNull();
     expect(classifyHeading("Warnings and precautions")).toBe("safety");
     expect(classifyHeading("ATENTIE")).toBe("safety");
-    expect(classifyHeading("Caution")).toBe("safety");
+    // "Caution" was added with "Atentie" and taken out again: no dev heading
+    // uses it (_shopify/corpus/intent-keywords.md, 0 products).
+    expect(classifyHeading("Caution")).toBeNull();
   });
 
   it("does not read the nutrient analysis as composition, nor 'Caracteristici' as benefits", () => {
