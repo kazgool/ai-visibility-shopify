@@ -1,26 +1,90 @@
+// Runs the engine over a catalogue on disk and prints what it produces.
+//
+// Usage (from F:\ai-visibility-shopify):
+//   npx tsx scripts/audit-engine-run.ts rb <products.json> <dictionary.txt> [--dump out.json] [--business rb] [--lang ro]
+//   npx tsx scripts/audit-engine-run.ts furniture <products.csv> [--dump out.json] [--lang en]
+//
+// rb        a storefront /products.json read (Republica BIO: 189 products,
+//           `https://republicabio.ro/products.json?limit=250`) and the
+//           merchant's dictionary (`F:\AI Visibility SHOPIFY\dictionar-republicabio-curatat.txt`).
+// furniture a Shopify CSV export, empty dictionary = DEFAULT_DICTIONARY
+//           (`F:\AI Visibility SHOPIFY\globalmobila-shopify-products.csv`, 355 products).
+//
+// --dump      writes every product's facts, summary, questions and fit_for to a
+//             JSON file, which scripts/audit-engine-report.ts turns into metrics.
+// --business  rb: the commercial answers Republica BIO's live FAQ carried on
+//             11 September 2026 (delivery "1-2", 15 RON, 14 days, payment
+//             methods). Without it no business answers are passed.
+// --lang      the content language passed to the engine, "en" or "ro".
+//
+// Read only: nothing is written anywhere but the dump file.
 import fs from "node:fs";
+import path from "node:path";
 import {
   extractProduct, coverage, buildSummary, buildQuestions, buildFitFor,
   buildMetaTitle, buildMetaDescription, computeTermGap,
-  checkCitationReadiness, DEFAULT_STOPWORDS, stopwordSet,
+  checkCitationReadiness, stopwordSet, type BusinessInfo,
 } from "../app/engine";
 import { buildAltText } from "../app/engine/alt-text";
 
-const which = process.argv[2] ?? "rb";
+/** RFC 4180: quoted fields may hold commas, newlines and "" for a quote. The
+ * repo has no CSV dependency and this script is the only reader. */
+function parseCsv(text: string): Record<string, string>[] {
+  const records: string[][] = [];
+  let field = "";
+  let record: string[] = [];
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { record.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      record.push(field); field = "";
+      records.push(record); record = [];
+    } else field += ch;
+  }
+  if (field !== "" || record.length > 0) { record.push(field); records.push(record); }
+  const [header, ...body] = records;
+  return body.map((r) => Object.fromEntries(header.map((h, i) => [h.replace(/^﻿/, ""), r[i] ?? ""])));
+}
+
+const args = process.argv.slice(2);
+const flag = (name: string): string | undefined => {
+  const i = args.indexOf(name);
+  return i === -1 ? undefined : args[i + 1];
+};
+const positional = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
+
+const which = positional[0] ?? "rb";
+const lang = flag("--lang") === "ro" ? "ro" : "en";
+const RB_BUSINESS: BusinessInfo = {
+  deliveryTime: "1-2",
+  deliveryCost: "15 RON",
+  returnDays: 14,
+  paymentMethods:
+    "Card bancar (Visa, Mastercard); Apple Pay; Ramburs (plata la livrare); Transfer bancar/ordin de plată în contul Republica BIO",
+};
+const business = flag("--business") === "rb" ? RB_BUSINESS : null;
+
 let products: { id: string; title: string; descriptionHtml: string; handle: string; price?: string; vendor?: string; productType?: string }[] = [];
 let dict = "";
 if (which === "rb") {
-  const raw = JSON.parse(fs.readFileSync("/tmp/rb/p1.json", "utf8")).products;
+  if (!positional[1] || !positional[2]) throw new Error("rb needs <products.json> <dictionary.txt>");
+  const raw = JSON.parse(fs.readFileSync(positional[1], "utf8")).products;
   products = raw.map((p: any) => ({
     id: String(p.id), title: p.title, descriptionHtml: p.body_html ?? "", handle: p.handle,
     price: p.variants?.[0]?.price, vendor: p.vendor, productType: p.product_type,
   }));
-  dict = fs.readFileSync("/tmp/rb/dict.txt", "utf8");
+  dict = fs.readFileSync(positional[2], "utf8");
 } else {
   // furniture: parse Shopify CSV export (title, body html) - minimal parser
-  const csv = fs.readFileSync("/sessions/inspiring-vibrant-newton/mnt/AI Visibility SHOPIFY/globalmobila-shopify-products.csv", "utf8");
-  const { parse } = require("csv-parse/sync");
-  const rows = parse(csv, { columns: true, relax_quotes: true, relax_column_count: true });
+  if (!positional[1]) throw new Error("furniture needs <products.csv>");
+  const rows = parseCsv(fs.readFileSync(positional[1], "utf8"));
   const seen = new Set<string>();
   for (const r of rows) {
     if (!r["Title"] || seen.has(r["Handle"])) continue;
@@ -38,12 +102,19 @@ console.log(`none: ${cov.none}  byAttr:`, cov.byAttr.slice(0, 30));
 const perCount: number[] = [];
 const allFacts: { title: string; k: string; v: string }[] = [];
 const samples: any[] = [];
+const dump: any[] = [];
 for (const [i, p] of products.entries()) {
   const facts = extractProduct(p, dict);
   perCount.push(facts.length);
   for (const f of facts) allFacts.push({ title: p.title, k: f.k, v: f.v });
+  const input = { title: p.title, descriptionHtml: p.descriptionHtml, facts, price: p.price, currency: "RON", available: true, vendor: p.vendor, productType: p.productType, business, language: lang } as const;
+  dump.push({
+    id: p.id, title: p.title, facts,
+    summary: buildSummary(input),
+    questions: buildQuestions(input),
+    fit_for: buildFitFor(input),
+  });
   if (i % Math.ceil(products.length / 6) === 0 || facts.length === 0) {
-    const input = { title: p.title, descriptionHtml: p.descriptionHtml, facts, price: p.price, currency: "RON", available: true, vendor: p.vendor, productType: p.productType };
     samples.push({
       title: p.title, facts,
       summary: buildSummary(input),
@@ -77,5 +148,9 @@ console.log("\n== term gap top 25 ==");
 const gap = computeTermGap(products.map((p) => ({ id: p.id, title: p.title, descriptionHtml: p.descriptionHtml })), stop, { limit: 25 });
 console.log(gap.map((r: any) => `${r.term} (${r.products ?? r.count ?? JSON.stringify(r)})`).join(" | "));
 
-fs.writeFileSync(`/tmp/rb/samples-${which}.json`, JSON.stringify(samples, null, 2));
-console.log(`\nsamples written: ${samples.length}`);
+const dumpPath = flag("--dump");
+if (dumpPath) {
+  fs.writeFileSync(dumpPath, JSON.stringify({ which, lang, business: business !== null, products: dump }, null, 2));
+  fs.writeFileSync(path.join(path.dirname(dumpPath), `samples-${which}.json`), JSON.stringify(samples, null, 2));
+  console.log(`\ndump written: ${dump.length} products to ${dumpPath}`);
+}
