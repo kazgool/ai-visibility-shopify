@@ -32,6 +32,44 @@ nodes and 1,036 combinations - the full suite also green with `.env` renamed
 away, and `shopify theme check` on the extension, 11 files, no offenses.
 Nothing in it has been observed on a store either.
 
+### A corpus of other stores, split before any rule was written (11 September 2026)
+
+The FAQ engine of `CC-PROMPT-AI-READABILITY-3` had to work on any store, so
+it was built and measured on stores it was not written for. `scripts/corpus-fetch.ts`
+reads a store's public `/products.json` once: `robots.txt` first and honoured
+(comenzi.bebetei.ro disallows the path and is not in the corpus), one request
+per second, 250 products at most, a user agent that names us. Twenty-seven
+further stores were read besides the two catalogues the audits already used,
+across food and supplements, cosmetics, fashion, furniture and home,
+electronics and pets, six of them Romanian. `_shopify/corpus/manifest.md`
+records the split, written before the first rule: 23 dev stores to write the
+rules on, 6 hold-out stores (animax.ro, istyle.ro, thesill.com, jlab.com,
+cocokind.com, wildone.com) chosen from their counts alone and never opened
+while writing them. The store data is gitignored; only the manifest, the
+rubrics and the reports are committed. `parseCsv` moved to `scripts/csv.ts`,
+shared by the audit runner and the corpus report.
+
+### The shop's own questions, and which facts the product page shows (11 September 2026)
+
+The Dictionary screen gained two cards. "Buyer questions": a heading as the
+merchant writes it in descriptions, with the question it answers, and a
+dictionary group with the question its value answers, both written with
+`{title}` where the product's name goes and refused, with the row and the
+reason, when they lack it, end without "?", or use typographic characters;
+and "Questions per product", 1 to 20, default 8, with warnings never cut.
+"On the product page": a switch per dictionary group, on by default. A
+switched-off group leaves the visible facts list only; it stays in the facts
+metafield, the plain-text page and llms.txt. The mappings, the cap and the
+preset a dictionary started from are Settings rows next to the dictionary.
+The switched-off groups are mirrored to one new shop metafield,
+`$app.facts_display` (public read, defined on every auth like `business`),
+written from the Dictionary save only and only when the list changed; a shop
+metafield fires no product webhook. Both content blocks pass it to the
+snippet, which counts the visible facts first so a product whose every fact
+is hidden prints no empty list. This is a new key on the existing shop
+metafield write, not a new kind of write; it is flagged for Marius all the
+same, against the letter of "no new write paths".
+
 ### The engine measured before anything changed (11 September 2026)
 
 `scripts/audit-engine-run.ts` pointed at a sandbox that no longer exists

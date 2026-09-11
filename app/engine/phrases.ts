@@ -62,6 +62,8 @@ export type Phrases = {
   qFinish(title: string): string;
   qOptions(title: string): string;
   qVendor(title: string): string;
+  /** A merchant's own question that does not name the product, named. */
+  aboutProduct(title: string, question: string): string;
 
   // Business questions and their answers.
   qDelivery(title: string): string;
@@ -125,6 +127,7 @@ export const PHRASES: Record<Language, Phrases> = {
     qFinish: (title) => `What finish does ${title} have?`,
     qOptions: (title) => `Which options is ${title} available in?`,
     qVendor: (title) => `Who makes ${title}?`,
+    aboutProduct: (title, question) => `${title}: ${question}`,
 
     qDelivery: (title) => `How long does delivery take for ${title}?`,
     aDelivery: (time, cost, costIsFrom) =>
@@ -186,6 +189,7 @@ export const PHRASES: Record<Language, Phrases> = {
     qFinish: (title) => `Ce finisaj are ${title}?`,
     qOptions: (title) => `Ce opțiuni sunt disponibile pentru ${title}?`,
     qVendor: (title) => `Cine produce ${title}?`,
+    aboutProduct: (title, question) => `${title}: ${question}`,
 
     qDelivery: (title) => `În cât timp se livrează ${title}?`,
     aDelivery: (time, cost, costIsFrom) =>

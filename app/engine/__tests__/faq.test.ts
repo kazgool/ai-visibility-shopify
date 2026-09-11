@@ -7,6 +7,7 @@ import {
   parseBlocks,
   validateFaqQuestion,
   DEFAULT_FAQ_CAP,
+  LONG_ANSWER_CHARS,
   type FaqInput,
 } from "../faq";
 
@@ -17,9 +18,10 @@ const base = (over: Partial<FaqInput>): FaqInput => ({ title: "Masa Oslo", facts
 const qs = (input: FaqInput) => buildFaq(input).map((x) => x.q);
 
 describe("merchant questions", () => {
-  it("takes a question heading as written and the text under it as the answer", () => {
+  it("takes a question heading that names the product as written, and the text under it as the answer", () => {
     const faq = buildFaq(
       base({
+        title: "BookArc - Insert I",
         descriptionHtml: "<h3>Is BookArc compatible with the 15-inch MacBook Air?</h3><p>Yes, with Insert I, which ships free.</p>",
         language: "en",
       }),
@@ -34,14 +36,32 @@ describe("merchant questions", () => {
     ]);
   });
 
+  it("names the product in a merchant's question that does not, so it reads away from the page", () => {
+    const html = "<h3>How does our product stand out?</h3><p>Premium formula with milk thistle.</p>";
+    expect(qs(base({ title: "m50 LiverRegen Formula", descriptionHtml: html, language: "en" }))).toEqual([
+      "m50 LiverRegen Formula: How does our product stand out?",
+    ]);
+  });
+
   it("drops a question put to the reader: that is marketing", () => {
     expect(qs(base({ descriptionHtml: "<h4>What are you waiting for?</h4><p>Matching tee sold separately.</p>" }))).toEqual([]);
     expect(qs(base({ descriptionHtml: "<p><b>De ce te-ai opri acum?</b></p><p>Oferta e limitata.</p>", language: "ro" }))).toEqual([]);
   });
 
-  it("drops a question longer than twenty words", () => {
-    const long = "At least I have iodine on my wounds and crutches left to use but what about all of those that do not have any?";
+  it("drops a question longer than fifteen words", () => {
+    const long = "At least I have iodine on my wounds and crutches left to use, but what about those that don't?";
     expect(qs(base({ descriptionHtml: `<p><b>${long}</b></p><p>Text.</p>` }))).toEqual([]);
+  });
+
+  it("drops a question that opens with 'But' or 'And': it follows another one", () => {
+    expect(qs(base({ descriptionHtml: "<h3>Dar daca valoarea e mai mare?</h3><p>Nicio problema.</p>", language: "ro" }))).toEqual([]);
+  });
+
+  it("asks a merchant's two questions of one intent once", () => {
+    const html = "<h3>De ce sa alegi produsul?</h3><p>Vegan.</p><h3>De ce sa alegi colagenul MOY?</h3><p>Peptan patentat.</p>";
+    const faq = buildFaq(base({ title: "Colagen m34", descriptionHtml: html, language: "ro" }));
+    expect(faq).toHaveLength(1);
+    expect(faq[0].a).toBe("Vegan. Peptan patentat.");
   });
 });
 
@@ -49,6 +69,7 @@ describe("description sections", () => {
   it("classifies headings from the corpus lists, in either language", () => {
     expect(classifyHeading("Warnings")).toBe("safety");
     expect(classifyHeading("Atentionari")).toBe("safety");
+    expect(classifyHeading("Alergeni")).toBe("safety");
     expect(classifyHeading("Cum sa-l folosesti")).toBe("usage");
     expect(classifyHeading("Ingredients per serving")).toBe("composition");
     expect(classifyHeading("Conditii de pastrare")).toBe("storage");
@@ -57,8 +78,26 @@ describe("description sections", () => {
     expect(classifyHeading("Ideal pentru")).toBe("suitability");
     expect(classifyHeading("Why It's Special")).toBe("benefits");
     expect(classifyHeading("Product details")).toBeNull();
+  });
+
+  it("reads a heading whose letter was lost to a wrong encoding", () => {
+    expect(classifyHeading("Aten?ionare")).toBe("safety");
+  });
+
+  it("does not read a negated heading as a warning", () => {
+    expect(classifyHeading("Fara alergeni")).toBeNull();
+    expect(classifyHeading("Allergen free")).toBeNull();
+  });
+
+  it("does not read what the judge found to be something else", () => {
+    // A measured quantity, a nutrition table, a dose and a finish name
+    // something their intent's question does not ask.
+    expect(classifyHeading("Caffeine content")).toBeNull();
+    expect(classifyHeading("Valori nutritionale")).toBeNull();
+    expect(classifyHeading("Doza zilnica recomandata")).toBeNull();
+    expect(classifyHeading("Finisaj")).toBeNull();
     // A long label describes; it does not name a section.
-    expect(classifyHeading("Forma convenabila si usoara de utilizare pentru toti")).toBeNull();
+    expect(classifyHeading("Formula personalizata cu extra ingrediente")).toBeNull();
   });
 
   it("asks the intent's question in the content language", () => {
@@ -109,18 +148,26 @@ describe("description sections", () => {
     expect(faq[0].a).toBe("Lippie Pencil; Lippie Stix.");
   });
 
-  it("gives a label followed by a list only the list, not the prose after it", () => {
+  it("gives a label followed by a list only the list, and keeps what a dimensions heading measures", () => {
     const html =
       "<p><strong>Dimensiuni:</strong></p><ul><li>Lungime: 100 cm</li><li>Latime: 45 cm</li></ul>" +
       "<p>Termenul de livrare este de 4 saptamani.</p>";
     const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
-    expect(faq[0].a).toBe("Lungime: 100 cm; Latime: 45 cm.");
+    expect(faq[0].a).toBe("Dimensiuni: Lungime: 100 cm; Latime: 45 cm.");
   });
 
   it("keeps a heading that states the basis of the figures", () => {
-    const html = "<p><strong>Declaratie nutritionala / per 100 g</strong></p><p>Energie 360 kcal; proteine 90 g.</p>";
+    const html = "<p><strong>Ingrediente / capsula</strong></p><p>Pulbere de maca 650 mg.</p>";
     const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
-    expect(faq[0].a).toBe("Declaratie nutritionala / per 100 g: Energie 360 kcal; proteine 90 g.");
+    expect(faq[0].a).toBe("Ingrediente / capsula: Pulbere de maca 650 mg.");
+  });
+
+  it("keeps a sub-heading with the lines under it", () => {
+    const html =
+      "<h3>Dimensiuni</h3><p><strong>Pat</strong></p><p>Lungime: 200 cm</p><p><strong>Spatar</strong></p><p>Inaltime: 70 cm</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe(
+      "Dimensiuni: Pat: Lungime: 200 cm; Spatar: Inaltime: 70 cm.",
+    );
   });
 
   it("merges sections of one intent under their headings, and says a repeated block once", () => {
@@ -137,7 +184,45 @@ describe("description sections", () => {
     const html =
       "<p><strong>Dimensiuni exterioare:</strong></p><p>Lungime: 100cm</p><p>Latime: 45cm</p>" +
       "<p><em>Termenul de livrare este aproximativ 4 saptamani.</em></p>";
-    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe("Lungime: 100cm; Latime: 45cm.");
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe(
+      "Dimensiuni exterioare: Lungime: 100cm; Latime: 45cm.",
+    );
+  });
+
+  it("reads a list written as paragraphs to its end, a line with no colon included", () => {
+    const html =
+      "<p><strong>Set Includes:</strong></p><p>- Ultra Glossy Lip in Mademoiselle Belle: Rosy pink</p><p>- Enchanted Rose Lip Mask</p>";
+    expect(buildFaq(base({ title: "Beautiful Belle", descriptionHtml: html, language: "en" }))[0].a).toBe(
+      "Ultra Glossy Lip in Mademoiselle Belle: Rosy pink; Enchanted Rose Lip Mask.",
+    );
+  });
+
+  it("keeps a list item longer than a short line", () => {
+    const html =
+      "<p><strong>Set Includes:</strong></p><p>Peach Jelly Eyeshadow Palette</p>" +
+      "<p>Jelly Much Gel Eyeshadow Stick in Golden Coast: Golden bronze with gold and copper sparkle</p>";
+    expect(buildFaq(base({ title: "Sparkling Peach", descriptionHtml: html, language: "en" }))[0].a).toBe(
+      "Peach Jelly Eyeshadow Palette; Jelly Much Gel Eyeshadow Stick in Golden Coast: Golden bronze with gold and copper sparkle.",
+    );
+  });
+
+  it("keeps every measure of a measurement line, and cuts only the prose after them", () => {
+    const html = "<p><strong>Lungime</strong>: +15cm Latime: +15cm Toate paturile noastre sunt livrate cu un suport.</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe("Lungime: +15cm Latime: +15cm.");
+  });
+
+  it("gives a measurement the heading it sits under, and nothing but the measurement", () => {
+    const html =
+      "<h3>Dimensiuni exterioare:</h3><p><strong>Lungimea saltelei</strong>: +15cm</p>" +
+      "<h3>Spatar:</h3><p><strong>Inaltime</strong>: 70cm Toate paturile noastre sunt livrate cu un suport.</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe(
+      "Dimensiuni exterioare: Lungimea saltelei: +15cm. Spatar, Inaltime: 70cm.",
+    );
+  });
+
+  it("keeps only measurements in a dimensions answer", () => {
+    const html = "<p><strong>Dimensiuni:</strong></p><p>Lungime: 290 mm</p><p>Culoare: nuante de caramiziu</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe("Dimensiuni: Lungime: 290 mm.");
   });
 
   it("ends a section at a bold line of its own, even one that is not a label", () => {
@@ -147,34 +232,23 @@ describe("description sections", () => {
     expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe("Lemn masiv de stejar.");
   });
 
-  it("says a bundle's repeated section once per product, each under the product's name", () => {
-    const html =
-      "<h2>Maca Forte, 60 capsule</h2><p><b>Mod de utilizare</b>: 2 capsule zilnic.</p>" +
-      "<h2>Zinc Bisglycinate, 90 tablete</h2><p><b>Mod de utilizare</b>: 1 tableta zilnic.</p>";
-    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
-    expect(faq.map((x) => x.a)).toEqual(["Maca Forte: 2 capsule zilnic. Zinc Bisglycinate: 1 tableta zilnic."]);
-  });
-
-  it("merges a repeated merchant question the same way", () => {
-    const html =
-      "<h2>Maca Forte, 60 capsule</h2><p><b>Ce contine?</b></p><p>60 de capsule.</p>" +
-      "<h2>Zinc, 90 tablete</h2><p><b>Ce contine?</b></p><p>90 de tablete.</p>";
-    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
-    expect(faq.map((x) => [x.q, x.a])).toEqual([["Ce contine?", "Maca Forte: 60 de capsule. Zinc: 90 de tablete."]]);
-  });
-
   it("lets the merchant's own question take in the sections of its intent", () => {
     const html =
       "<p><b>Ce contine?</b></p><p>60 de capsule.</p><p><b>Ingrediente</b>: pulbere de maca.</p>";
     const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
     expect(faq).toHaveLength(1);
-    expect(faq[0].q).toBe("Ce contine?");
+    expect(faq[0].q).toBe("Masa Oslo: Ce contine?");
     expect(faq[0].a).toBe("60 de capsule. Ingrediente: pulbere de maca.");
   });
 
   it("never reads style, script or svg content as text", () => {
     const html = "<style>.h2{color:red}</style><p><b>Ingredients:</b> oats, honey.</p><svg><text>Warnings</text></svg>";
     expect(descriptionOutline(html)).toBe("## Ingredients: oats, honey.");
+  });
+
+  it("drops a sentence whose link read only 'here': it points at nothing once the link is gone", () => {
+    const html = "<h3>Key benefits</h3><p>Clinically proven (see the studies <a href='/s'>here</a>). Vegan formula.</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "en" }))[0].a).toBe("Vegan formula.");
   });
 
   it("points sourceSpan at the heading and the text it answered from", () => {
@@ -187,6 +261,106 @@ describe("description sections", () => {
   });
 });
 
+describe("warnings", () => {
+  it("takes the sentences that open like a warning when there is no warnings heading", () => {
+    const html =
+      "<p>Paste din porumb, gata in 9 minute.</p><p>Nu contine gluten. Poate contine urme de soia. A nu se lasa la indemana copiilor.</p>";
+    const faq = buildFaq(base({ title: "Paste", descriptionHtml: html, language: "ro" }));
+    expect(faq[0]).toEqual(
+      expect.objectContaining({ intent: "safety", a: "Poate contine urme de soia. A nu se lasa la indemana copiilor." }),
+    );
+  });
+
+  it("reads a Romanian 'do not' as a warning", () => {
+    const html = "<p>Se amesteca cu apa rece. Nu prepara cu sucuri de fructe, exista riscul de fermentare.</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0]).toEqual(
+      expect.objectContaining({ intent: "safety", a: "Nu prepara cu sucuri de fructe, exista riscul de fermentare." }),
+    );
+  });
+
+  it("reads a negated allergen line as no warning, and an allergen line as one", () => {
+    const free = buildFaq(base({ descriptionHtml: "<p><b>Fara alergeni</b>: fara gluten, fara lactoza.</p>", language: "ro" }));
+    expect(free.some((x) => x.intent === "safety")).toBe(false);
+    const warns = buildFaq(base({ descriptionHtml: "<p><b>Alergeni</b>: contine urme de alune.</p>", language: "ro" }));
+    expect(warns[0]).toEqual(expect.objectContaining({ intent: "safety", a: "contine urme de alune." }));
+  });
+});
+
+describe("bundles", () => {
+  const two = (a: string, b: string) =>
+    `<h2>Maca Forte ecologica, 60 capsule</h2>${a}<h2>Zinc Bisglycinate 25 mg, 90 tablete</h2>${b}`;
+
+  it("says a repeated section once per product, each under the product's name", () => {
+    const html = two("<p><b>Mod de utilizare</b>: 2 capsule zilnic.</p>", "<p><b>Mod de utilizare</b>: 1 tableta zilnic.</p>");
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(faq.map((x) => x.a)).toEqual([
+      "Maca Forte ecologica, 60 capsule: 2 capsule zilnic. Zinc Bisglycinate 25 mg, 90 tablete: 1 tableta zilnic.",
+    ]);
+  });
+
+  it("asks a merchant's repeated question as the bundle's own question, answered per product", () => {
+    const html = two("<p><b>Ce contine?</b></p><p>60 de capsule.</p>", "<p><b>Ce contine?</b></p><p>90 de tablete.</p>");
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(faq.map((x) => [x.q, x.a])).toEqual([
+      ["Ce conține Pachet?", "Maca Forte ecologica, 60 capsule: 60 de capsule. Zinc Bisglycinate 25 mg, 90 tablete: 90 de tablete."],
+    ]);
+  });
+
+  it("asks nothing that only one of its products answers, except warnings", () => {
+    const html = two(
+      "<p><b>Mod de utilizare</b>: 2 capsule zilnic.</p><p><b>Atentionari</b>: A nu se consuma de catre copii.</p>",
+      "<p><b>Ideal pentru</b>: sportivi.</p><p><b>Mod de utilizare</b>: 1 tableta zilnic.</p>",
+    );
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro", vendor: "Molecules of Youth", shopName: "Republica BIO" }));
+    expect(faq.map((x) => x.intent)).toEqual(["safety", "usage"]);
+    expect(faq[0].a).toBe("Maca Forte ecologica, 60 capsule: A nu se consuma de catre copii.");
+    // One vendor does not make every product of a bundle.
+    expect(faq.some((x) => x.source === "vendor")).toBe(false);
+  });
+
+  it("lets its contents answer what it contains, not each product's ingredients", () => {
+    const html =
+      "<h2>Continut pachet:</h2><ul><li>1 x Maca Forte</li><li>1 x Zinc Bisglycinate</li></ul>" +
+      two("<p><b>Ce contine?</b></p><p>Pulbere de maca.</p>", "<p><b>Ce contine?</b></p><p>Zinc bisglicinat.</p>");
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(faq.map((x) => x.intent)).toEqual(["contents"]);
+  });
+
+  it("gives every product's warnings, from its sentences where it has no warnings heading", () => {
+    const html = two(
+      "<p><b>Atentionari</b>: A nu se consuma de catre copii.</p>",
+      "<p>Tablete cu zinc. A nu se lasa la indemana copiilor mici.</p>",
+    );
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(faq[0].a).toBe(
+      "Maca Forte ecologica, 60 capsule: A nu se consuma de catre copii. Zinc Bisglycinate 25 mg, 90 tablete: A nu se lasa la indemana copiilor mici.",
+    );
+  });
+
+  it("cuts a long product name at a list comma, never at a decimal comma or inside a parenthesis", () => {
+    const html =
+      "<h2>Maca Ecologica din Peru (400 mg - extract 4:1) Republica BIO, 60 capsule (29,7 g)</h2><p><b>Mod de utilizare</b>: 2 capsule zilnic.</p>" +
+      "<h2>Rhodiola Rosea Ecologica din Bulgaria, 60 capsule (29,7 g)</h2><p><b>Mod de utilizare</b>: 1 capsula zilnic.</p>";
+    const [item] = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(item.a).toBe(
+      "Maca Ecologica din Peru (400 mg - extract 4:1) Republica BIO: 2 capsule zilnic. Rhodiola Rosea Ecologica din Bulgaria, 60 capsule (29,7 g): 1 capsula zilnic.",
+    );
+  });
+
+  it("asks nothing it cannot answer for every one of its products within the limit", () => {
+    const long = (n: number) => Array.from({ length: n }, (_, i) => `Pasul ${i + 1} al preparării este descris aici pe larg.`).join(" ");
+    const html = two(`<p><b>Mod de utilizare</b>: ${long(18)}</p>`, `<p><b>Mod de utilizare</b>: ${long(18)}</p>`);
+    const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
+    expect(faq.some((x) => x.intent === "usage")).toBe(false);
+  });
+
+  it("does not take a short section heading for a product's name", () => {
+    const html =
+      "<h2>Bneficii cheie</h2><p><b>Mod de utilizare</b>: 2 linguri zilnic.</p>";
+    expect(buildFaq(base({ descriptionHtml: html, language: "ro" }))[0].a).toBe("2 linguri zilnic.");
+  });
+});
+
 describe("answers", () => {
   it("cut at a list boundary, every item whole", () => {
     const units = Array.from({ length: 40 }, (_, i) => `Item number ${i + 1} of the set`);
@@ -196,9 +370,23 @@ describe("answers", () => {
   });
 
   it("cut at a sentence end inside the limit, or not at all", () => {
-    const sentence = "This sentence is long enough to matter. ";
-    expect(joinAnswer([sentence.repeat(30)])).toMatch(/matter\.$/);
+    const sentences = Array.from({ length: 30 }, (_, i) => `Sentence number ${i + 1} is long enough to matter.`).join(" ");
+    expect(joinAnswer([sentences])).toMatch(/matter\.$/);
     expect(joinAnswer(["word ".repeat(200)])).toBe("");
+  });
+
+  it("says a repeated sentence once, and never ends on a heading", () => {
+    expect(joinAnswer(["Keep away from children and pets.", "Keep away from children and pets."])).toBe(
+      "Keep away from children and pets.",
+    );
+    expect(joinAnswer([{ text: "Soft and warm" }, { text: "Why people love it", heading: true }])).toBe("Soft and warm.");
+  });
+
+  it("never cuts package contents: a list too long to give whole is not given", () => {
+    const items = Array.from({ length: 80 }, (_, i) => `<li>Shade number ${i + 1} in the palette</li>`).join("");
+    const faq = buildFaq(base({ descriptionHtml: `<p><b>Kit includes:</b></p><ul>${items}</ul>`, language: "en" }));
+    expect(faq).toEqual([]);
+    expect(LONG_ANSWER_CHARS).toBeGreaterThan(600);
   });
 
   it("no answer, no question", () => {
@@ -206,14 +394,14 @@ describe("answers", () => {
   });
 
   it("never the same answer under two questions", () => {
-    const html = "<h3>Is it vegan?</h3><p>Yes, fully vegan.</p><h3>Is it cruelty free?</h3><p>Yes, fully vegan.</p>";
-    expect(qs(base({ descriptionHtml: html }))).toEqual(["Is it vegan?"]);
+    const html = "<h3>Is Masa Oslo vegan?</h3><p>Yes, fully vegan.</p><h3>Is Masa Oslo cruelty free?</h3><p>Yes, fully vegan.</p>";
+    expect(qs(base({ descriptionHtml: html }))).toEqual(["Is Masa Oslo vegan?"]);
   });
 
   it("never the same question twice: a repeated question is asked once", () => {
-    const html = "<h3>Is it vegan?</h3><p>Yes, fully vegan.</p><h3>Is it vegan?</h3><p>Certified by the Vegan Society.</p>";
+    const html = "<h3>Is Masa Oslo vegan?</h3><p>Yes, fully vegan.</p><h3>Is Masa Oslo vegan?</h3><p>Certified by the Vegan Society.</p>";
     const faq = buildFaq(base({ descriptionHtml: html }));
-    expect(faq.map((x) => x.q)).toEqual(["Is it vegan?"]);
+    expect(faq.map((x) => x.q)).toEqual(["Is Masa Oslo vegan?"]);
     expect(faq[0].a).toBe("Yes, fully vegan. Certified by the Vegan Society.");
   });
 });
@@ -255,12 +443,13 @@ describe("Shopify data", () => {
     expect(item.a).toBe("Size: 1.7 fl oz., 4 fl oz.");
   });
 
-  it("asks who makes it only for a brand that is not the shop, a name not a category, never on a gift card", () => {
+  it("asks who makes it only for a named brand that is not the shop, never a category, a placeholder or a gift card", () => {
     const ask = (vendor: string, title = "Masa Oslo") =>
       buildFaq(base({ title, vendor, shopName: "Death Wish Coffee", language: "en" })).map((x) => x.a);
     expect(ask("Klean Kanteen")).toEqual(["Klean Kanteen."]);
     expect(ask("Death Wish Coffee Company")).toEqual([]);
     expect(ask("BONE CONDUCTION OPEN-EAR SPORT HEADPHONES")).toEqual([]);
+    expect(ask("Nedefinit")).toEqual([]);
     expect(ask("Onward", "Digital Gift Card")).toEqual([]);
     expect(buildFaq(base({ vendor: "Klean Kanteen" }))).toEqual([]);
   });
@@ -268,28 +457,28 @@ describe("Shopify data", () => {
 
 describe("presets and the shop's own mappings", () => {
   const facts = [
-    { k: "Material", v: "MDF, metal" },
-    { k: "Dimensions", v: "160 x 90 cm" },
+    { k: "Material", v: "organic cotton, jersey" },
+    { k: "Care", v: "wash cold, tumble dry" },
     { k: "Forma", v: "ovala" },
   ];
 
   it("asks the preset's template only for the preset's own groups, and nothing generic", () => {
-    expect(qs(base({ facts, presetId: "furniture", language: "en" }))).toEqual([
+    expect(qs(base({ facts, presetId: "clothing", language: "en" }))).toEqual([
       "What is Masa Oslo made of?",
-      "What are the dimensions of Masa Oslo?",
+      "How do I care for Masa Oslo?",
     ]);
     expect(qs(base({ facts, language: "en" }))).toEqual([]);
   });
 
-  it("does not call a capacity dimensions", () => {
-    expect(qs(base({ facts: [{ k: "Dimensions", v: "100ml" }], presetId: "furniture" }))).toEqual([]);
+  it("asks nothing from the furniture preset: the judge found its values wrong", () => {
+    expect(qs(base({ facts: [{ k: "Material", v: "metal" }, { k: "Dimensions", v: "10 CM" }], presetId: "furniture" }))).toEqual([]);
   });
 
   it("asks the shop's own question for a group, and for a heading", () => {
     const faq = buildFaq(
       base({
         facts,
-        presetId: "furniture",
+        presetId: "clothing",
         descriptionHtml: "<h3>Montaj</h3><p>Se livreaza demontata, cu instructiuni.</p>",
         mappings: {
           groups: [{ group: "forma", question: "Ce forma are {title}?" }],
@@ -301,7 +490,7 @@ describe("presets and the shop's own mappings", () => {
     expect(faq.map((x) => [x.q, x.source])).toEqual([
       ["Cum se monteaza Masa Oslo?", "mapping"],
       ["Ce material are Masa Oslo?", "preset"],
-      ["Ce dimensiuni are Masa Oslo?", "preset"],
+      ["Cum se întreține Masa Oslo?", "preset"],
       ["Ce forma are Masa Oslo?", "mapping"],
     ]);
   });
@@ -316,6 +505,25 @@ describe("presets and the shop's own mappings", () => {
 });
 
 describe("business", () => {
+  it("does not ask a gift card's delivery time or return window", () => {
+    const faq = buildFaq(
+      base({ title: "Card Cadou", business: { deliveryTime: "2-4 zile lucratoare", returnDays: 14, paymentMethods: "card" }, language: "ro" }),
+    );
+    expect(faq.map((x) => x.q)).toEqual(["Cum pot plăti?"]);
+  });
+
+  it("does not ask from the business record what the shop already asks in its own words", () => {
+    const faq = buildFaq(
+      base({
+        title: "Card Cadou",
+        descriptionHtml: "<h3>Cum se plateste cardul cadou?</h3><p>Online, la finalizarea comenzii.</p>",
+        business: { deliveryTime: "2-4 zile lucratoare", returnDays: 14, paymentMethods: "card" },
+        language: "ro",
+      }),
+    );
+    expect(faq.map((x) => [x.q, x.source])).toEqual([["Cum se plateste cardul cadou?", "merchant"]]);
+  });
+
   it("keeps the business questions and puts them last", () => {
     const faq = buildFaq(
       base({

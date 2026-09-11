@@ -6,10 +6,12 @@
 //
 // Reads the dev stores only, parses each description exactly as the engine
 // does (parseBlocks), and for every keyword counts the dev products and
-// stores with a heading containing it, with the most frequent such heading.
-// A keyword with a count of 0 has no business in the list. Read only.
+// stores with a heading the engine classifies into that intent through it -
+// the negation rule and the word limit applied, so "Fara alergeni" is not
+// counted as evidence for a warnings keyword. A keyword with a count of 0
+// has no business in the list. Read only.
 import fs from "node:fs";
-import { INTENT_KEYWORDS, INTENT_ORDER, keywordMatches, parseBlocks } from "../app/engine/faq";
+import { INTENT_KEYWORDS, INTENT_ORDER, classifyHeading, keywordMatches, parseBlocks } from "../app/engine/faq";
 import { normalize } from "../app/engine/normalize";
 import { DEV_STORES, loadStore } from "./corpus-headings";
 
@@ -49,7 +51,9 @@ for (const intent of INTENT_ORDER) {
       const freq = new Map<string, number>();
       let n = 0;
       for (const h of headings) {
-        const hit = h.labels.filter((l) => keywordMatches(l, keyword));
+        const hit = h.labels.filter(
+          (l) => keywordMatches(l, keyword) && classifyHeading(l, l.trim().endsWith("?") ? 12 : 4) === intent,
+        );
         if (hit.length === 0) continue;
         n++;
         stores.add(h.store);
