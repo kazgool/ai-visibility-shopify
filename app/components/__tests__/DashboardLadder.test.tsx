@@ -36,6 +36,7 @@ function input(over: Partial<LadderInput> = {}): LadderInput {
     hasDictionary: false,
     hasBusiness: false,
     collectionsBuilt: null,
+    contentLanguageKnown: true,
     blockingKind: null,
     ...over,
   };

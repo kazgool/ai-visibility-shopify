@@ -120,6 +120,12 @@ export type LadderInput = {
   hasDictionary: boolean;
   hasBusiness: boolean;
   collectionsBuilt: { at: string | null; withTable: number; total: number } | null;
+  /** The language summaries and questions are written in is known: chosen on
+   *  the Business screen, or read from the store's default language
+   *  (content-language.ts). False only when neither, and then "Make it yours"
+   *  carries a line asking for it until it is set; English is written
+   *  meanwhile, as it always was. */
+  contentLanguageKnown: boolean;
   /** The kind of the job currently queued or running, from the same read the
    *  one-at-a-time guard uses. Every job action is disabled while one is, and
    *  the reason names it, as the banners on this screen already do. */
@@ -202,6 +208,9 @@ function embedSentence(embed: EmbedLike): string {
   return 'Turn on "AI Visibility" under App embeds. Nothing is published until you do, however much the app has written.';
 }
 
+/** The "Make it yours" line shown while the content language is unknown. */
+export const LANGUAGE_STEP_LABEL = "Choose the language your product pages are written in";
+
 /** What a locked step says instead of a button. Never a greyed-out control
  *  with no explanation: the merchant has to be able to read why. */
 function lockedBecause(blockerTitle: string | undefined, blockerNumber: number): string {
@@ -224,6 +233,7 @@ export function resolveLadder(input: LadderInput): Ladder {
     hasDictionary,
     hasBusiness,
     collectionsBuilt,
+    contentLanguageKnown,
     blockingKind,
   } = input;
 
@@ -252,7 +262,8 @@ export function resolveLadder(input: LadderInput): Ladder {
 
   const everywhereDone = Boolean(lastWrite);
 
-  const yoursDone = hasDictionary && hasBusiness && Boolean(collectionsBuilt);
+  const yoursDone =
+    hasDictionary && hasBusiness && Boolean(collectionsBuilt) && contentLanguageKnown;
 
   const statuses: Record<StepKey, "done" | "open" | "not_needed"> = {
     reach: crawlerDone ? "done" : "open",
@@ -284,7 +295,7 @@ export function resolveLadder(input: LadderInput): Ladder {
     everywhere:
       "One pass over the whole catalogue, writing the attributes into your own Shopify metafields, where they stay whatever happens to us.",
     yours:
-      "Three settings that make the output match your trade, your terms and your collection pages. Every one of them is optional.",
+      "The settings that make the output match your trade, your terms and your collection pages. Every one of them is optional.",
   };
 
   const blockedReason = blockingKind
@@ -490,13 +501,30 @@ export function resolveLadder(input: LadderInput): Ladder {
           : "Collections can carry a summary and a comparison table built from the same attributes.",
       },
     ];
+    // First, and only while it is not known: it decides the language of every
+    // summary and question the pass writes, so it comes before the rest.
+    if (!contentLanguageKnown) {
+      subs.unshift({
+        label: LANGUAGE_STEP_LABEL,
+        done: false,
+        to: "/app/business",
+        hint: "We could not read your store's default language. Until you choose, summaries and buyer questions are written in English.",
+      });
+    }
     const firstOpen = subs.find((s) => !s.done);
     return {
       ...base,
       result: yoursDone ? "All three are set. Change any of them whenever you like." : null,
       subs,
       action: firstOpen
-        ? linkAction(key, `Open ${firstOpen.label.toLowerCase()}`, firstOpen.to, index)
+        ? linkAction(
+            key,
+            firstOpen.label === LANGUAGE_STEP_LABEL
+              ? "Choose the language"
+              : `Open ${firstOpen.label.toLowerCase()}`,
+            firstOpen.to,
+            index,
+          )
         : null,
     };
   });

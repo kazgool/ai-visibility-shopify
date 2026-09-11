@@ -36,6 +36,8 @@ import { readPass } from "../services/report-metrics";
 import { liveJobFilter, presentJob } from "../services/job-stale";
 import { altProblem, metricTiles, passProblem } from "../services/dashboard-metrics";
 import { resolveLadder } from "../services/dashboard-steps";
+import { saveShopLocale, shopLocaleFor } from "../services/business.server";
+import { fetchShopLocale, resolveContentLanguage } from "../services/content-language";
 import { DashboardLadder } from "../components/DashboardLadder";
 
 // A dashboard, not a form: a merchant should see the state of their catalogue
@@ -141,6 +143,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
     : null;
   const business = shop ? await businessFor(shop.id) : null;
+
+  // The content language (CC-PROMPT-AI-READABILITY-2 item 4). The store's
+  // default language is read once, while neither it nor a choice is known;
+  // afterwards the catalogue pass keeps it current. A refused read leaves it
+  // unknown, and the ladder asks the merchant instead.
+  let storeLocale = shop ? await shopLocaleFor(shop.id) : null;
+  if (shop && !storeLocale && !business?.contentLanguage) {
+    storeLocale = await fetchShopLocale(async (query) => (await (await admin.graphql(query)).json()).data);
+    if (storeLocale) await saveShopLocale(shop.id, storeLocale);
+  }
+  const contentLanguage = resolveContentLanguage(business?.contentLanguage, storeLocale);
 
   // CRAWLER-HITS-SPEC §6, EXPERIENCE-PRD §7: real requests to the plain text
   // mirror and llms.txt, logged by the app proxy. session.shop is the domain
@@ -277,6 +290,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           total: (collectionsJob.report as any)?.collections ?? 0,
         }
       : null,
+    contentLanguageKnown: contentLanguage.source !== "unset",
     blockingKind: activeJob?.kind ?? null,
   });
 

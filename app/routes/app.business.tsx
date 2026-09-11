@@ -12,15 +12,24 @@ import {
   TextField,
   Checkbox,
   Divider,
+  Select,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import {
   businessFor,
   saveBusiness,
+  saveShopLocale,
   sanitizeSocialProfiles,
+  shopLocaleFor,
   type BusinessRecord,
 } from "../services/business.server";
+import {
+  CONTENT_LANGUAGE_NAMES,
+  fetchShopLocale,
+  isContentLanguage,
+  languageFromLocale,
+} from "../services/content-language";
 // The platform list is imported from a plain module, not the .server one:
 // the component below renders a field per platform, and importing a server
 // module outside a loader or action pulls it into the client bundle and
@@ -34,10 +43,22 @@ import { hasPaidAccess } from "../services/billing.server";
 // publishes nothing - no placeholders, no guessed policies.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
   const business = shop ? await businessFor(shop.id) : null;
-  return { business };
+
+  // The store's default language, read on every visit so the preselection
+  // below follows a change made in Shopify (content-language.ts). A refused
+  // read keeps the last one stored, or none.
+  let storeLocale = shop ? await shopLocaleFor(shop.id) : null;
+  if (shop) {
+    const fresh = await fetchShopLocale(async (query) => (await (await admin.graphql(query)).json()).data);
+    if (fresh) {
+      await saveShopLocale(shop.id, fresh);
+      storeLocale = fresh;
+    }
+  }
+  return { business, storeLocale };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -69,7 +90,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p, text(p)])),
   );
 
+  const language = text("contentLanguage");
   const info: BusinessRecord = {
+    contentLanguage: isContentLanguage(language) ? language : undefined,
     deliveryTime: text("deliveryTime") || undefined,
     deliveryCost: text("deliveryCost") || undefined,
     deliveryCostIsFrom: form.get("deliveryCostIsFrom") === "on",
@@ -96,9 +119,16 @@ const SOCIAL_LABELS: Record<(typeof SOCIAL_PLATFORMS)[number], string> = {
 };
 
 export default function Business() {
-  const { business } = useLoaderData<typeof loader>() as {
+  const { business, storeLocale } = useLoaderData<typeof loader>() as {
     business: BusinessRecord | null;
+    storeLocale: string | null;
   };
+  // A choice already saved, else the store's default language when this app
+  // writes it, else nothing chosen (English is written until one is).
+  const storeLanguage = languageFromLocale(storeLocale);
+  const [contentLanguage, setContentLanguage] = useState<string>(
+    business?.contentLanguage ?? storeLanguage ?? "",
+  );
   const result = useActionData<typeof action>() as
     | { saved?: boolean; error?: string }
     | undefined;
@@ -144,6 +174,33 @@ export default function Business() {
 
         <Form method="post">
           <BlockStack gap="400">
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Language
+                </Text>
+                <Select
+                  label="Language your product pages are written in"
+                  name="contentLanguage"
+                  options={[
+                    ...(business?.contentLanguage || storeLanguage
+                      ? []
+                      : [{ label: "Not chosen yet (English is written)", value: "" }]),
+                    { label: CONTENT_LANGUAGE_NAMES.en, value: "en" },
+                    { label: CONTENT_LANGUAGE_NAMES.ro, value: "ro" },
+                  ]}
+                  value={contentLanguage}
+                  onChange={setContentLanguage}
+                  helpText="The summary and buyer questions this app writes use this language."
+                />
+                {!business?.contentLanguage && storeLanguage ? (
+                  <Text as="p" tone="subdued">
+                    Preselected from your store's default language. Save to keep it.
+                  </Text>
+                ) : null}
+              </BlockStack>
+            </Card>
+
             <Card>
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">

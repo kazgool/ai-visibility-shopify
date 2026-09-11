@@ -12,6 +12,11 @@ import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE } from "./facts.server";
 import { SOCIAL_PLATFORMS } from "./social-profiles";
 import type { SocialPlatform, SocialProfiles } from "./social-profiles";
+import {
+  resolveContentLanguage,
+  type ContentLanguage,
+  type ResolvedLanguage,
+} from "./content-language";
 
 const SETTING_KEY = "business";
 
@@ -28,8 +33,44 @@ const SETTING_KEY = "business";
 export { SOCIAL_PLATFORMS } from "./social-profiles";
 export type { SocialPlatform, SocialProfiles } from "./social-profiles";
 
-/** Business info plus the optional social profile URLs, stored together. */
-export type BusinessRecord = BusinessInfo & { socialProfiles?: SocialProfiles };
+/**
+ * Business info plus the optional social profile URLs and the language the
+ * app writes product text in, stored together. `contentLanguage` absent means
+ * the merchant has not chosen; content-language.ts says what is written then.
+ */
+export type BusinessRecord = BusinessInfo & {
+  socialProfiles?: SocialProfiles;
+  contentLanguage?: ContentLanguage;
+};
+
+/** The shop's default locale as last read from the Admin API
+ * (content-language.ts), kept apart from the business record because nobody
+ * typed it. */
+export const SHOP_LOCALE_SETTING_KEY = "shop_locale";
+
+export async function shopLocaleFor(shopId: string): Promise<string | null> {
+  const row = await db.setting.findUnique({
+    where: { shopId_key: { shopId, key: SHOP_LOCALE_SETTING_KEY } },
+  });
+  return row?.value?.trim() || null;
+}
+
+/** Written only when it differs: our own table, but the same rule as every
+ * other writer in this app. */
+export async function saveShopLocale(shopId: string, locale: string): Promise<void> {
+  if ((await shopLocaleFor(shopId)) === locale) return;
+  await db.setting.upsert({
+    where: { shopId_key: { shopId, key: SHOP_LOCALE_SETTING_KEY } },
+    create: { shopId, key: SHOP_LOCALE_SETTING_KEY, value: locale },
+    update: { value: locale },
+  });
+}
+
+/** The language summaries and questions are written in, and where it came from. */
+export async function contentLanguageFor(shopId: string): Promise<ResolvedLanguage> {
+  const [business, locale] = await Promise.all([businessFor(shopId), shopLocaleFor(shopId)]);
+  return resolveContentLanguage(business?.contentLanguage, locale);
+}
 
 /**
  * Accept only absolute https URLs. We never verify the profile exists - that

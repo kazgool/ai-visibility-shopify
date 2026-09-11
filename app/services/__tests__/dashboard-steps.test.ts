@@ -55,6 +55,8 @@ function input(over: Partial<LadderInput> = {}): LadderInput {
     hasDictionary: false,
     hasBusiness: false,
     collectionsBuilt: null,
+    // The store's default language is normally readable (content-language.ts).
+    contentLanguageKnown: true,
     blockingKind: null,
     ...over,
   };
@@ -384,5 +386,34 @@ describe("step five is three separate decisions", () => {
     ]);
     // The action opens the first one that is not done, not the first one.
     expect(yours.action?.to).toBe("/app/business");
+  });
+
+  // CC-PROMPT-AI-READABILITY-2 item 4: shown only while the language is not
+  // known, first, and the step is not done without it.
+  it("asks for the content language first, and only while it is unknown", () => {
+    const everythingElse = {
+      crawlerJob: { status: "done" },
+      embed: { active: true },
+      hasAccess: true,
+      lastWrite: { finishedAt: "2026-09-01T10:00:00.000Z" },
+      hasDictionary: true,
+      hasBusiness: true,
+      collectionsBuilt: { at: "2026-09-01T11:00:00.000Z", withTable: 6, total: 9 },
+    } as const;
+    const unknown = step(resolveLadder(input({ ...everythingElse, contentLanguageKnown: false })), "yours");
+    expect(unknown.status).toBe("current");
+    expect(unknown.subs[0]).toMatchObject({
+      label: "Choose the language your product pages are written in",
+      done: false,
+      to: "/app/business",
+    });
+    expect(unknown.subs[0].hint).toContain("written in English");
+    expect(unknown.action).toMatchObject({ label: "Choose the language", to: "/app/business" });
+
+    const known = step(resolveLadder(input(everythingElse)), "yours");
+    expect(known.status).toBe("done");
+    expect(known.subs.map((s) => s.label)).not.toContain(
+      "Choose the language your product pages are written in",
+    );
   });
 });

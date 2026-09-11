@@ -38,7 +38,8 @@ import { reconcileMirrors, type Reconciliation } from "./mirror-reconcile.server
 import { computeSourceA, type SourceAReport } from "./seo-scan.server";
 import { enqueue } from "./queue.server";
 import { renderMirror } from "./mirror.server";
-import { businessFor, type BusinessRecord } from "./business.server";
+import { businessFor, saveShopLocale, type BusinessRecord } from "./business.server";
+import { fetchShopLocale } from "./content-language";
 import { formatPrice } from "./price.server";
 import type { BusinessInfo } from "../engine";
 
@@ -345,6 +346,13 @@ export async function runBulkExtract(
   // Admin API call on the request path (ARCHITECTURE §3).
   const shopInfo = options.dryRun ? null : await fetchShopInfo(graphql);
   if (shopInfo) await saveShopInfo(shopId, shopInfo);
+  // The store's default language, the fallback while the merchant has not
+  // chosen one on the Business screen (content-language.ts). Its own read, so
+  // a refusal returns null and changes nothing; same dry-run rule as shopInfo.
+  if (!options.dryRun) {
+    const storeLocale = await fetchShopLocale(graphql);
+    if (storeLocale) await saveShopLocale(shopId, storeLocale);
+  }
 
   // The merchant's toggles widen or narrow the read itself: with unlisted
   // products excluded they are not read by the pass at all, which is what the

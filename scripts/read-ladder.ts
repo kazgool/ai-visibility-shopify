@@ -13,7 +13,7 @@
 
 import db from "../app/db.server";
 import { adminGraphql } from "../app/services/admin.server";
-import { businessFor } from "../app/services/business.server";
+import { businessFor, contentLanguageFor } from "../app/services/business.server";
 import { hasPaidAccess, freeProductIds } from "../app/services/billing.server";
 import { checkAppEmbed, embedDeepLink } from "../app/services/embed-check.server";
 import { readPass } from "../app/services/report-metrics";
@@ -120,6 +120,7 @@ async function main() {
           total: (collectionsJob.report as any)?.collections ?? 0,
         }
       : null,
+    contentLanguageKnown: (await contentLanguageFor(shop.id)).source !== "unset",
     blockingKind: activeJob?.kind ?? null,
   });
 
