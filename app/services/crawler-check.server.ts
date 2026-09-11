@@ -25,9 +25,38 @@ export const AGENTS: Record<string, string> = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)",
   "Google-CloudVertexBot":
     "Mozilla/5.0 (compatible; Google-CloudVertexBot; +https://cloud.google.com/generative-ai-app-builder/docs/prepare-data#website)",
+  // Added 11 September 2026 for the three crawler families (crawler-info.ts,
+  // CRAWLER_FAMILIES). The eight above are unchanged, including the five the
+  // check started with. Strings as the vendors publish them where a fetch
+  // could read the page (OpenAI, Perplexity, Google, Common Crawl); CCBot's
+  // carries no "Mozilla" prefix because Common Crawl's does not.
+  ClaudeBot:
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)",
+  CCBot: "CCBot/2.0 (https://commoncrawl.org/faq/)",
+  Googlebot:
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Chrome/131.0.0.0 Safari/537.36",
+  Bingbot:
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Chrome/131.0.0.0 Safari/537.36",
+  "Claude-User":
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +Claude-User@anthropic.com)",
+  "Perplexity-User":
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
 };
 
-import { CAUSE_TEXT, type Cause } from "./crawler-info";
+/**
+ * Crawlers whose real traffic a firewall may recognise by address rather than
+ * by name. A request of ours carrying the name comes from our address, so a
+ * store behind such a rule refuses it while letting the real crawler in. A
+ * refusal of these is therefore reported with that said, never as a plain
+ * block: telling a merchant Googlebot is blocked when only our imitation was
+ * would be the wrong diagnosis the header warns about.
+ */
+const VERIFIED_BY_ADDRESS = new Set(["Googlebot", "Bingbot"]);
+const VERIFIED_BY_ADDRESS_NOTE =
+  " This crawler's real requests come from its own published addresses, and some firewalls let only those through, so a refusal of this test request does not prove the real crawler is refused. Google Search Console and Bing Webmaster Tools answer that from the inside.";
+
+import { CAUSE_TEXT, disallowedAgents, familyReport, ROBOTS_ONLY_TOKENS, type Cause } from "./crawler-info";
+import { VISIBLE_CONTENT_CLASS } from "./seo-onpage";
 
 export { CRAWLER_INFO, NON_CRAWLER_TOKENS } from "./crawler-info";
 
@@ -44,6 +73,8 @@ export type AgentResult = {
   cause: Cause;
   detail: string;
   ms: number;
+  /** The response carried this app's visible content block (PRD-AI-READABILITY P0.9). */
+  visibleContent?: boolean;
 };
 
 export function explain(cause: Cause): string {
@@ -92,12 +123,14 @@ async function checkAgent(url: string, name: string, agent: string): Promise<Age
       const res = await fetchOnce(url, agent);
       const body = await res.text();
       const cause = classify(res, body);
+      const refused = cause === "bot_protection" || cause === "cloudflare";
       return {
         agent: name,
         status: res.status,
         cause,
-        detail: explain(cause),
+        detail: explain(cause) + (refused && VERIFIED_BY_ADDRESS.has(name) ? VERIFIED_BY_ADDRESS_NOTE : ""),
         ms: Date.now() - started,
+        visibleContent: cause === "ok" && body.includes(VISIBLE_CONTENT_CLASS),
       };
     } catch (error) {
       // A single failure is not evidence of blocking — a store testing itself
@@ -124,26 +157,18 @@ async function checkAgent(url: string, name: string, agent: string): Promise<Age
   };
 }
 
-/** Read robots.txt once and report which of our agents it disallows. */
+/**
+ * Read robots.txt once and report which of our agents it disallows, plus the
+ * robots.txt-only tokens (Google-Extended), which are asked here and nowhere
+ * else because no request ever carries them. The parser is disallowedAgents
+ * in crawler-info.ts, unchanged in behaviour, moved so it can be tested.
+ */
 export async function robotsDisallows(origin: string): Promise<string[]> {
   try {
     const res = await fetchOnce(`${origin}/robots.txt`, AGENTS.GPTBot, 8000);
     if (!res.ok) return [];
     const text = await res.text();
-
-    const disallowed: string[] = [];
-    const blocks = text.split(/\n(?=user-agent:)/i);
-    for (const block of blocks) {
-      const agentLine = block.match(/user-agent:\s*(.+)/i)?.[1]?.trim() ?? "";
-      const blocksAll = /disallow:\s*\/\s*$/im.test(block);
-      if (!blocksAll) continue;
-      for (const name of Object.keys(AGENTS)) {
-        if (agentLine === "*" || agentLine.toLowerCase() === name.toLowerCase()) {
-          disallowed.push(name);
-        }
-      }
-    }
-    return Array.from(new Set(disallowed));
+    return disallowedAgents(text, [...Object.keys(AGENTS), ...ROBOTS_ONLY_TOKENS]);
   } catch {
     return [];
   }
@@ -179,5 +204,8 @@ export async function runCrawlerCheck(shopId: string, targetUrl: string) {
     });
   }
 
-  return { targetUrl, results, robotsDisallows: disallowed };
+  // By family (PRD-AI-READABILITY P0.9): robots.txt, the page's answer and the
+  // visible block, per training, search-index and user-fetch crawler. Carried
+  // in the JobRun report and the Diagnostics result; no new column.
+  return { targetUrl, results, robotsDisallows: disallowed, families: familyReport(results, disallowed) };
 }

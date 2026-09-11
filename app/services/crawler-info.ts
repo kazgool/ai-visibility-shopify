@@ -43,7 +43,214 @@ export const CRAWLER_INFO: Record<string, { company: string; purpose: string }> 
     purpose:
       "Crawls only when a site owner requests it while building a Vertex AI Agent. It does not affect Google Search ranking.",
   },
+  // Added 11 September 2026 with the crawler families below.
+  ClaudeBot: {
+    company: "Anthropic",
+    purpose: "Crawls to collect pages used to train Anthropic's models.",
+  },
+  CCBot: {
+    company: "Common Crawl",
+    purpose: "Crawls for Common Crawl's open archive of the web, a common source of model training data.",
+  },
+  Googlebot: {
+    company: "Google",
+    purpose: "Crawls to build Google's search index, which AI Overviews and AI Mode answer from.",
+  },
+  Bingbot: {
+    company: "Microsoft",
+    purpose: "Crawls to build the Bing search index.",
+  },
+  "Claude-User": {
+    company: "Anthropic",
+    purpose: "Fetches a page live because a Claude user asked about it right now.",
+  },
+  "Perplexity-User": {
+    company: "Perplexity",
+    purpose: "Fetches a page live because a Perplexity user asked about it right now.",
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Crawler families (PRD-AI-READABILITY P0.9, 11 September 2026).
+//
+// Three kinds of reader, three different consequences. A training crawler
+// decides what a model knows about the store with no search at all; a
+// search-index crawler decides what an AI search can find; a user fetcher
+// reads the page when somebody asks. Each member's `purpose` is the vendor's
+// own words, quoted, with the page it is quoted from in the comment above it.
+// The family a crawler sits in is this app's reading of those words.
+
+export type CrawlerFamily = "training" | "searchIndex" | "userFetch";
+
+export type FamilyMember = {
+  name: string;
+  company: string;
+  /** The vendor's documented purpose, quoted; see the comment on each entry. */
+  purpose: string;
+  /** A robots.txt token only: no request ever carries it, so no page is fetched. */
+  robotsOnly?: boolean;
+};
+
+export const CRAWLER_FAMILIES: {
+  family: CrawlerFamily;
+  label: string;
+  means: string;
+  members: FamilyMember[];
+}[] = [
+  {
+    family: "training",
+    label: "Training",
+    means: "Collects pages that train the model. What a model says about your store without searching comes from here.",
+    members: [
+      // https://developers.openai.com/api/docs/bots (read 11 September 2026)
+      { name: "GPTBot", company: "OpenAI", purpose: "crawl content that may be used in training our generative AI foundation models" },
+      // https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+      { name: "ClaudeBot", company: "Anthropic", purpose: "helps enhance the utility and safety of our generative AI models" },
+      // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+      // A robots.txt token, not a fetcher: it governs what Google's own
+      // crawlers' pages may be used for, so only robots.txt can be asked.
+      { name: "Google-Extended", company: "Google", purpose: "may be used for training future generations of Gemini models", robotsOnly: true },
+      // https://commoncrawl.org/ccbot - Common Crawl describes an archive, not
+      // training; it sits here because that archive is widely used to train
+      // models, which is this app's reading and not Common Crawl's words.
+      { name: "CCBot", company: "Common Crawl", purpose: "an open repository of web crawl data" },
+    ],
+  },
+  {
+    family: "searchIndex",
+    label: "Search index",
+    means: "Builds the index an AI search answers from. A page missing here is a page the search cannot cite.",
+    members: [
+      // https://developers.openai.com/api/docs/bots
+      { name: "OAI-SearchBot", company: "OpenAI", purpose: "surface websites in search results in ChatGPT's search features" },
+      // https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+      { name: "Claude-SearchBot", company: "Anthropic", purpose: "navigates the web to improve search result quality for users" },
+      // https://docs.perplexity.ai/guides/bots
+      { name: "PerplexityBot", company: "Perplexity", purpose: "designed to surface and link websites in search results on Perplexity" },
+      // https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
+      { name: "Googlebot", company: "Google", purpose: "Find information for building Google's search indexes" },
+      // https://www.bing.com/webmasters/help/which-crawlers-does-bing-use-8c184ec0
+      // NOT a quote: the page renders client-side and returned no text to a
+      // fetch on 11 September 2026. Our words until someone quotes Bing's.
+      { name: "Bingbot", company: "Microsoft", purpose: "crawls for the Bing search index (Bing's own wording not yet quoted)" },
+    ],
+  },
+  {
+    family: "userFetch",
+    label: "User fetch",
+    means: "Reads the page live because somebody asked about it just now.",
+    members: [
+      // https://developers.openai.com/api/docs/bots
+      { name: "ChatGPT-User", company: "OpenAI", purpose: "certain user actions in ChatGPT and Custom GPTs" },
+      // https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+      { name: "Claude-User", company: "Anthropic", purpose: "supports Claude AI users" },
+      // https://docs.perplexity.ai/guides/bots
+      { name: "Perplexity-User", company: "Perplexity", purpose: "supports user actions within Perplexity" },
+    ],
+  },
+];
+
+/** Robots.txt tokens the check asks about that no request ever carries. */
+export const ROBOTS_ONLY_TOKENS: string[] = CRAWLER_FAMILIES.flatMap((f) =>
+  f.members.filter((m) => m.robotsOnly).map((m) => m.name),
+);
+
+/** Said once, to a merchant whose robots.txt turns a training crawler away. The choice stays theirs. */
+export const TRAINING_BLOCKED_SENTENCE =
+  "This crawler collects pages that train the model. Blocking it means the model will not learn your products from your own site.";
+
+/**
+ * Which of `names` a robots.txt turns away from the whole site. Ported
+ * unchanged from robotsDisallows (a group whose Disallow is "/" and whose
+ * user-agent is the name or "*"), and moved here so it can be tested without
+ * a fetch.
+ */
+export function disallowedAgents(robotsTxt: string, names: string[]): string[] {
+  const disallowed: string[] = [];
+  const blocks = robotsTxt.split(/\n(?=user-agent:)/i);
+  for (const block of blocks) {
+    const agentLine = block.match(/user-agent:\s*(.+)/i)?.[1]?.trim() ?? "";
+    const blocksAll = /disallow:\s*\/\s*$/im.test(block);
+    if (!blocksAll) continue;
+    for (const name of names) {
+      if (agentLine === "*" || agentLine.toLowerCase() === name.toLowerCase()) {
+        disallowed.push(name);
+      }
+    }
+  }
+  return Array.from(new Set(disallowed));
+}
+
+export type AgentCheckLike = {
+  agent: string;
+  status: number | null;
+  cause: string;
+  visibleContent?: boolean;
+};
+
+export type FamilyAgentReport = {
+  name: string;
+  company: string;
+  purpose: string;
+  robotsAllowed: boolean;
+  /** Null for a robots.txt-only token, which has no page to fetch. */
+  pageOk: boolean | null;
+  /** Whether the response carried this app's visible content block. Null when not fetched. */
+  visibleContent: boolean | null;
+  /** The one sentence for a blocked training crawler, otherwise null. */
+  note: string | null;
+};
+
+export type FamilyReport = {
+  family: CrawlerFamily;
+  label: string;
+  means: string;
+  agents: FamilyAgentReport[];
+  robotsAllowed: number;
+  /** Members a page was fetched for: the denominator of pageOk and visibleContent. */
+  pageChecked: number;
+  pageOk: number;
+  visibleContent: number;
+};
+
+/**
+ * The check's results, by family: allowed by robots.txt, page returned 200
+ * to that user agent, and whether the response contained the visible block.
+ * A page served in full to a crawler robots.txt names still counts as 200:
+ * nothing refused it, robots.txt is the separate answer.
+ */
+export function familyReport(results: AgentCheckLike[], disallowed: string[]): FamilyReport[] {
+  const blocked = new Set(disallowed.map((d) => d.toLowerCase()));
+  return CRAWLER_FAMILIES.map(({ family, label, means, members }) => {
+    const agents: FamilyAgentReport[] = members.map((m) => {
+      const result = m.robotsOnly ? undefined : results.find((r) => r.agent === m.name);
+      const robotsAllowed = !blocked.has(m.name.toLowerCase());
+      const pageOk = result
+        ? result.status === 200 && (result.cause === "ok" || result.cause === "robots_disallow")
+        : null;
+      return {
+        name: m.name,
+        company: m.company,
+        purpose: m.purpose,
+        robotsAllowed,
+        pageOk,
+        visibleContent: result ? pageOk === true && result.visibleContent === true : null,
+        note: family === "training" && !robotsAllowed ? TRAINING_BLOCKED_SENTENCE : null,
+      };
+    });
+    const fetched = agents.filter((a) => a.pageOk !== null);
+    return {
+      family,
+      label,
+      means,
+      agents,
+      robotsAllowed: agents.filter((a) => a.robotsAllowed).length,
+      pageChecked: fetched.length,
+      pageOk: fetched.filter((a) => a.pageOk).length,
+      visibleContent: fetched.filter((a) => a.visibleContent).length,
+    };
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Why a reachability check ended the way it did.

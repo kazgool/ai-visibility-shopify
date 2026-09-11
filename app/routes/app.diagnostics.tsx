@@ -19,7 +19,7 @@ import { isSeoUnlocked } from "../services/billing.server";
 import { themeNodeAdvice, themeNodeSentence } from "../services/seo-aggregate";
 import { readSeoAggregates } from "../services/seo-aggregate.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
-import { CRAWLER_INFO } from "../services/crawler-info";
+import { CRAWLER_INFO, type FamilyReport } from "../services/crawler-info";
 import {
   scanThemeForProductLd,
   recordNarrowThemeScan,
@@ -311,6 +311,42 @@ export default function Diagnostics() {
                   </BlockStack>
                 );
               })}
+
+              {crawler.families?.length ? (
+                <BlockStack gap="300">
+                  <Text as="h3" variant="headingSm">
+                    By what each crawler is for
+                  </Text>
+                  {crawler.families.map((f: FamilyReport) => (
+                    <BlockStack gap="100" key={f.family}>
+                      <Text as="h4" variant="headingSm">
+                        {f.label}
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        {f.means}
+                      </Text>
+                      <Text as="p" variant="bodySm">
+                        {`Allowed by robots.txt: ${f.robotsAllowed} of ${f.agents.length}. ` +
+                          `Product page returned: ${f.pageOk} of ${f.pageChecked}. ` +
+                          `This app's visible content in the page: ${f.visibleContent} of ${f.pageChecked}.`}
+                      </Text>
+                      {f.agents.map((a) => (
+                        <BlockStack gap="050" key={a.name}>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            {`${a.name} (${a.company}), in its own words: "${a.purpose}"`}
+                            {a.pageOk === null ? " Asked of robots.txt only; no request carries this name." : ""}
+                          </Text>
+                          {a.note ? (
+                            <Text as="p" variant="bodySm" tone="caution">
+                              {a.note}
+                            </Text>
+                          ) : null}
+                        </BlockStack>
+                      ))}
+                    </BlockStack>
+                  ))}
+                </BlockStack>
+              ) : null}
 
               <Text as="p" variant="bodySm" tone="subdued">
                 Google-Extended and Applebot-Extended are not crawlers, so you

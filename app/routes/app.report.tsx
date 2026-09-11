@@ -1029,18 +1029,22 @@ function CrawlersCard({
               Search engines
             </Text>
             {/* The reachability check has its own list of crawlers (AGENTS in
-                crawler-check.server.ts) and none of these names is on it, so
-                their rows read "not checked" for ever. Rather than send six
-                more outbound requests on every check, the card says here what
-                the column can and cannot answer. Adding a name to AGENTS
-                without adding a line like this one is the change to avoid: it
-                leaves a column that never fills in and never explains why. */}
+                crawler-check.server.ts). Googlebot and Bingbot joined it on 11
+                September 2026 with the crawler families, so their rows fill
+                in; the other four names here are still not on it and read
+                "not checked", which the sentence below says. Adding a name to
+                AGENTS without keeping this sentence true is the change to
+                avoid: it leaves a column that never fills in and never
+                explains why. */}
             <Text as="p" variant="bodySm" tone="subdued">
-              We do not test whether search engines can reach your store, so
-              "Can it get in" stays empty for them: Google Search Console and
-              Bing Webmaster Tools already answer that from the inside, with
-              far better evidence than one request of ours. The counts below
-              are real requests to this app's text pages and are unaffected.
+              Googlebot and Bingbot are tested with one request each, carrying
+              their names. Some firewalls let only those crawlers' own
+              addresses through, so a refusal of our test does not prove the
+              real crawler is refused; Google Search Console and Bing
+              Webmaster Tools answer that from the inside. The other names
+              here are not tested, so "Can it get in" stays empty for them.
+              The counts below are real requests to this app's text pages and
+              are unaffected.
             </Text>
             <CrawlerTable rows={engines} max={max} windowDays={windowDays} />
           </>

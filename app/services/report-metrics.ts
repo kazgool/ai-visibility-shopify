@@ -479,9 +479,12 @@ export function crawlerRows(
   checks: CheckLike[],
 ): CrawlerRow[] {
   const counts = new Map(byBot.map((b) => [b.bot, b.count]));
-  const causes = new Map(checks.map((c) => [c.agent, c.cause]));
+  // Case-insensitive: the hit log spells Bing's crawler "bingbot", as its user
+  // agent does, and the reachability check (since 11 September 2026) records
+  // it as "Bingbot", the name Bing's documentation uses.
+  const causes = new Map(checks.map((c) => [c.agent.toLowerCase(), c.cause]));
   return names.map((bot) => {
-    const cause = causes.get(bot);
+    const cause = causes.get(bot.toLowerCase());
     const access: CrawlerAccess =
       cause === undefined
         ? "not checked"

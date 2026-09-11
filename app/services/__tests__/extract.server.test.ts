@@ -61,11 +61,16 @@ describe("hasWithdrawableAutoValues", () => {
 // crawler_check derives JobRun total/progress from this list; a hardcoded 5
 // once survived the list growing. This pins the derivation's input as real.
 describe("AGENTS", () => {
-  it("has at least the eight known agents, each with a user agent string", () => {
+  // Changed 11 September 2026, deliberately: CCBot joined for the crawler
+  // families, and Common Crawl's own user agent has no "Mozilla" prefix, so
+  // "matches /Mozilla/" stopped describing a real string. Each string must
+  // now carry the agent's own token, which is what a robots.txt group and a
+  // firewall rule match on.
+  it("has at least the eight known agents, each with a user agent string naming it", () => {
     const names = Object.keys(AGENTS);
     expect(names.length).toBeGreaterThanOrEqual(8);
     for (const name of names) {
-      expect(AGENTS[name]).toMatch(/Mozilla/);
+      expect(AGENTS[name].toLowerCase()).toContain(name.toLowerCase());
     }
   });
 });
