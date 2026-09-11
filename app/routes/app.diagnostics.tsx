@@ -21,6 +21,11 @@ import { readSeoAggregates } from "../services/seo-aggregate.server";
 import { runCrawlerCheck, type AgentResult } from "../services/crawler-check.server";
 import { CRAWLER_INFO, type FamilyReport } from "../services/crawler-info";
 import {
+  AGENTS_MD_TEMPLATE,
+  AGENTS_MD_TEMPLATE_NOTE,
+  AGENTS_MD_TEMPLATE_PATH,
+} from "../services/theme-templates";
+import {
   scanThemeForProductLd,
   recordNarrowThemeScan,
   themeRowKey,
@@ -646,6 +651,30 @@ export default function Diagnostics() {
             />
           </BlockStack>
         </Card>
+
+        {/* PRD-AI-READABILITY P1.4, behind the operator key: copy text for the
+            merchant's developer. The app never writes theme files - that needs
+            an exemption from Shopify this app does not have. */}
+        {seoUnlocked ? (
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h2" variant="headingMd">
+                Files your developer can add to the theme
+              </Text>
+              <Text as="p">{AGENTS_MD_TEMPLATE_NOTE}</Text>
+              <TextField
+                label={AGENTS_MD_TEMPLATE_PATH}
+                value={AGENTS_MD_TEMPLATE}
+                readOnly
+                monospaced
+                autoComplete="off"
+                multiline={13}
+                onChange={() => {}}
+                helpText="Select all and copy. This app does not write theme files."
+              />
+            </BlockStack>
+          </Card>
+        ) : null}
       </BlockStack>
     </Page>
   );
