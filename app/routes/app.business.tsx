@@ -29,7 +29,10 @@ import {
   fetchShopLocale,
   isContentLanguage,
   languageFromLocale,
+  resolveContentLanguage,
 } from "../services/content-language";
+import { liveJobFilter } from "../services/job-stale";
+import { enqueue } from "../services/queue.server";
 // The platform list is imported from a plain module, not the .server one:
 // the component below renders a field per platform, and importing a server
 // module outside a loader or action pulls it into the client bundle and
@@ -90,6 +93,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p, text(p)])),
   );
 
+  // Read before the save: the language written until now is the one to
+  // compare against.
+  const previous = await businessFor(shop.id);
+
   const language = text("contentLanguage");
   const info: BusinessRecord = {
     contentLanguage: isContentLanguage(language) ? language : undefined,
@@ -105,7 +112,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 
   await saveBusiness(shop.id, admin.graphql, info);
-  return { saved: true };
+
+  // A new content language rewrites what the app wrote, through the pass
+  // that already writes summaries and questions (CC-PROMPT-AI-READABILITY-2
+  // item 7): bulk_extract, whose writer skips every value a person wrote or
+  // edited (mayWrite) and every value that comes out identical. No new write
+  // path. Compared on the language actually written, so confirming the
+  // store's own language, preselected on this screen, queues nothing.
+  const storeLocale = await shopLocaleFor(shop.id);
+  const before = resolveContentLanguage(previous?.contentLanguage, storeLocale).language;
+  const after = resolveContentLanguage(info.contentLanguage, storeLocale).language;
+  if (before === after) return { saved: true };
+
+  // The same one-at-a-time rule as the dashboard's buttons: a second job
+  // would double the Admin calls and muddle both reports. A row a killed
+  // worker left "running" does not count (job-stale.ts).
+  const active = await db.jobRun.findFirst({
+    where: { shopId: shop.id, ...liveJobFilter() },
+    select: { kind: true },
+  });
+  if (active) return { saved: true, rewriteWaiting: true };
+
+  const jobRun = await db.jobRun.create({ data: { shopId: shop.id, kind: "bulk_extract" } });
+  await enqueue("bulk_extract", { shopId: shop.id, dryRun: false, jobRunId: jobRun.id });
+  return { saved: true, rewriting: true };
 };
 
 const SOCIAL_LABELS: Record<(typeof SOCIAL_PLATFORMS)[number], string> = {
@@ -130,7 +160,7 @@ export default function Business() {
     business?.contentLanguage ?? storeLanguage ?? "",
   );
   const result = useActionData<typeof action>() as
-    | { saved?: boolean; error?: string }
+    | { saved?: boolean; error?: string; rewriting?: boolean; rewriteWaiting?: boolean }
     | undefined;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -163,6 +193,23 @@ export default function Business() {
             <Text as="p">
               Saved. New product passes will include these answers; run Fill
               catalogue to update existing products now.
+            </Text>
+          </Banner>
+        ) : null}
+        {result?.rewriting ? (
+          <Banner tone="info">
+            <Text as="p">
+              Summaries and questions are being rewritten in the new language.
+              Anything you edited yourself is kept.
+            </Text>
+          </Banner>
+        ) : null}
+        {result?.rewriteWaiting ? (
+          <Banner tone="warning">
+            <Text as="p">
+              Another job is running, so the rewrite in the new language has
+              not started. Run Fill catalogue on the dashboard when it
+              finishes. Anything you edited yourself is kept.
             </Text>
           </Banner>
         ) : null}
