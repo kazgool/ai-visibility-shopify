@@ -35,6 +35,7 @@ import {
 import { prefsFor, savePrefs } from "../services/eligibility.server";
 import { enqueue } from "../services/queue.server";
 import { liveJobFilter, presentJob, STUCK_REASON, STUCK_STATUS } from "../services/job-stale";
+import { readSeoAggregates } from "../services/seo-aggregate.server";
 import {
   crawlerHitsForDashboard,
   nonCrawlerTokenHits,
@@ -262,6 +263,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         })
       : null,
   );
+  // The delivery counter (PRD-AI-READABILITY P0.6): how many product pages the
+  // nightly read found carrying the visible content block, over the pages it
+  // read - B34, the same row the SEO screen shows, from the same aggregate.
+  const seoFindings = shop ? (await readSeoAggregates(shop.id)).findings : null;
+  const b34 = seoFindings?.rows.find((r) => r.code === "B34") ?? null;
+  const visible = b34 ? { state: b34.state, count: b34.count, denominator: b34.denominator } : null;
+
   const reconcile = reconcileJob
     ? {
         status: reconcileJob.status,
@@ -286,6 +294,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     example,
     prefs,
     mirrorCount,
+    visible,
     reconcile,
     windowDays: CRAWLER_HIT_RETENTION_DAYS,
   };
@@ -1376,11 +1385,14 @@ function PublishPrefsForm({ prefs }: { prefs: PublishPrefs }) {
  */
 function ModulesCard({
   mirrorCount,
+  visible,
   prefs,
   reconcile,
   error,
 }: {
   mirrorCount: number;
+  /** B34 from the nightly page read; null when this shop has no scan rows. */
+  visible: { state: string; count: number; denominator: number } | null;
   prefs: PublishPrefs;
   reconcile: ReconcileState;
   error?: string;
@@ -1404,6 +1416,16 @@ function ModulesCard({
           {mirrorCount > 0
             ? `${mirrorCount} product page${mirrorCount === 1 ? "" : "s"} served. One per public product, at /apps/ai-visibility/<handle>.`
             : "No product page yet. Pages appear as products are processed."}
+        </Text>
+
+        <Text as="h3" variant="headingSm">
+          Visible on the page
+        </Text>
+        <Text as="p">
+          {visible && visible.state === "counted"
+            ? `Visible on the page: ${visible.count} of ${visible.denominator} eligible product${visible.denominator === 1 ? "" : "s"}. ` +
+              "Product pages read at night that show the summary, key facts or questions as text."
+            : "Not read yet. The nightly page read counts this once it has fetched your product pages."}
         </Text>
 
         {error ? (
@@ -1531,6 +1553,7 @@ export default function Report() {
 
         <ModulesCard
           mirrorCount={data.mirrorCount}
+          visible={data.visible}
           prefs={data.prefs}
           reconcile={data.reconcile}
           error={actionData?.error}

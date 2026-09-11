@@ -93,7 +93,11 @@ export type FindingCode =
   | "B30"
   | "B31"
   | "B32"
-  | "B33";
+  | "B33"
+  // B34 (PRD-AI-READABILITY P0.6), 11 September 2026: the delivery counter.
+  // Raised when the page carries this app's visible content block. Counted,
+  // never judged, like B29 and B32.
+  | "B34";
 
 /** Which read the finding came from. Stated on the row, never mixed. */
 export type FindingSource = "A" | "B" | "A+B";
@@ -186,6 +190,7 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   B31: "The first image on the page is lazy-loaded",
   B32: "Scripts the product page loads, by origin",
   B33: "The theme's Product node carries no @id, so ours is held back",
+  B34: "Visible product content from this app is on the page",
 };
 
 /**
@@ -271,6 +276,12 @@ export const CHECK_METHOD: Partial<Record<FindingCode, string>> = {
     "nothing can be attached, and a second complete node would be read as a " +
     "second product. So this app publishes no Product node on that page at " +
     "all, and says so here rather than leaving the absence unexplained.",
+  B34:
+    "A page counts when it carries the class ai-visibility-content, which only this app's " +
+    "content blocks print, and only when they have something to show. Counted over the product " +
+    "pages the nightly read fetched, never over the catalogue. Not a verdict: a merchant may " +
+    "place the block by hand, hide parts of it or leave it off. It is the delivery figure - what " +
+    "reached the page, as against what was written.",
   B32:
     "A count of the script tags on the page by the host they load from, with " +
     "inline scripts as their own group. Break The Web's \"ghost code\" is the " +
@@ -442,6 +453,8 @@ export const FINDING_OWNER: Record<FindingCode, FindingOwner> = {
   B31: "theme",
   B32: "theme",
   B33: "theme",
+  // A count with no verdict, like B29 and B32; the owner is the block's.
+  B34: "app",
 };
 
 /**
@@ -501,6 +514,7 @@ export const OWNER_LABEL: Record<FindingCode, string> = {
   B31: "The main product photo waits before it loads",
   B32: "Code your product page loads, by source",
   B33: "Your theme's product description blocks ours from being added",
+  B34: "Products whose page shows this app's details as text",
 };
 
 /**
@@ -854,6 +868,15 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
       "then publishes a complete description of its own. The details it reads from your product " +
       "text stay on the page as text either way.",
   },
+  B34: {
+    what:
+      "How many product pages show the summary, key facts and questions this app wrote, as text " +
+      "that a person or an AI reading the page can see. There is no number to reach; it shows " +
+      "what actually arrived on your pages.",
+    where:
+      "In your theme editor, open App embeds and switch on AI Visibility content. Every product " +
+      "page with something to show then shows it, and this count follows after the next night.",
+  },
 };
 
 /**
@@ -920,6 +943,7 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   B31: "The main product photo waits before it loads, on every page",
   B32: "Code your product page loads, by source",
   B33: "Your theme's product description blocks ours, on every product page",
+  B34: "Every product page read shows this app's details as text",
 };
 
 /**
@@ -992,4 +1016,5 @@ export const FIX_SHAPE: Record<FindingCode, FixShape> = {
   B29: "onceForTheShop",
   B32: "onceForTheShop",
   B33: "onceForTheShop",
+  B34: "onceForTheShop",
 };

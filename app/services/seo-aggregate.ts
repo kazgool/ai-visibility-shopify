@@ -196,6 +196,10 @@ export const CHECKS: {
   { code: "B31", source: "B", basis: "pagesRead" },
   { code: "B32", source: "B", basis: "pagesRead", reports: true },
   { code: "B33", source: "B", basis: "pagesRead" },
+  // B34, the delivery counter (PRD-AI-READABILITY P0.6): how many pages read
+  // carry the visible content block. A count, never a verdict, so the third
+  // `reports` check and never a red row.
+  { code: "B34", source: "B", basis: "pagesRead", reports: true },
 ];
 
 /**
@@ -1006,6 +1010,11 @@ export function describeFinding(finding: Finding): string {
         "product description off and run this check again."
       );
     }
+    case "B34":
+      return (
+        "This page shows the summary, key facts or questions this app wrote, as text on the page. " +
+        "Counted, not judged."
+      );
     case "B32": {
       const top = Array.isArray(d.top) ? d.top : [];
       const named = top.map((o: any) => `${o.origin} (${o.count})`).join(", ");

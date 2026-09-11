@@ -343,7 +343,10 @@ describe("B30, a blog post that links to nothing you sell", () => {
 
 describe("the section 5b page vocabulary", () => {
   const PAGE_CODES: FindingCode[] = ["B25", "B26", "B29", "B31", "B32"];
-  const REPORTS_CODES: FindingCode[] = ["B29", "B32"];
+  // B34, the delivery counter, is the third count with no verdict (11
+  // September 2026). It is not a section 5b page check, so it is not in
+  // PAGE_CODES; its words are held in seo-b34.test.ts.
+  const REPORTS_CODES: FindingCode[] = ["B29", "B32", "B34"];
 
   it("counts the page checks over the pages read, in source B's pass", () => {
     for (const code of PAGE_CODES) {
@@ -451,7 +454,10 @@ describe("a check that counts and does not judge", () => {
     const aggregate = buildFindingsAggregate(counters);
     const codes = aggregate.rows.map((r) => r.code);
     expect(codes.indexOf("B29")).toBeGreaterThan(codes.indexOf("B3"));
-    expect(codes[codes.length - 1]).toBe("B32");
+    // The counted rows close the list. B34, the delivery counter, joined B29
+    // and B32 on 11 September 2026, so the last three rows are the three
+    // counts rather than B32 alone.
+    expect(codes.slice(-3).sort()).toEqual(["B29", "B32", "B34"]);
   });
 });
 

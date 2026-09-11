@@ -68,6 +68,7 @@ import {
   checkPageAltText,
   checkRedirectChain,
   checkScriptOrigins,
+  checkVisibleContent,
   checkThinContent,
   checkTitleTag,
   checkOpenGraph,
@@ -1701,6 +1702,8 @@ export function readingOf(
     checkInternalLinkKinds(linksByKind(page.html, page.finalUrl)),
     checkLazyFirstImage(page.html),
     checkScriptOrigins(page.html, page.finalUrl),
+    // B34, the delivery counter: the visible content block reached this page.
+    checkVisibleContent(page.html),
   ];
   for (const finding of onPage) if (finding) findings.push(finding);
 

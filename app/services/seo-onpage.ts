@@ -1132,6 +1132,28 @@ export function checkScriptOrigins(html: string, pageUrl: string): Finding | nul
   };
 }
 
+// --- B34: the visible content block reached the page ------------------------
+
+/** The class only this app's content blocks print (snippets/ai-visibility-content.liquid). */
+export const VISIBLE_CONTENT_CLASS = 'class="ai-visibility-content"';
+
+/**
+ * B34: this page carries the visible content block (PRD-AI-READABILITY P0.6).
+ *
+ * The delivery counter. The app writes summaries, facts and questions into
+ * metafields; whether any of it reached the page as text is a separate fact,
+ * and the one every AI reader depends on. The block prints this class only
+ * when it has something to show, so its presence means content arrived, not
+ * merely that the embed is switched on.
+ *
+ * Counted, never judged: absence is not a defect, because a merchant may
+ * place the block by hand, hide parts of it or leave it off, and the row is
+ * a count with no target like B29 and B32.
+ */
+export function checkVisibleContent(html: string): Finding | null {
+  return html.includes(VISIBLE_CONTENT_CLASS) ? { code: "B34", source: "B", detail: {} } : null;
+}
+
 // --- B30: a blog post that links to nothing you sell -----------------------
 
 /**

@@ -1574,7 +1574,12 @@ function SeoListingsCard({
  * is a number with no referent, so it is not shown. The scripts are, because a
  * script tag on each of fifty pages is fifty script tags.
  */
-function countedTotals(row: { code: string; denominator: number; totals?: Record<string, number> }): string {
+function countedTotals(row: {
+  code: string;
+  count: number;
+  denominator: number;
+  totals?: Record<string, number>;
+}): string {
   const t = row.totals ?? {};
   const pages = `across ${row.denominator} page${row.denominator === 1 ? "" : "s"}`;
   if (row.code === "B29") {
@@ -1585,6 +1590,11 @@ function countedTotals(row: { code: string; denominator: number; totals?: Record
   }
   if (row.code === "B32") {
     return `${t.scripts ?? 0} script tags ${pages}`;
+  }
+  // B34 is the delivery counter: the count is the whole of it, over the same
+  // denominator as every page check (PRD-AI-READABILITY P0.6).
+  if (row.code === "B34") {
+    return `Visible on the page: ${row.count} of ${row.denominator} eligible product${row.denominator === 1 ? "" : "s"}`;
   }
   return pages;
 }

@@ -1461,7 +1461,11 @@ function PublishedCard({
  */
 function CountedCard({ rows }: { rows: CheckRow[] }) {
   const usable = rows.filter((r) => r.count > 0 && r.totals);
-  if (usable.length === 0) return null;
+  // B34, the delivery counter, is shown at zero too: "0 of 189" is the
+  // sentence that tells a merchant the block has not reached the pages yet.
+  // It still needs pages read - a counted row exists only then.
+  const visible = rows.find((r) => r.code === "B34" && r.state === "counted");
+  if (usable.length === 0 && !visible) return null;
 
   const perPage = (row: CheckRow, key: string): number =>
     row.count > 0 ? (row.totals?.[key] ?? 0) / row.count : 0;
@@ -1490,6 +1494,18 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
             Numbers worth watching, with no right answer attached.
           </Text>
         </BlockStack>
+
+        {visible ? (
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingSm">
+              {`Visible on the page: ${formatCount(visible.count)} of ${formatCount(visible.denominator)} eligible product${visible.denominator === 1 ? "" : "s"}`}
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Product pages read last night that show the summary, key facts or questions this app
+              wrote, as text a person or an AI reading the page can see.
+            </Text>
+          </BlockStack>
+        ) : null}
 
         <InlineGrid columns={{ xs: 1, lg: 2 }} gap="500">
           {links ? (
