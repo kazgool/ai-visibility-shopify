@@ -131,11 +131,6 @@ const SWITCHES = [
     off: { av_c_questions: [] },
   },
   {
-    probe: "av_business.deliveryTime",
-    on: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 } },
-    off: { av_business: { deliveryTime: "", deliveryVaries: false, returnDays: 30 } },
-  },
-  {
     probe: "av_business.returnDays",
     on: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 } },
     off: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: null } },
@@ -147,7 +142,9 @@ const SWITCHES = [
   { probe: "av_ship_service", on: { av_ship_service: true }, off: { av_ship_service: false } },
   { probe: "av_ship_rate_ok", on: { av_ship_rate_ok: true }, off: { av_ship_rate_ok: false } },
   { probe: "av_ship_free", on: { av_ship_free: true }, off: { av_ship_free: false } },
-  { probe: "av_offer_time", on: { av_offer_time: true }, off: { av_offer_time: false } },
+  // The delivery time in days (item 4), in the policy's conditions and on the
+  // Offer's own details.
+  { probe: "av_ship_days", on: { av_ship_days: true }, off: { av_ship_days: false } },
   {
     probe: "av_ship_destination",
     on: {
@@ -236,7 +233,9 @@ function baseContext(patch) {
     av_ship_free: true,
     av_ship_free_below: 199.99,
     av_ship_service_id: "https://shop.example/#shipping",
-    av_offer_time: true,
+    av_ship_days: true,
+    av_days: { minDays: 1, maxDays: 2 },
+    av_days_qv: '{ "@type": "QuantitativeValue", "minValue": 1, "maxValue": 2, "unitCode": "DAY" }',
     ...patch,
   };
 }

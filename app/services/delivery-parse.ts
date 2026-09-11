@@ -205,12 +205,110 @@ export function parseCountryList(text: string): { countries: string[]; invalid: 
   return { countries, invalid };
 }
 
+// --- delivery time (item 4) ------------------------------------------------
+
+/** The delivery time in whole days. `minDays` equals `maxDays` for one figure. */
+export type DeliveryTimeParsed = { minDays: number; maxDays: number };
+
+/**
+ * A number, an optional second one after a range word, and the unit after
+ * them. Days, working days, hours and weeks, in English and Romanian.
+ */
+const DURATION =
+  /(\d+)(?:\s*(?:-|to|la|pana la|sau|or)\s*(\d+))?\s*(?:de\s+)?((?:(?:working|business)\s+)?(?:zile|zi|days?)|ore|ora|hours?|hrs?|h|saptamani|saptamana|weeks?)?(?![a-z])/g;
+const HOUR_UNIT = /^(?:ore|ora|hours?|hrs?|h)$/;
+const WEEK_UNIT = /^(?:saptamani|saptamana|weeks?)$/;
+const SAME_DAY = /\b(?:same[ -]day|aceeasi zi)\b/;
+const NEXT_DAY = /\b(?:next[ -]day|overnight|a doua zi|ziua urmatoare|urmatoarea zi)\b/;
+const WORD_DAYS: [RegExp, number][] = [
+  [/\b(?:one|o|una)\s+(?:zi|day)\b/, 1],
+  [/\b(?:two|doua)\s+(?:zile|days)\b/, 2],
+  [/\b(?:three|trei)\s+(?:zile|days)\b/, 3],
+];
+
+/**
+ * The delivery time text, read into whole days, or null when no duration can
+ * be read. The rules, each with the reason:
+ *
+ * - Hours convert to days rounding up (the brief): 24 is 1, 36 is 2, 48 is 2.
+ * - Clock times are not durations: "until 13:00", "ora 13", "2 pm".
+ * - Several durations give their span, from the shortest to the longest:
+ *   "in 24 de ore ... in maxim 48 de ore" is 1 to 2 days, and "1-2 zile,
+ *   3-5 in afara Bucurestiului" is 1 to 5. That is what the shop promises
+ *   across its orders.
+ * - An upper bound alone ("up to 5 days", "pana la 3 zile") gives that
+ *   figure as both ends. Its lower end is not stated, and inventing one
+ *   would promise faster delivery than the merchant did; the figure stated
+ *   is never faster than the promise.
+ * - A bare number or range with no unit ("1-2", the old shorthand) is days,
+ *   but only when nothing in the text carries a unit, and never a number
+ *   followed by a currency, a weight or a percent.
+ */
+export function readDeliveryTime(text: string): DeliveryTimeParsed | null {
+  const clean = normalizeDeliveryText(text)
+    .replace(/\b\d{1,2}[:.]\d{2}\b/g, " ")
+    .replace(/\bor(?:a|ele)\s+\d{1,2}\b/g, " ")
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/g, " ");
+  const spans: [number, number][] = [];
+  if (SAME_DAY.test(clean)) spans.push([0, 0]);
+  if (NEXT_DAY.test(clean)) spans.push([1, 1]);
+  for (const [pattern, days] of WORD_DAYS) if (pattern.test(clean)) spans.push([days, days]);
+
+  const unitless: [number, number][] = [];
+  for (const match of clean.matchAll(DURATION)) {
+    const first = Number(match[1]);
+    const second = match[2] !== undefined ? Number(match[2]) : first;
+    const lo = Math.min(first, second);
+    const hi = Math.max(first, second);
+    const unit = match[3];
+    if (!unit) {
+      const after = clean.slice((match.index ?? 0) + match[0].length);
+      if (CURRENCY_AFTER.test(after) || CONDITION_UNIT.test(after) || /^\s*[%/]/.test(after)) continue;
+      unitless.push([lo, hi]);
+    } else if (HOUR_UNIT.test(unit)) {
+      spans.push([Math.ceil(lo / 24), Math.ceil(hi / 24)]);
+    } else if (WEEK_UNIT.test(unit)) {
+      spans.push([lo * 7, hi * 7]);
+    } else {
+      spans.push([lo, hi]);
+    }
+  }
+  if (spans.length === 0) spans.push(...unitless);
+  if (spans.length === 0) return null;
+  const minDays = Math.min(...spans.map((s) => s[0]));
+  const maxDays = Math.max(...spans.map((s) => s[1]));
+  // A year and more is not a delivery time; something else was read.
+  if (maxDays > 365) return null;
+  return { minDays, maxDays };
+}
+
+/** "1 to 2 days", "1 day", "the same day". */
+export function daysPhrase({ minDays, maxDays }: DeliveryTimeParsed): string {
+  if (maxDays === 0) return "the same day";
+  if (minDays === maxDays) return maxDays === 1 ? "1 day" : `${maxDays} days`;
+  return `${minDays} to ${maxDays} days`;
+}
+
+/**
+ * The delivery time's half of the Business screen line (item 4 with 2b).
+ * Null when the field is empty, or when "varies by product" is ticked - the
+ * box already says no single time is published.
+ */
+export function deliveryTimeLine(timeText: string, varies: boolean): string | null {
+  if (varies || timeText.trim() === "") return null;
+  const parsed = readDeliveryTime(timeText);
+  return parsed
+    ? `Delivery time published for Google: ${daysPhrase(parsed)}.`
+    : "Delivery time not published for Google: we could not read a number of days from this text.";
+}
+
 /** The delivery answers of a business record, as far as this module reads them. */
 export type DeliveryFields = {
   deliveryTime?: string;
   deliveryVaries?: boolean;
   deliveryCostIsFrom?: boolean;
   deliveryCostParsed?: DeliveryCostParsed;
+  deliveryTimeParsed?: DeliveryTimeParsed | null;
 };
 
 /**
@@ -228,11 +326,13 @@ export function shippingServicePublished(b: DeliveryFields): boolean {
 /**
  * Whether the Offer carries shippingDetails for this record, by the rule
  * ai-visibility.liquid applies: a reference to the shop-wide policy when there
- * is one (item 3), else a delivery time that does not vary (item 2d). B6 reads
- * this as "the record gives the Offer something to publish".
+ * is one (item 3), else a delivery time read into days that does not vary
+ * (items 2d and 4). The text alone publishes nothing since item 4: a time
+ * Google cannot read is not a delivery time to it. B6 reads this as "the
+ * record gives the Offer something to publish".
  */
 export function offerShippingPublished(b: DeliveryFields): boolean {
-  const time = (b.deliveryTime ?? "").trim() !== "" && b.deliveryVaries !== true;
+  const time = b.deliveryTimeParsed != null && b.deliveryVaries !== true;
   return shippingServicePublished(b) || time;
 }
 

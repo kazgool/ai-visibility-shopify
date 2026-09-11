@@ -38,6 +38,20 @@ describe("withParsedDelivery", () => {
     expect(record.deliveryCostParsed).toBeUndefined();
   });
 
+  // CC-PROMPT-AI-READABILITY-4 item 4.
+  it("stores the delivery time in days next to its text, and nothing when no days can be read", () => {
+    const record = withParsedDelivery({ deliveryTime: "24-48 ore" }, "RON");
+    expect(record.deliveryTime).toBe("24-48 ore");
+    expect(record.deliveryTimeParsed).toEqual({ minDays: 1, maxDays: 2 });
+
+    const unreadable = withParsedDelivery(
+      { deliveryTime: "call us", deliveryTimeParsed: { minDays: 1, maxDays: 2 } },
+      "RON",
+    );
+    expect(unreadable.deliveryTimeParsed).toBeUndefined();
+    expect(unreadable.deliveryTime).toBe("call us");
+  });
+
   it("recomputes a reading the text no longer says", () => {
     const record = withParsedDelivery(
       { deliveryCost: "call us", deliveryCostParsed: { rate: 9, currency: "RON", freeOverAmount: null } },

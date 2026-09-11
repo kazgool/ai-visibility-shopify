@@ -41,7 +41,7 @@ import { SOCIAL_PLATFORMS } from "../services/social-profiles";
 import { hasPaidAccess } from "../services/billing.server";
 // Pure, for the same reason: the delivery line below is computed as the
 // merchant types (CC-PROMPT-AI-READABILITY-4 item 2b).
-import { deliveryCostLine, parseCountryList } from "../services/delivery-parse";
+import { deliveryCostLine, deliveryTimeLine, parseCountryList } from "../services/delivery-parse";
 
 /** The shop's currency and country: a cost typed with no currency is in the
  * shop's, and no country typed means the shop's own. */
@@ -210,12 +210,15 @@ export default function Business() {
     (business?.deliveryCountries ?? []).join(", "),
   );
   // What goes to Google from what is typed, recomputed on every keystroke by
-  // the same function the save runs (delivery-parse.ts).
-  const costLine = deliveryCostLine(
-    deliveryCost,
-    deliveryCostIsFrom,
-    shopCurrency ?? business?.deliveryCostParsed?.currency ?? "",
-  );
+  // the same functions the save runs (delivery-parse.ts): one line, the cost
+  // and then the time (CC-PROMPT-AI-READABILITY-4 items 2b and 4).
+  const costLine =
+    [
+      deliveryCostLine(deliveryCost, deliveryCostIsFrom, shopCurrency ?? business?.deliveryCostParsed?.currency ?? ""),
+      deliveryTimeLine(deliveryTime, deliveryVaries),
+    ]
+      .filter((line): line is string => line !== null)
+      .join(" ") || null;
   const [returnDays, setReturnDays] = useState(
     business?.returnDays != null ? String(business.returnDays) : "",
   );

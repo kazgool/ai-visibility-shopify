@@ -9,7 +9,12 @@
 import db from "../db.server";
 import type { BusinessInfo } from "../engine";
 import type { GraphqlFn } from "./admin.server";
-import { readDeliveryCost, type DeliveryCostParsed } from "./delivery-parse";
+import {
+  readDeliveryCost,
+  readDeliveryTime,
+  type DeliveryCostParsed,
+  type DeliveryTimeParsed,
+} from "./delivery-parse";
 import { NAMESPACE } from "./facts.server";
 import { SOCIAL_PLATFORMS } from "./social-profiles";
 import type { SocialPlatform, SocialProfiles } from "./social-profiles";
@@ -52,6 +57,13 @@ export type BusinessRecord = BusinessInfo & {
    */
   deliveryCostParsed?: DeliveryCostParsed;
   /**
+   * The delivery time text read into whole days (CC-PROMPT-AI-READABILITY-4
+   * item 4), next to `deliveryTime` and never instead of it. Absent when the
+   * text is empty or no duration could be read, and then no delivery time is
+   * published in structured data.
+   */
+  deliveryTimeParsed?: DeliveryTimeParsed;
+  /**
    * "Countries you deliver to", ISO 3166-1 alpha-2, as the merchant typed them.
    * Absent means none were typed, and the storefront block publishes the
    * shop's own country (shop.address.country_code) at render time.
@@ -60,16 +72,20 @@ export type BusinessRecord = BusinessInfo & {
 };
 
 /**
- * The record as it is saved: the delivery cost text read into numbers
- * (delivery-parse.ts), beside the text. `shopCurrency` is the shop's ISO
- * currency, the one a cost typed with no currency is in. Pure. A stale
- * reading never survives a changed or emptied text: it is always recomputed.
+ * The record as it is saved: the delivery cost and delivery time texts read
+ * into numbers (delivery-parse.ts), beside the texts. `shopCurrency` is the
+ * shop's ISO currency, the one a cost typed with no currency is in. Pure. A
+ * stale reading never survives a changed or emptied text: both are always
+ * recomputed.
  */
 export function withParsedDelivery(info: BusinessRecord, shopCurrency: string): BusinessRecord {
-  const { deliveryCostParsed: _previous, ...rest } = info;
-  const text = (info.deliveryCost ?? "").trim();
-  if (text === "") return rest;
-  return { ...rest, deliveryCostParsed: readDeliveryCost(text, shopCurrency).parsed };
+  const { deliveryCostParsed: _cost, deliveryTimeParsed: _time, ...rest } = info;
+  const out: BusinessRecord = { ...rest };
+  const cost = (info.deliveryCost ?? "").trim();
+  if (cost !== "") out.deliveryCostParsed = readDeliveryCost(cost, shopCurrency).parsed;
+  const time = readDeliveryTime(info.deliveryTime ?? "");
+  if (time) out.deliveryTimeParsed = time;
+  return out;
 }
 
 /** The shop's default locale as last read from the Admin API

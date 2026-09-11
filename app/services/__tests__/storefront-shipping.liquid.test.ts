@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { blockDefaults, ldObjects, ourNodes, renderBlock, SHOP_URL, storefront } from "./liquid-harness";
 
@@ -15,6 +17,9 @@ const rate = (value: number | null, freeOverAmount: number | null = null) => ({
   currency: "RON",
   freeOverAmount,
 });
+/** "1-2 zile", as saveBusiness stores it next to the text (item 4). */
+const DAYS = { deliveryTime: "1-2 zile", deliveryTimeParsed: { minDays: 1, maxDays: 2 } };
+const QV = { "@type": "QuantitativeValue", minValue: 1, maxValue: 2, unitCode: "DAY" };
 
 async function page(business: Record<string, unknown>, extra: Parameters<typeof storefront>[0] = {}) {
   return renderBlock(HEAD, storefront({ settings, themeScan: NO_THEME_NODE, business, ...extra }));
@@ -130,25 +135,74 @@ describe("the shop-wide delivery policy on the Organization node (item 3)", () =
   });
 });
 
+describe("the delivery time in days (item 4)", () => {
+  it("gives each condition of the policy a transitTime ServicePeriod in days, with no businessDays", async () => {
+    const html = await page({ deliveryCost: "19,99 lei, gratuit peste 200 lei", deliveryCostParsed: rate(19.99, 200), ...DAYS });
+    const conditions = serviceOf(html).shippingConditions;
+    expect(conditions).toHaveLength(2);
+    for (const condition of conditions) {
+      expect(condition.transitTime).toEqual({ "@type": "ServicePeriod", duration: QV });
+    }
+  });
+
+  it("gives the Offer's own details a transitTime QuantitativeValue in days", async () => {
+    const html = await page({ deliveryCost: "de la 25 lei", deliveryCostIsFrom: true, deliveryCostParsed: rate(25), ...DAYS });
+    expect(offerOf(html).shippingDetails).toEqual({
+      "@type": "OfferShippingDetails",
+      shippingDestination: RO,
+      deliveryTime: { "@type": "ShippingDeliveryTime", transitTime: QV },
+    });
+  });
+
+  it("publishes no delivery time from text that was never read into days", async () => {
+    const html = await page({ deliveryCost: "20 lei", deliveryCostParsed: rate(20), deliveryTime: "call us" });
+    expect(serviceOf(html).shippingConditions[0].transitTime).toBeUndefined();
+    const own = await page({ deliveryCost: "de la 25 lei", deliveryCostIsFrom: true, deliveryCostParsed: rate(25), deliveryTime: "1-2 zile" });
+    expect(offerOf(own).shippingDetails).toBeUndefined();
+  });
+
+  it("publishes no delivery time when it varies by product", async () => {
+    const html = await page({ deliveryCost: "20 lei", deliveryCostParsed: rate(20), ...DAYS, deliveryVaries: true });
+    expect(serviceOf(html).shippingConditions[0].transitTime).toBeUndefined();
+  });
+
+  // Liquid comments are stripped from the source before the check: the brief
+  // has the retired property's schema.org page cited in a code comment, and a
+  // comment emits nothing.
+  it("leaves transitTimeLabel in no emitter: not in any rendered page, not in any extension file's output", async () => {
+    const html = await page({ deliveryCost: "de la 25 lei", deliveryCostIsFrom: true, deliveryCostParsed: rate(25), ...DAYS });
+    expect(html).not.toContain("transitTimeLabel");
+    const root = path.resolve("extensions/ai-visibility");
+    const COMMENT = /{%-?\s*comment\s*-?%}[\s\S]*?{%-?\s*endcomment\s*-?%}/g;
+    for (const dir of ["blocks", "snippets"]) {
+      for (const file of readdirSync(path.join(root, dir))) {
+        const source = readFileSync(path.join(root, dir, file), "utf8").replace(COMMENT, "");
+        expect(source, `${dir}/${file}`).not.toContain("transitTimeLabel");
+      }
+    }
+  });
+});
+
 describe("the Offer's shippingDetails (items 2d and 3)", () => {
   // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 3: the rate and destination moved to the shop-wide policy, and the Offer refers to it by @id only, as the merchant listing documentation says.
   it("refers to the shop-wide policy by @id, and states nothing else, when the rate is read", async () => {
-    const html = await page({ deliveryCost: "19,99 lei", deliveryCostParsed: rate(19.99), deliveryTime: "1-2 zile" });
+    const html = await page({ deliveryCost: "19,99 lei", deliveryCostParsed: rate(19.99), ...DAYS });
     expect(offerOf(html).shippingDetails).toEqual(REFERENCE);
   });
 
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 4: the delivery time is the days read on save.
   it("states no rate when the starting price box is ticked, and still the destination and the time", async () => {
     const html = await page({
       deliveryCost: "25 lei",
       deliveryCostIsFrom: true,
       deliveryCostParsed: rate(25),
-      deliveryTime: "1-2 zile",
+      ...DAYS,
     });
     const details = offerOf(html).shippingDetails;
     expect(details.shippingRate).toBeUndefined();
     expect(details.hasShippingService).toBeUndefined();
     expect(details.shippingDestination).toEqual(RO);
-    expect(details.deliveryTime).toBeDefined();
+    expect(details.deliveryTime).toEqual({ "@type": "ShippingDeliveryTime", transitTime: QV });
   });
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 3: a threshold makes a shop-wide policy, so the Offer refers to it.
@@ -156,7 +210,7 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
     const html = await page({
       deliveryCost: "15 lei sub 1 kg; gratuit peste 250 de lei",
       deliveryCostParsed: rate(null, 250),
-      deliveryTime: "1-2 zile",
+      ...DAYS,
     });
     expect(offerOf(html).shippingDetails).toEqual(REFERENCE);
     expect(JSON.stringify(offerOf(html))).not.toContain("250");
@@ -173,7 +227,7 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
       deliveryCost: "de la 20 lei",
       deliveryCostIsFrom: true,
       deliveryCostParsed: rate(20),
-      deliveryTime: "1-2 zile",
+      ...DAYS,
       deliveryCountries: ["RO", "MD", "BG"],
     });
     expect(offerOf(html).shippingDetails.shippingDestination).toEqual([
@@ -184,7 +238,7 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
   });
 
   it("falls back to the shop's own country, and states no destination when there is none", async () => {
-    const own = { deliveryCost: "de la 20 lei", deliveryCostIsFrom: true, deliveryCostParsed: rate(20), deliveryTime: "1-2 zile" };
+    const own = { deliveryCost: "de la 20 lei", deliveryCostIsFrom: true, deliveryCostParsed: rate(20), ...DAYS };
     const md = await page(own, { countryCode: "MD" });
     expect(offerOf(md).shippingDetails.shippingDestination).toEqual({ "@type": "DefinedRegion", addressCountry: "MD" });
     const none = await page(own, { countryCode: null });
@@ -197,11 +251,11 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
       deliveryCost: "de la 20 lei",
       deliveryCostIsFrom: true,
       deliveryCostParsed: rate(20),
-      deliveryTime: "1-2 zile",
+      ...DAYS,
       deliveryVaries: true,
     });
     expect(offerOf(own).shippingDetails).toBeUndefined();
-    const policy = await page({ deliveryCost: "20 lei", deliveryCostParsed: rate(20), deliveryTime: "1-2 zile", deliveryVaries: true });
+    const policy = await page({ deliveryCost: "20 lei", deliveryCostParsed: rate(20), ...DAYS, deliveryVaries: true });
     expect(offerOf(policy).shippingDetails).toEqual(REFERENCE);
   });
 
@@ -213,8 +267,8 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
     expect(serviceOf(html).shippingConditions[0].shippingRate.currency).toBe("RON");
   });
 
-  it("states nothing from a record saved before the text was read into numbers", async () => {
-    const html = await page({ deliveryCost: "19,99 lei" });
+  it("states nothing from a record saved before the texts were read into numbers", async () => {
+    const html = await page({ deliveryCost: "19,99 lei", deliveryTime: "1-2 zile" });
     expect(offerOf(html).shippingDetails).toBeUndefined();
     expect(ourNodes(html, "Organization")).toHaveLength(0);
   });
@@ -223,7 +277,7 @@ describe("the Offer's shippingDetails (items 2d and 3)", () => {
     const context = storefront({
       settings,
       themeScan: NO_THEME_NODE,
-      business: { deliveryCost: "20 lei", deliveryCostParsed: rate(20), deliveryTime: "1-2 zile", returnDays: 14 },
+      business: { deliveryCost: "20 lei", deliveryCostParsed: rate(20), ...DAYS, returnDays: 14 },
     });
     Object.assign(context.product as Record<string, unknown>, { price_varies: true, price_min: 10000, price_max: 20000 });
     const html = await renderBlock(HEAD, context);
@@ -239,9 +293,11 @@ describe("every combination renders JSON that parses", () => {
     for (const business of [
       {},
       { deliveryCost: "free", deliveryCostParsed: rate(0) },
-      { deliveryCost: "x", deliveryCostParsed: rate(19.99, 200), deliveryCountries: ["RO", "MD"], deliveryTime: "2-4 zile" },
-      { deliveryCost: "x", deliveryCostParsed: rate(null, null), deliveryTime: "x", deliveryVaries: true },
+      { deliveryCost: "x", deliveryCostParsed: rate(19.99, 200), deliveryCountries: ["RO", "MD"], ...DAYS },
+      { deliveryCost: "x", deliveryCostParsed: rate(null, null), ...DAYS, deliveryVaries: true },
       { deliveryCost: "x", deliveryCostParsed: rate(5, 50), deliveryCostIsFrom: true, socialProfiles: { x: "https://x.com/n" } },
+      { deliveryCost: "x", deliveryCostParsed: rate(5), deliveryCostIsFrom: true, ...DAYS },
+      { ...DAYS, deliveryTimeParsed: { minDays: 0, maxDays: 0 } },
     ]) {
       for (const countryCode of ["RO", null]) {
         const html = await page(business, { countryCode });

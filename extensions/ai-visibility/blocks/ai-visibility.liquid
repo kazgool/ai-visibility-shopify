@@ -133,6 +133,32 @@
   {%- assign av_ship_service_id = shop.url | append: '/#shipping' -%}
 
   {%- comment -%}
+    The delivery time in whole days (CC-PROMPT-AI-READABILITY-4 item 4), read
+    on save into deliveryTimeParsed. It used to go out as transitTimeLabel
+    inside ShippingDeliveryTime, which schema.org never allowed there (its
+    domain was OfferShippingDetails, https://schema.org/transitTimeLabel) and
+    has since retired. The merchant listing documentation reads a
+    transitTime QuantitativeValue: "A minimum and maximum number of days must
+    be specified", unitCode "DAY or d". Captured once, printed in the
+    policy's conditions and on the Offer.
+
+    No businessDays, even for "working days": the merchant listing
+    documentation lists only handlingTime and transitTime under
+    ShippingDeliveryTime, and minValue, maxValue and unitCode under its
+    QuantitativeValue. "Delivery time varies by product" publishes none.
+    A record saved before this reading existed has none, and publishes no
+    delivery time until the next save.
+  {%- endcomment -%}
+  {%- assign av_days = av_business.deliveryTimeParsed -%}
+  {%- assign av_ship_days = false -%}
+  {%- if av_days.maxDays != nil and av_business.deliveryVaries != true -%}
+    {%- assign av_ship_days = true -%}
+  {%- endif -%}
+  {%- capture av_days_qv -%}
+    { "@type": "QuantitativeValue", "minValue": {{ av_days.minDays | json }}, "maxValue": {{ av_days.maxDays | json }}, "unitCode": "DAY" }
+  {%- endcapture -%}
+
+  {%- comment -%}
     Official store profiles (sameAs), site-wide. No spec for social networks
     existed until this feature; the merchant states them once on the
     Business info screen, we never verify a profile exists, and we publish
@@ -228,6 +254,9 @@
               ,"orderValue": { "@type": "MonetaryAmount", "minValue": 0, "maxValue": {{ av_ship_free_below | json }}, "currency": {{ av_ship.currency | json }} }
               {%- endif %}
               ,"shippingRate": { "@type": "MonetaryAmount", "value": {{ av_ship.rate | json }}, "currency": {{ av_ship.currency | json }} }
+              {%- if av_ship_days %}
+              ,"transitTime": { "@type": "ServicePeriod", "duration": {{ av_days_qv }} }
+              {%- endif %}
             }
             {%- endif %}
             {%- if av_ship_rate_ok and av_ship_free %},{% endif %}
@@ -239,6 +268,9 @@
               {%- endif %}
               ,"orderValue": { "@type": "MonetaryAmount", "minValue": {{ av_ship.freeOverAmount | json }}, "currency": {{ av_ship.currency | json }} }
               ,"shippingRate": { "@type": "MonetaryAmount", "value": 0, "currency": {{ av_ship.currency | json }} }
+              {%- if av_ship_days %}
+              ,"transitTime": { "@type": "ServicePeriod", "duration": {{ av_days_qv }} }
+              {%- endif %}
             }
             {%- endif %}
           ]
@@ -334,15 +366,6 @@
       {%- else -%}
         {%- assign av_product_ld = 'none' -%}
       {%- endif -%}
-    {%- endif -%}
-    {%- comment -%}
-      Whether the Offer states a delivery time of its own - only when there is
-      no shop-wide policy to refer to (see the Offer's shippingDetails). A
-      boolean first, because Liquid evaluates and/or without parentheses.
-    {%- endcomment -%}
-    {%- assign av_offer_time = false -%}
-    {%- if av_business.deliveryTime != blank and av_business.deliveryVaries != true -%}
-      {%- assign av_offer_time = true -%}
     {%- endif -%}
     {%- if av_product_ld == 'full' -%}
       <script type="application/ld+json">
@@ -443,13 +466,13 @@
               "@type": "OfferShippingDetails",
               "hasShippingService": { "@id": {{ av_ship_service_id | json }} }
             },
-            {%- elsif av_offer_time %}
+            {%- elsif av_ship_days %}
             "shippingDetails": {
               "@type": "OfferShippingDetails"
               {%- if av_ship_countries.size > 0 %}
               ,"shippingDestination": {{ av_ship_destination }}
               {%- endif %}
-              ,"deliveryTime": { "@type": "ShippingDeliveryTime", "transitTimeLabel": {{ av_business.deliveryTime | json }} }
+              ,"deliveryTime": { "@type": "ShippingDeliveryTime", "transitTime": {{ av_days_qv }} }
             },
             {%- endif %}
             {%- if av_business.returnDays %}

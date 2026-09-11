@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   deliveryCostLine,
+  deliveryTimeLine,
   normalizeDeliveryText,
   offerShippingPublished,
   parseAmount,
   parseCountryList,
   readDeliveryCost,
+  readDeliveryTime,
   shippingServicePublished,
 } from "../delivery-parse";
 
@@ -111,6 +113,75 @@ describe("parseCountryList", () => {
   });
 });
 
+// Item 4: the delivery time text, read into whole days.
+describe("readDeliveryTime", () => {
+  it.each([
+    // The forms the brief names.
+    ["1-2", { minDays: 1, maxDays: 2 }],
+    ["2-4 working days", { minDays: 2, maxDays: 4 }],
+    ["24-48 ore", { minDays: 1, maxDays: 2 }],
+    ["1-3 zile lucratoare", { minDays: 1, maxDays: 3 }],
+    ["next day", { minDays: 1, maxDays: 1 }],
+    ["a doua zi", { minDays: 1, maxDays: 1 }],
+    // More English and Romanian.
+    ["2 to 4 days", { minDays: 2, maxDays: 4 }],
+    ["3-5 business days", { minDays: 3, maxDays: 5 }],
+    ["Next-day delivery", { minDays: 1, maxDays: 1 }],
+    ["same day", { minDays: 0, maxDays: 0 }],
+    ["livrare in aceeasi zi", { minDays: 0, maxDays: 0 }],
+    ["o zi", { minDays: 1, maxDays: 1 }],
+    ["doua zile", { minDays: 2, maxDays: 2 }],
+    ["2 sau 3 zile", { minDays: 2, maxDays: 3 }],
+    ["3", { minDays: 3, maxDays: 3 }],
+    // Hours round up to whole days.
+    ["48h", { minDays: 2, maxDays: 2 }],
+    ["Livrare in 24 de ore", { minDays: 1, maxDays: 1 }],
+    ["36 hours", { minDays: 2, maxDays: 2 }],
+    // Weeks are seven days.
+    ["1-2 saptamani", { minDays: 7, maxDays: 14 }],
+    // An upper bound alone: that figure, never faster than promised.
+    ["up to 5 days", { minDays: 5, maxDays: 5 }],
+    ["pana la 3 zile", { minDays: 3, maxDays: 3 }],
+    // Several durations: the span.
+    ["1-2 zile, 3-5 zile in afara Bucurestiului", { minDays: 1, maxDays: 5 }],
+    // Republica BIO's wording: two durations in hours, and two clock times that are not durations.
+    [
+      "\u00cen 24 de ore pentru comenzile plasate p\u00e2n\u0103 la ora 13:00, de luni p\u00e2n\u0103 joi; \u00een maxim 48 de ore pentru cele plasate dup\u0103 ora 13:00",
+      { minDays: 1, maxDays: 2 },
+    ],
+    // A price beside the time is not a duration.
+    ["2 zile, 20 lei", { minDays: 2, maxDays: 2 }],
+    // Dirty input: case, diacritics, dashes, NBSP.
+    ["  2 - 4 ZILE  ", { minDays: 2, maxDays: 4 }],
+    ["1\u20132 zile", { minDays: 1, maxDays: 2 }],
+    ["1\u00a0-\u00a02 zile", { minDays: 1, maxDays: 2 }],
+    ["2 zile lucr\u0103toare", { minDays: 2, maxDays: 2 }],
+    // Unreadable.
+    ["call us", null],
+    ["", null],
+    ["5 lei", null],
+  ])("%s", (text, expected) => {
+    expect(readDeliveryTime(text)).toEqual(expected);
+  });
+});
+
+describe("deliveryTimeLine", () => {
+  it.each([
+    ["1-2 zile", false, "Delivery time published for Google: 1 to 2 days."],
+    ["next day", false, "Delivery time published for Google: 1 day."],
+    ["in aceeasi zi", false, "Delivery time published for Google: the same day."],
+    ["3 zile", false, "Delivery time published for Google: 3 days."],
+    ["call us", false, "Delivery time not published for Google: we could not read a number of days from this text."],
+  ])("%s", (text, varies, line) => {
+    expect(deliveryTimeLine(text as string, varies as boolean)).toBe(line);
+  });
+
+  it("says nothing when the field is empty or the time varies by product", () => {
+    expect(deliveryTimeLine("  ", false)).toBeNull();
+    expect(deliveryTimeLine("1-2 zile", true)).toBeNull();
+  });
+});
+
 // Items 2d and 3: the Liquid rules in TypeScript, for B6.
 describe("shippingServicePublished and offerShippingPublished", () => {
   const parsed = (value: number | null, free: number | null = null) => ({
@@ -118,13 +189,16 @@ describe("shippingServicePublished and offerShippingPublished", () => {
     currency: "RON",
     freeOverAmount: free,
   });
+  const days = { minDays: 1, maxDays: 2 };
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 4: a time publishes when read into days, not as text.
   it.each([
     ["a rate read", { deliveryCostParsed: parsed(20) }, true, true],
     ["a starting price", { deliveryCostParsed: parsed(20), deliveryCostIsFrom: true }, false, false],
-    ["a starting price and a time", { deliveryCostParsed: parsed(20), deliveryCostIsFrom: true, deliveryTime: "1-2" }, false, true],
+    ["a starting price and a time", { deliveryCostParsed: parsed(20), deliveryCostIsFrom: true, deliveryTimeParsed: days }, false, true],
     ["a threshold alone", { deliveryCostParsed: parsed(null, 200) }, true, true],
     ["a starting price and a threshold", { deliveryCostParsed: parsed(15, 200), deliveryCostIsFrom: true }, true, true],
-    ["a time that varies", { deliveryTime: "1-2", deliveryVaries: true }, false, false],
+    ["a time that varies", { deliveryTimeParsed: days, deliveryVaries: true }, false, false],
+    ["a time as text that was never read into days", { deliveryTime: "1-2" }, false, false],
     ["nothing", {}, false, false],
   ])("%s", (_name, record, service, offer) => {
     expect(shippingServicePublished(record)).toBe(service);
