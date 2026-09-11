@@ -140,6 +140,29 @@ const SWITCHES = [
     on: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 } },
     off: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: null } },
   },
+  // The Offer's shippingDetails (CC-PROMPT-AI-READABILITY-4 item 2): each part
+  // is optional behind the type, one country is an object and several an
+  // array, and the whole object can be absent.
+  { probe: "av_offer_ship", on: { av_offer_ship: true }, off: { av_offer_ship: false } },
+  { probe: "av_offer_rate", on: { av_offer_rate: true }, off: { av_offer_rate: false } },
+  { probe: "av_offer_time", on: { av_offer_time: true }, off: { av_offer_time: false } },
+  {
+    probe: "av_ship_destination",
+    on: {
+      av_ship_countries: ["RO"],
+      av_ship_destination: '{ "@type": "DefinedRegion", "addressCountry": "RO" }',
+    },
+    off: { av_ship_countries: [], av_ship_destination: "" },
+  },
+  {
+    probe: "av_ship_destination",
+    on: {
+      av_ship_countries: ["RO", "MD"],
+      av_ship_destination:
+        '[{ "@type": "DefinedRegion", "addressCountry": "RO" },{ "@type": "DefinedRegion", "addressCountry": "MD" }]',
+    },
+    off: { av_ship_countries: [], av_ship_destination: "" },
+  },
   {
     probe: "featured_image",
     on: { __image: "//cdn.example/x.jpg" },
@@ -203,6 +226,12 @@ function baseContext(patch) {
     av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 },
     shop_url: "https://shop.example",
     av_hidden: [],
+    av_ship: { rate: 19.99, currency: "RON", freeOverAmount: 200 },
+    av_ship_countries: ["RO"],
+    av_ship_destination: '{ "@type": "DefinedRegion", "addressCountry": "RO" }',
+    av_offer_ship: true,
+    av_offer_rate: true,
+    av_offer_time: true,
     ...patch,
   };
 }

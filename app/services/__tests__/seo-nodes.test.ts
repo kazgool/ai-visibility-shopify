@@ -39,7 +39,7 @@ function input(over: Partial<MissingReasonInput> = {}): MissingReasonInput {
     hasSummary: true,
     hasFitFor: true,
     hasReturnDays: true,
-    hasDeliveryTime: true,
+    hasShippingDetails: true,
     hasRating: true,
     hasWebSiteNode: true,
     hasBreadcrumbNode: true,
@@ -139,8 +139,9 @@ describe("B6 over the real reasons deriveMissingReasons produces", () => {
     expect((detail as any).missing.map((m: any) => m.nodeType)).toContain("MerchantReturnPolicy");
   });
 
-  it("names OfferShippingDetails when the delivery time is empty", () => {
-    const detail = b6Detail(deriveMissingReasons(input({ hasDeliveryTime: false })), ON);
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-4 item 2: the input is hasShippingDetails, which a delivery price alone now satisfies as well as a delivery time.
+  it("names OfferShippingDetails when the Business record gives nothing to publish as delivery details", () => {
+    const detail = b6Detail(deriveMissingReasons(input({ hasShippingDetails: false })), ON);
     expect((detail as any).missing.map((m: any) => m.nodeType)).toContain("OfferShippingDetails");
   });
 

@@ -39,6 +39,15 @@ import { enqueue } from "../services/queue.server";
 // breaks the build.
 import { SOCIAL_PLATFORMS } from "../services/social-profiles";
 import { hasPaidAccess } from "../services/billing.server";
+// Pure, for the same reason: the delivery line below is computed as the
+// merchant types (CC-PROMPT-AI-READABILITY-4 item 2b).
+import { deliveryCostLine, parseCountryList } from "../services/delivery-parse";
+
+/** The shop's currency and country: a cost typed with no currency is in the
+ * shop's, and no country typed means the shop's own. */
+const SHOP_DELIVERY = `#graphql
+  query ShopDelivery { shop { currencyCode billingAddress { countryCodeV2 } } }
+`;
 
 // The commercial answers a shop gives once (WP 1.6.7 port): delivery,
 // returns, warranty, payment. Published as shipping and return-policy
@@ -61,7 +70,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       storeLocale = fresh;
     }
   }
-  return { business, storeLocale };
+
+  // A refused read leaves both null: the screen still saves, and the delivery
+  // line falls back to the currency of the last save.
+  let shopCurrency: string | null = null;
+  let shopCountry: string | null = null;
+  try {
+    const json = await (await admin.graphql(SHOP_DELIVERY)).json();
+    shopCurrency = json.data?.shop?.currencyCode ?? null;
+    shopCountry = json.data?.shop?.billingAddress?.countryCodeV2 ?? null;
+  } catch {
+    // Nothing to show that would be true; the fields work without it.
+  }
+  return { business, storeLocale, shopCurrency, shopCountry };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -89,6 +110,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { error: "Return window must be a number of days." };
   }
 
+  // Two-letter codes only. A word that is not one is named back to the
+  // merchant rather than guessed into a code or dropped.
+  const countryInput = parseCountryList(text("deliveryCountries"));
+  if (countryInput.invalid.length > 0) {
+    return {
+      error:
+        "Countries you deliver to: use two-letter country codes such as RO or MD, separated by commas. " +
+        `Not a code: ${countryInput.invalid.join(", ")}.`,
+    };
+  }
+
   const socialProfiles = sanitizeSocialProfiles(
     Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p, text(p)])),
   );
@@ -104,6 +136,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     deliveryCost: text("deliveryCost") || undefined,
     deliveryCostIsFrom: form.get("deliveryCostIsFrom") === "on",
     deliveryVaries: form.get("deliveryVaries") === "on",
+    deliveryCountries: countryInput.countries.length > 0 ? countryInput.countries : undefined,
     returnDays,
     warranty: text("warranty") || undefined,
     paymentMethods: text("paymentMethods") || undefined,
@@ -149,9 +182,11 @@ const SOCIAL_LABELS: Record<(typeof SOCIAL_PLATFORMS)[number], string> = {
 };
 
 export default function Business() {
-  const { business, storeLocale } = useLoaderData<typeof loader>() as {
+  const { business, storeLocale, shopCurrency, shopCountry } = useLoaderData<typeof loader>() as {
     business: BusinessRecord | null;
     storeLocale: string | null;
+    shopCurrency: string | null;
+    shopCountry: string | null;
   };
   // A choice already saved, else the store's default language when this app
   // writes it, else nothing chosen (English is written until one is).
@@ -171,6 +206,16 @@ export default function Business() {
     Boolean(business?.deliveryCostIsFrom),
   );
   const [deliveryVaries, setDeliveryVaries] = useState(Boolean(business?.deliveryVaries));
+  const [deliveryCountries, setDeliveryCountries] = useState(
+    (business?.deliveryCountries ?? []).join(", "),
+  );
+  // What goes to Google from what is typed, recomputed on every keystroke by
+  // the same function the save runs (delivery-parse.ts).
+  const costLine = deliveryCostLine(
+    deliveryCost,
+    deliveryCostIsFrom,
+    shopCurrency ?? business?.deliveryCostParsed?.currency ?? "",
+  );
   const [returnDays, setReturnDays] = useState(
     business?.returnDays != null ? String(business.returnDays) : "",
   );
@@ -285,6 +330,25 @@ export default function Business() {
                   checked={deliveryCostIsFrom}
                   onChange={setDeliveryCostIsFrom}
                   helpText='Published with "From" in front of what you typed above - honest when the real cost depends on size or distance.'
+                />
+                {costLine ? (
+                  <Text as="p" tone="subdued">
+                    {costLine}
+                  </Text>
+                ) : null}
+                <TextField
+                  label="Countries you deliver to"
+                  name="deliveryCountries"
+                  value={deliveryCountries}
+                  onChange={setDeliveryCountries}
+                  autoComplete="off"
+                  placeholder={shopCountry ?? "RO"}
+                  helpText={
+                    "Two-letter country codes, separated by commas, for example RO, MD. " +
+                    (shopCountry
+                      ? `Left empty, your store's country is used: ${shopCountry}.`
+                      : "Left empty, your store's country is used.")
+                  }
                 />
               </BlockStack>
             </Card>

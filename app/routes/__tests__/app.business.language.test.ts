@@ -105,6 +105,34 @@ describe("saving the Business screen", () => {
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
+  // CC-PROMPT-AI-READABILITY-4 item 2c.
+  it("saves the countries typed as two-letter codes, once each", async () => {
+    mockBusinessFor.mockResolvedValue({ contentLanguage: "ro" });
+    await action({
+      request: new Request("https://example.com/app/business", {
+        method: "POST",
+        body: new URLSearchParams({ contentLanguage: "ro", deliveryCountries: "ro, MD ro" }),
+      }),
+      params: {},
+      context: {},
+    } as any);
+    expect(mockSaveBusiness.mock.calls[0][2]).toMatchObject({ deliveryCountries: ["RO", "MD"] });
+  });
+
+  it("refuses a country that is not a two-letter code, names it, and saves nothing", async () => {
+    mockBusinessFor.mockResolvedValue({ contentLanguage: "ro" });
+    const result = (await action({
+      request: new Request("https://example.com/app/business", {
+        method: "POST",
+        body: new URLSearchParams({ contentLanguage: "ro", deliveryCountries: "Romania" }),
+      }),
+      params: {},
+      context: {},
+    } as any)) as { error?: string };
+    expect(result.error).toContain("Not a code: Romania.");
+    expect(mockSaveBusiness).not.toHaveBeenCalled();
+  });
+
   it("starts no second job while another one runs, and says so", async () => {
     mockBusinessFor.mockResolvedValue({ contentLanguage: "en" });
     mockJobRunFindFirst.mockResolvedValue({ kind: "collections" });

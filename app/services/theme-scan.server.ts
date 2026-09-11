@@ -534,7 +534,14 @@ export type MissingReasonInput = {
   hasSummary: boolean;
   hasFitFor: boolean;
   hasReturnDays: boolean;
-  hasDeliveryTime: boolean;
+  /**
+   * The Business record gives the Offer shippingDetails to publish
+   * (delivery-parse.ts offerShippingPublished): a delivery price read from the
+   * cost text with the starting price box not ticked, or a delivery time that
+   * does not vary. Was `hasDeliveryTime` until CC-PROMPT-AI-READABILITY-4 item
+   * 2, when a price alone started to publish the node too.
+   */
+  hasShippingDetails: boolean;
   /** null when the scanned page could not be read at all (e.g. password wall). */
   hasRating: boolean | null;
   /**
@@ -738,14 +745,17 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
         },
   );
 
-  // OfferShippingDetails - depends on Business screen delivery time.
+  // OfferShippingDetails - depends on the Business screen's delivery cost and
+  // time (CC-PROMPT-AI-READABILITY-4 item 2).
   reasons.push(
-    input.hasDeliveryTime
+    input.hasShippingDetails
       ? { nodeType: "OfferShippingDetails", emitted: true, reason: null, fixScreen: null }
       : {
           nodeType: "OfferShippingDetails",
           emitted: false,
-          reason: "Delivery time is empty, or marked as varying, on the Business screen.",
+          reason:
+            "The Business screen gives nothing to publish as delivery details: no delivery price could be " +
+            "read, or it is a starting price, and the delivery time is empty or marked as varying.",
           fixScreen: "/app/business",
         },
   );

@@ -1,0 +1,83 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// CC-PROMPT-AI-READABILITY-4 item 2a: the delivery cost is read into numbers
+// on save, server side, and stored next to the text in both the settings row
+// and the shop metafield. The text is never changed.
+
+const mockUpsert = vi.fn();
+vi.mock("../../db.server", () => ({
+  default: { setting: { upsert: (...a: unknown[]) => mockUpsert(...a), findUnique: vi.fn() } },
+}));
+
+import { saveBusiness, withParsedDelivery } from "../business.server";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("withParsedDelivery", () => {
+  it("stores the numbers next to the text, which stays exactly as typed", () => {
+    const record = withParsedDelivery({ deliveryCost: "19,99 lei, gratuit peste 200 lei" }, "RON");
+    expect(record.deliveryCost).toBe("19,99 lei, gratuit peste 200 lei");
+    expect(record.deliveryCostParsed).toEqual({ rate: 19.99, currency: "RON", freeOverAmount: 200 });
+  });
+
+  it("uses the shop's currency when the text writes none", () => {
+    expect(withParsedDelivery({ deliveryCost: "Free over 500, or: 25" }, "EUR").deliveryCostParsed).toEqual({
+      rate: 25,
+      currency: "EUR",
+      freeOverAmount: 500,
+    });
+  });
+
+  it("drops a stale reading when the text is emptied", () => {
+    const record = withParsedDelivery(
+      { deliveryCost: "", deliveryCostParsed: { rate: 9, currency: "RON", freeOverAmount: null } },
+      "RON",
+    );
+    expect(record.deliveryCostParsed).toBeUndefined();
+  });
+
+  it("recomputes a reading the text no longer says", () => {
+    const record = withParsedDelivery(
+      { deliveryCost: "call us", deliveryCostParsed: { rate: 9, currency: "RON", freeOverAmount: null } },
+      "RON",
+    );
+    expect(record.deliveryCostParsed).toEqual({ rate: null, currency: "RON", freeOverAmount: null });
+  });
+});
+
+describe("saveBusiness", () => {
+  function graphqlWith(shop: Record<string, unknown>) {
+    const calls: { query: string; variables?: any }[] = [];
+    const fn = vi.fn(async (query: string, options?: { variables?: object }) => {
+      calls.push({ query, variables: options?.variables });
+      const data = query.includes("ShopForBusiness")
+        ? { shop }
+        : { metafieldsSet: { userErrors: [] } };
+      return new Response(JSON.stringify({ data }));
+    });
+    return { fn, calls };
+  }
+
+  it("writes the same record, numbers included, to the settings row and the shop metafield", async () => {
+    const { fn, calls } = graphqlWith({ id: "gid://shopify/Shop/1", currencyCode: "RON" });
+    await saveBusiness("shop1", fn as any, { deliveryCost: "25 RON", deliveryCountries: ["RO", "MD"] });
+
+    const stored = JSON.parse(mockUpsert.mock.calls[0][0].create.value);
+    expect(stored).toEqual({
+      deliveryCost: "25 RON",
+      deliveryCountries: ["RO", "MD"],
+      deliveryCostParsed: { rate: 25, currency: "RON", freeOverAmount: null },
+    });
+    const write = calls.find((c) => c.query.includes("metafieldsSet"))!;
+    expect(JSON.parse(write.variables.metafields[0].value)).toEqual(stored);
+    expect(write.variables.metafields[0].key).toBe("business");
+  });
+
+  it("writes nothing when the shop's currency cannot be read", async () => {
+    const { fn } = graphqlWith({ id: "gid://shopify/Shop/1" });
+    await expect(saveBusiness("shop1", fn as any, { deliveryCost: "25" })).rejects.toThrow(/currency/);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+});

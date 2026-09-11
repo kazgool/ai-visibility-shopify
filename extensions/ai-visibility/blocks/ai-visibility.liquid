@@ -65,6 +65,43 @@
   {%- assign av_rating_count = product.metafields.reviews.rating_count.value | default: 0 -%}
 
   {%- comment -%}
+    Delivery, as numbers (CC-PROMPT-AI-READABILITY-4 item 2). The Business
+    screen's cost text is read on save into deliveryCostParsed (rate,
+    currency, freeOverAmount; delivery-parse.ts); the text itself stays the
+    merchant's own everywhere text is published. A record saved before that
+    reading existed has none, and publishes no delivery price until the next
+    save - never a figure guessed at render time.
+
+    A rate is publishable only when the "This is a starting price" box is not
+    ticked. Google's shippingRate is one MonetaryAmount with one value
+    (https://developers.google.com/search/docs/appearance/structured-data/merchant-listing:
+    "You can only specify one shippingRate per OfferShippingDetails
+    property"), so a starting price published as the rate would be false for
+    every order that costs more.
+
+    Destination: the countries typed on the Business screen, else the shop's
+    own country. DefinedRegion takes "The two-letter country code, in ISO
+    3166-1 alpha-2 format" (same page). Captured once, as JSON built by the
+    json filter, because it is printed in more than one node.
+  {%- endcomment -%}
+  {%- assign av_ship = av_business.deliveryCostParsed -%}
+  {%- assign av_ship_rate_ok = false -%}
+  {%- if av_ship.rate != nil and av_business.deliveryCostIsFrom != true -%}
+    {%- assign av_ship_rate_ok = true -%}
+  {%- endif -%}
+  {%- assign av_ship_countries = av_business.deliveryCountries -%}
+  {%- if av_ship_countries == blank and shop.address.country_code != blank -%}
+    {%- assign av_ship_countries = shop.address.country_code | split: "," -%}
+  {%- endif -%}
+  {%- capture av_ship_destination -%}
+    {%- if av_ship_countries.size == 1 -%}
+      { "@type": "DefinedRegion", "addressCountry": {{ av_ship_countries.first | json }} }
+    {%- elsif av_ship_countries.size > 1 -%}
+      [{%- for av_country in av_ship_countries -%}{ "@type": "DefinedRegion", "addressCountry": {{ av_country | json }} }{% unless forloop.last %},{% endunless %}{%- endfor -%}]
+    {%- endif -%}
+  {%- endcapture -%}
+
+  {%- comment -%}
     Official store profiles (sameAs), site-wide. No spec for social networks
     existed until this feature; the merchant states them once on the
     Business info screen, we never verify a profile exists, and we publish
@@ -220,6 +257,27 @@
         {%- assign av_product_ld = 'none' -%}
       {%- endif -%}
     {%- endif -%}
+    {%- comment -%}
+      The Offer's shippingDetails (CC-PROMPT-AI-READABILITY-4 item 2d). The
+      rate only in the currency of the offer: "The currency must be the same
+      as the currency of the offer" (merchant listing documentation, above),
+      and the offer is priced in the visitor's currency, which on a shop
+      selling in several can differ from the one the delivery cost was
+      typed in. Booleans first, because Liquid evaluates and/or without
+      parentheses, right to left.
+    {%- endcomment -%}
+    {%- assign av_offer_rate = false -%}
+    {%- if av_ship_rate_ok and av_ship.currency == cart.currency.iso_code -%}
+      {%- assign av_offer_rate = true -%}
+    {%- endif -%}
+    {%- assign av_offer_time = false -%}
+    {%- if av_business.deliveryTime != blank and av_business.deliveryVaries != true -%}
+      {%- assign av_offer_time = true -%}
+    {%- endif -%}
+    {%- assign av_offer_ship = false -%}
+    {%- if av_offer_rate or av_offer_time -%}
+      {%- assign av_offer_ship = true -%}
+    {%- endif -%}
     {%- if av_product_ld == 'full' -%}
       <script type="application/ld+json">
         {
@@ -258,6 +316,14 @@
           {%- comment -%}
             A variable product publishes its real span, not one figure that
             is wrong for every variant but one (WP 1.6.7).
+
+            No shippingDetails here (CC-PROMPT-AI-READABILITY-4 item 2e).
+            The merchant listing documentation lists shippingDetails among
+            the Offer's properties only, and says of offers: "Product snippets
+            accept an Offer or AggregateOffer but merchant listings require
+            an Offer". An AggregateOffer is therefore outside the markup that
+            reads shipping details, and the shop-wide shipping policy on the
+            Organization node covers these products too.
           {%- endcomment -%}
           "offers": {
             "@type": "AggregateOffer",
@@ -280,10 +346,27 @@
             {%- if av_seo_unlocked %}
             "priceValidUntil": {{ av_price_valid_until | json }},
             {%- endif %}
-            {%- if av_business.deliveryTime != blank and av_business.deliveryVaries != true %}
+            {%- comment -%}
+              Rate and destination when the rate is publishable; with the
+              starting price box ticked, destination and delivery time only
+              (item 2d). Free over a threshold is not an Offer property: it
+              goes to the Organization's shipping policy (item 3). "Delivery
+              time varies by product" publishes no delivery time, as before.
+              Every field after the type carries a leading comma, so no
+              combination of present and absent fields can trail.
+            {%- endcomment -%}
+            {%- if av_offer_ship %}
             "shippingDetails": {
-              "@type": "OfferShippingDetails",
-              "deliveryTime": { "@type": "ShippingDeliveryTime", "transitTimeLabel": {{ av_business.deliveryTime | json }} }
+              "@type": "OfferShippingDetails"
+              {%- if av_offer_rate %}
+              ,"shippingRate": { "@type": "MonetaryAmount", "value": {{ av_ship.rate | json }}, "currency": {{ av_ship.currency | json }} }
+              {%- endif %}
+              {%- if av_ship_countries.size > 0 %}
+              ,"shippingDestination": {{ av_ship_destination }}
+              {%- endif %}
+              {%- if av_offer_time %}
+              ,"deliveryTime": { "@type": "ShippingDeliveryTime", "transitTimeLabel": {{ av_business.deliveryTime | json }} }
+              {%- endif %}
             },
             {%- endif %}
             {%- if av_business.returnDays %}

@@ -102,20 +102,27 @@ export function storefront(options: {
   seoUnlocked?: boolean;
   /** Dictionary group labels the facts list leaves out ($app.facts_display). */
   hiddenGroups?: string[] | null;
+  /** The $app.business shop metafield (the Business screen's record). */
+  business?: Record<string, unknown>;
+  /** shop.address.country_code; "RO" unless given, null for none. */
+  countryCode?: string | null;
+  /** The visitor's currency (cart.currency.iso_code); "RON" unless given. */
+  currency?: string;
 }): Record<string, unknown> {
   const data = options.data ?? {};
   const mf = (value: unknown) => (value === undefined || value === null ? undefined : { value });
   return {
     template: { name: options.template ?? "product" },
     block: { settings: options.settings ?? {} },
-    cart: { currency: { iso_code: "RON" } },
+    cart: { currency: { iso_code: options.currency ?? "RON" } },
     shop: {
       name: "Nordwood",
       url: SHOP_URL,
+      address: { country_code: options.countryCode === undefined ? "RO" : options.countryCode },
       metafields: {
         $app: {
           theme_scan: mf(options.themeScan),
-          business: { value: {} },
+          business: { value: options.business ?? {} },
           seo_unlocked: { value: options.seoUnlocked ?? false },
           facts_display: options.hiddenGroups ? { value: { hidden: options.hiddenGroups } } : undefined,
         },

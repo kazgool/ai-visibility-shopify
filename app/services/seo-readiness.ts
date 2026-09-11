@@ -862,8 +862,8 @@ export const MERCHANT_REASON: Record<string, string> = {
     "The last read found no star rating on this product's page; no review app has recorded one for it yet.",
   "The return window is empty on the Business screen.":
     "The return window is empty on the Business screen in this app.",
-  "Delivery time is empty, or marked as varying, on the Business screen.":
-    "The delivery time is empty, or marked as varying, on the Business screen in this app.",
+  "The Business screen gives nothing to publish as delivery details: no delivery price could be read, or it is a starting price, and the delivery time is empty or marked as varying.":
+    "Nothing on the Business screen in this app can be published as delivery details yet: no delivery price could be read from the cost you typed, or it is a starting price, and the delivery time is empty or marked as varying.",
   "This collection has no generated summary yet - it is written when collections are processed.":
     "This collection has no summary yet; one is written when collections are processed.",
   "This collection has no generated questions yet.":
@@ -893,6 +893,11 @@ export const LEGACY_MERCHANT_REASON: Record<string, string> = {
   // active, so the translation no longer says that.
   "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.":
     "The last read did not find this detail on the page. This reason was recorded before 5 September 2026 and is restated at the next read.",
+  // Replaced by CC-PROMPT-AI-READABILITY-4 item 2: a delivery price read from
+  // the cost text now publishes delivery details on its own, so an empty
+  // delivery time is no longer the whole reason.
+  "Delivery time is empty, or marked as varying, on the Business screen.":
+    "The delivery time is empty, or marked as varying, on the Business screen in this app.",
 };
 
 /** The merchant sentence for one recorded reason, never the raw string. */

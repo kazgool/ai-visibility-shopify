@@ -9,6 +9,7 @@
 import db from "../db.server";
 import type { BusinessInfo } from "../engine";
 import type { GraphqlFn } from "./admin.server";
+import { readDeliveryCost, type DeliveryCostParsed } from "./delivery-parse";
 import { NAMESPACE } from "./facts.server";
 import { SOCIAL_PLATFORMS } from "./social-profiles";
 import type { SocialPlatform, SocialProfiles } from "./social-profiles";
@@ -41,7 +42,35 @@ export type { SocialPlatform, SocialProfiles } from "./social-profiles";
 export type BusinessRecord = BusinessInfo & {
   socialProfiles?: SocialProfiles;
   contentLanguage?: ContentLanguage;
+  /**
+   * The delivery cost text read into numbers, stored next to `deliveryCost`
+   * and never instead of it (CC-PROMPT-AI-READABILITY-4 item 2): the text
+   * stays exactly as typed everywhere text is published, and the storefront
+   * block reads these for structured data. Written on every save by
+   * withParsedDelivery; absent on a record saved before it existed, and then
+   * no delivery price is published until the next save.
+   */
+  deliveryCostParsed?: DeliveryCostParsed;
+  /**
+   * "Countries you deliver to", ISO 3166-1 alpha-2, as the merchant typed them.
+   * Absent means none were typed, and the storefront block publishes the
+   * shop's own country (shop.address.country_code) at render time.
+   */
+  deliveryCountries?: string[];
 };
+
+/**
+ * The record as it is saved: the delivery cost text read into numbers
+ * (delivery-parse.ts), beside the text. `shopCurrency` is the shop's ISO
+ * currency, the one a cost typed with no currency is in. Pure. A stale
+ * reading never survives a changed or emptied text: it is always recomputed.
+ */
+export function withParsedDelivery(info: BusinessRecord, shopCurrency: string): BusinessRecord {
+  const { deliveryCostParsed: _previous, ...rest } = info;
+  const text = (info.deliveryCost ?? "").trim();
+  if (text === "") return rest;
+  return { ...rest, deliveryCostParsed: readDeliveryCost(text, shopCurrency).parsed };
+}
 
 /** The shop's default locale as last read from the Admin API
  * (content-language.ts), kept apart from the business record because nobody
@@ -119,6 +148,11 @@ const SHOP_ID = `#graphql
   query ShopId { shop { id } }
 `;
 
+/** The shop's id and currency: a delivery cost typed with no currency is in the shop's. */
+const SHOP_FOR_BUSINESS = `#graphql
+  query ShopForBusiness { shop { id currencyCode } }
+`;
+
 const SET_METAFIELD = `#graphql
   mutation SetShopBusiness($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -131,22 +165,29 @@ const SET_METAFIELD = `#graphql
  * Save the settings row and mirror it to the shop metafield. The metafield
  * write goes through the caller's admin client (a Remix request), not the
  * worker: saving business info is an interactive act.
+ *
+ * The delivery cost is read into numbers here, server side, on every save
+ * (CC-PROMPT-AI-READABILITY-4 item 2a), so the record the storefront reads is
+ * always the one the text says. Same metafield, same write: no new write path.
  */
 export async function saveBusiness(
   shopId: string,
   graphql: (query: string, options?: { variables?: object }) => Promise<Response>,
-  info: BusinessRecord,
+  input: BusinessRecord,
 ): Promise<void> {
+  const idRes = await graphql(SHOP_FOR_BUSINESS);
+  const idJson = await idRes.json();
+  const shopGid = idJson.data?.shop?.id;
+  if (!shopGid) throw new Error("Could not resolve shop id");
+  const currency = idJson.data?.shop?.currencyCode;
+  if (!currency) throw new Error("Could not resolve the shop's currency");
+  const info = withParsedDelivery(input, String(currency));
+
   await db.setting.upsert({
     where: { shopId_key: { shopId, key: SETTING_KEY } },
     create: { shopId, key: SETTING_KEY, value: JSON.stringify(info) },
     update: { value: JSON.stringify(info) },
   });
-
-  const idRes = await graphql(SHOP_ID);
-  const idJson = await idRes.json();
-  const shopGid = idJson.data?.shop?.id;
-  if (!shopGid) throw new Error("Could not resolve shop id");
 
   const res = await graphql(SET_METAFIELD, {
     variables: {
