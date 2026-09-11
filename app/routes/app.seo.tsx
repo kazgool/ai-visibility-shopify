@@ -81,7 +81,7 @@ import {
   robotsBlock,
   staleSitemapEntries,
 } from "../services/seo-page.server";
-import { organizationPairIsInformational } from "../services/conflicts";
+import { conflictSentence, organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
 import type { SeoApplyReport } from "../services/seo-bulk.server";
@@ -715,6 +715,19 @@ function buildFindings(result: ThemeScanResult | undefined): Finding[] {
         });
         continue;
       }
+      // A WebSite pair is never fixed by Extend mode, which concerns Product
+      // only. When one is ours it goes by itself after the next scan (the
+      // block now emits it only when the theme has none), so it is stated,
+      // not flagged; when neither is marked the read predates the marker.
+      if (c.type === "WebSite") {
+        findings.push({
+          key: `conflict-${label}-${c.type}`,
+          severity: c.weEmitOne ? "info" : "warning",
+          text: `WebSite appears ${c.count} times on the ${label}. ${conflictSentence(c)}`,
+          fixHref: null,
+        });
+        continue;
+      }
       findings.push({
         key: `conflict-${label}-${c.type}`,
         severity: "warning",
@@ -782,12 +795,7 @@ function ConflictList({ label, conflicts }: { label: string; conflicts?: Conflic
     <List>
       {conflicts.map((c) => (
         <List.Item key={c.type}>
-          {c.type} appears {c.count} times on the {label}.{" "}
-          {organizationPairIsInformational(c)
-            ? "Informational: the theme's node has no identifier we can attach to, so ours carries your official profiles alongside it; adding an @id to the theme's node would merge them."
-            : c.weEmitOne
-              ? "One of them is ours - switch the app embed to Extend mode so we reference the theme's node instead of adding a second one."
-              : "Unknown source - the other instance is not something we can identify; check the theme and any other installed apps."}
+          {c.type} appears {c.count} times on the {label}. {conflictSentence(c)}
         </List.Item>
       ))}
     </List>

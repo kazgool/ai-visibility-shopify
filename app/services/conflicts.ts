@@ -24,6 +24,41 @@ export function organizationPairIsInformational(conflict: ConflictLike): boolean
   return conflict.type === "Organization" && conflict.weEmitOne;
 }
 
+/** A duplicate WebSite pair where one node carries our marker. */
+export const WEBSITE_OURS_SENTENCE =
+  "One of them is this app's own. This app adds its WebSite node only when your theme has none, " +
+  "and the same read found your theme's, so this app's copy disappears after the next scan of your pages.";
+
+/**
+ * A duplicate WebSite pair with no marker on either node: a page read before
+ * this app marked its WebSite node (11 September 2026), when ours was
+ * indistinguishable from the theme's. Stated as what it most likely is, and
+ * what the next scan will do, rather than "unknown source".
+ */
+export const WEBSITE_BEFORE_SCAN_SENTENCE =
+  "One of them may be this app's own: this read is from before this app marked the WebSite node it adds, " +
+  "so the two cannot be told apart yet. The next scan of your pages tells them apart, and from then on " +
+  "this app adds its WebSite node only when your theme has none.";
+
+/**
+ * The sentence the SEO screen prints after "X appears N times on the page".
+ * One function so every place that lists a conflict says the same thing.
+ */
+export function conflictSentence(conflict: ConflictLike): string {
+  if (organizationPairIsInformational(conflict)) {
+    return (
+      "Informational: the theme's node has no identifier we can attach to, so ours carries your " +
+      "official profiles alongside it; adding an @id to the theme's node would merge them."
+    );
+  }
+  if (conflict.type === "WebSite") {
+    return conflict.weEmitOne ? WEBSITE_OURS_SENTENCE : WEBSITE_BEFORE_SCAN_SENTENCE;
+  }
+  return conflict.weEmitOne
+    ? "One of them is ours - switch the app embed to Extend mode so we reference the theme's node instead of adding a second one."
+    : "Unknown source - the other instance is not something we can identify; check the theme and any other installed apps.";
+}
+
 /**
  * The marker our block puts on every JSON-LD node it emits, and the only thing
  * that identifies our output.

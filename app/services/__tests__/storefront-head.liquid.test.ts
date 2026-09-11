@@ -89,3 +89,32 @@ describe("extend mode: which Product node the page gets (PRD-AI-READABILITY P0.5
     }
   });
 });
+
+describe("one WebSite node on the home page (PRD-AI-READABILITY P0.4)", () => {
+  const home = (themeScan: Record<string, unknown> | null) =>
+    renderBlock(FILE, storefront({ template: "index", settings, themeScan, seoUnlocked: true }));
+
+  it("emits ours, marked, when the theme has no WebSite node", async () => {
+    const nodes = ourNodes(await home({ hasWebSiteLd: false }), "WebSite");
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].url).toBe(SHOP_URL);
+  });
+
+  it("emits none when the theme has its own", async () => {
+    const html = await home({ hasWebSiteLd: true });
+    expect(ldObjects(html).filter((n) => n["@type"] === "WebSite")).toHaveLength(0);
+  });
+
+  it("holds back on a scan written before the flag existed", async () => {
+    const html = await home({ productId: "", hasOrganizationLd: false });
+    expect(ldObjects(html).filter((n) => n["@type"] === "WebSite")).toHaveLength(0);
+  });
+
+  it("never emits it on a product page", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({ settings, data: DATA, themeScan: { hasWebSiteLd: false }, seoUnlocked: true }),
+    );
+    expect(ldObjects(html).filter((n) => n["@type"] === "WebSite")).toHaveLength(0);
+  });
+});

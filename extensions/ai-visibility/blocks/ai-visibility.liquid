@@ -133,12 +133,25 @@
     this on every page would be one node repeated on every request for no
     reason; a search engine or assistant only needs it once, from the page
     that represents the site as a whole.
+
+    And only when the theme has none of its own (theme_scan.hasWebSiteLd
+    false; PRD-AI-READABILITY P0.4). A page is meant to carry one WebSite
+    node; Shella and most themes already emit theirs, and until 11 September
+    2026 ours went out beside it, with no marker, so the SEO screen reported
+    the pair as "unknown source". It carries the marker now, which is what
+    keeps the scan from reading it back as the theme's and switching it off
+    on the next pass. A theme_scan written before the flag existed holds
+    ours back until a scan says the theme has none, for the same reason the
+    Product node does: the duplicate is the thing to avoid.
   {%- endcomment -%}
-  {%- if template.name == 'index' and av_seo_unlocked -%}
+  {%- assign av_theme_has_website = shop.metafields['$app'].theme_scan.value.hasWebSiteLd -%}
+  {%- if template.name == 'index' and av_seo_unlocked and av_theme_has_website == false -%}
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "WebSite",
+        {%- comment -%} Our emitter marker - see the Organization node above. {%- endcomment -%}
+        "https://mrdigital.ro/ns/ai-visibility": "1",
         "url": {{ shop.url | json }},
         "potentialAction": {
           "@type": "SearchAction",
