@@ -54,7 +54,11 @@ describe("renderLlmsTxt", () => {
     );
   });
 
-  it("publishes a Collections section with the member count, and none when there is no index", () => {
+  it("lists collections after the products, under Optional, and nothing when there is no index", () => {
+    // The llms.txt proposal reserves "Optional" for links an agent can skip.
+    // Collections sat above Products until 11 September 2026: on Republica
+    // BIO the first product mirror began at character 111,719 of 172,464,
+    // so a reader with a fetch budget saw only collection pages.
     const out = renderLlmsTxt({
       ...base,
       collections: [
@@ -62,13 +66,31 @@ describe("renderLlmsTxt", () => {
         { title: "Single", url: "https://nordwood.myshopify.com/collections/single", products: 1 },
       ],
     });
-    expect(out).toContain("## Collections");
-    expect(out).toContain("- [Dining Tables](https://nordwood.myshopify.com/collections/dining-tables): 12 products");
-    expect(out).toContain("- [Single](https://nordwood.myshopify.com/collections/single): 1 product");
-    expect(out.indexOf("## Collections")).toBeLessThan(out.indexOf("## Products"));
+    expect(out).toContain("## Optional");
+    expect(out).not.toContain("## Collections");
+    expect(out).toContain(
+      "- [Dining Tables](https://nordwood.myshopify.com/collections/dining-tables): collection, 12 products",
+    );
+    expect(out).toContain("- [Single](https://nordwood.myshopify.com/collections/single): collection, 1 product");
+    expect(out.indexOf("## Products")).toBeLessThan(out.indexOf("## Optional"));
 
-    expect(renderLlmsTxt(base)).not.toContain("## Collections");
-    expect(renderLlmsTxt({ ...base, collections: [] })).not.toContain("## Collections");
+    expect(renderLlmsTxt(base)).not.toContain("## Optional");
+    expect(renderLlmsTxt({ ...base, collections: [] })).not.toContain("## Optional");
+  });
+
+  it("opens with the H1 and then a blockquote summary, as the llms.txt proposal orders them", () => {
+    const out = renderLlmsTxt(base);
+    const lines = out.split("\n").filter((l) => l !== "");
+    expect(lines[0]).toBe("# Nordwood");
+    expect(lines[1]).toBe(
+      "> Plain-text versions of every published product page of Nordwood, linked below. Each line names the store page it stands in for.",
+    );
+  });
+
+  it("makes no claim about product pages when none has been processed", () => {
+    const out = renderLlmsTxt({ ...base, products: [] });
+    expect(out).not.toContain("> ");
+    expect(out).toContain("Nothing processed yet.");
   });
 
   it("says plainly when nothing has been processed yet, rather than an empty section", () => {
@@ -179,7 +201,7 @@ describe("llmsTxtBody", () => {
     expect(out).toContain(
       "- [Oak Table](https://nordwood.com/apps/ai-visibility/oak-table): store page https://nordwood.com/products/oak-table",
     );
-    expect(out).toContain("- [Tables](https://nordwood.com/collections/tables): 4 products");
+    expect(out).toContain("- [Tables](https://nordwood.com/collections/tables): collection, 4 products");
     // The pass writes only collections with members; a zero would be a
     // page that says nothing. Guarded here too, so a stale index cannot
     // publish one.

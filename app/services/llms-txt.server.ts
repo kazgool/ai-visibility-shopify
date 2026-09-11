@@ -74,6 +74,16 @@ export function renderLlmsTxt(input: LlmsTxtInput): string {
 
   lines.push(`# ${cleanOutput(input.shopName)}`);
   lines.push("");
+  // The llms.txt proposal: an H1, then a blockquote summarising the file,
+  // then everything else. Only when there is something below to summarise;
+  // a shop with no processed product gets no claim about its pages.
+  if (input.products.length > 0) {
+    lines.push(
+      `> Plain-text versions of every published product page of ${cleanOutput(input.shopName)}, ` +
+        "linked below. Each line names the store page it stands in for.",
+    );
+    lines.push("");
+  }
   lines.push(input.storeUrl);
 
   const profileUrls = SOCIAL_PLATFORMS.map((p) => input.business?.socialProfiles?.[p]).filter(
@@ -107,16 +117,6 @@ export function renderLlmsTxt(input: LlmsTxtInput): string {
     }
   }
 
-  const collections = input.collections ?? [];
-  if (collections.length > 0) {
-    lines.push("## Collections");
-    lines.push("");
-    for (const c of collections) {
-      const count = `${c.products} ${c.products === 1 ? "product" : "products"}`;
-      lines.push(`- [${cleanOutput(c.title)}](${c.url}): ${count}`);
-    }
-    lines.push("");
-  }
 
   lines.push("## Products");
   lines.push("");
@@ -132,6 +132,24 @@ export function renderLlmsTxt(input: LlmsTxtInput): string {
     lines.push("Nothing processed yet.");
   }
   lines.push("");
+
+  // Collections come last, under "Optional": the llms.txt proposal reserves
+  // that section for links an agent can skip when context is short, and a
+  // collection has no plain-text version of its own, only the store page.
+  // Until 11 September 2026 they sat above Products; on Republica BIO that
+  // put the first product mirror at character 111,719 of 172,464, past
+  // the point where a reader with a fetch budget stops, so the mirrors this
+  // file exists to list were never reached.
+  const collections = input.collections ?? [];
+  if (collections.length > 0) {
+    lines.push("## Optional");
+    lines.push("");
+    for (const c of collections) {
+      const count = `${c.products} ${c.products === 1 ? "product" : "products"}`;
+      lines.push(`- [${cleanOutput(c.title)}](${c.url}): collection, ${count}`);
+    }
+    lines.push("");
+  }
 
   return lines.join("\n");
 }
