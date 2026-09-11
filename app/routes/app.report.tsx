@@ -34,6 +34,7 @@ import {
 } from "../services/eligibility";
 import { prefsFor, savePrefs } from "../services/eligibility.server";
 import { enqueue } from "../services/queue.server";
+import { liveJobFilter, presentJob, STUCK_REASON, STUCK_STATUS } from "../services/job-stale";
 import {
   crawlerHitsForDashboard,
   nonCrawlerTokenHits,
@@ -142,12 +143,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const paid = await hasPaidAccess(session.shop, shop?.id, admin.graphql);
   if (!paid) return { paid: false as const };
 
-  const passJob = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
-        orderBy: { startedAt: "desc" },
-      })
-    : null;
+  const passJob = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
+          orderBy: { startedAt: "desc" },
+        })
+      : null,
+  );
 
   const pass = readPass(
     passJob
@@ -251,12 +254,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const mirrorCount = shop
     ? await db.mirrorCache.count({ where: { shopId: shop.id } })
     : 0;
-  const reconcileJob = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: "reconcile" },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  const reconcileJob = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "reconcile" },
+          orderBy: { createdAt: "desc" },
+        })
+      : null,
+  );
   const reconcile = reconcileJob
     ? {
         status: reconcileJob.status,
@@ -327,7 +332,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // 4). The setting itself is not saved either, so what the checkbox shows is
   // what the running job will apply.
   const active = await db.jobRun.findFirst({
-    where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+    where: { shopId: shop.id, ...liveJobFilter() },
     select: { kind: true },
   });
   if (active) {
@@ -1302,6 +1307,7 @@ function reconcileSentence(reconcile: ReconcileState): string | null {
       " Pages that no longer qualify are still withdrawn by the weekly check."
     );
   }
+  if (reconcile.status === STUCK_STATUS) return STUCK_REASON;
   if (reconcile.status !== "done" || !reconcile.report) return null;
   const r = reconcile.report;
   if (r.skipped) {

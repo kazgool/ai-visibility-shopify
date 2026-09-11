@@ -33,6 +33,7 @@ import { hasPaidAccess, freeProductIds } from "../services/billing.server";
 import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
 import { describeJobKind } from "../services/job-kinds";
 import { readPass } from "../services/report-metrics";
+import { liveJobFilter, presentJob } from "../services/job-stale";
 import { altProblem, metricTiles, passProblem } from "../services/dashboard-metrics";
 import { resolveLadder } from "../services/dashboard-steps";
 import { DashboardLadder } from "../components/DashboardLadder";
@@ -72,7 +73,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // catalogue pass that failed to step four. Merged, every failure would be
   // reported against whichever ran last, which is how a failed preview came to
   // wipe the figures of a real pass.
-  const [lastDry, lastBulk, lastAlt, dictionary, lastWrite] = shop
+  const [rawDry, rawBulk, rawAlt, dictionary, lastWrite] = shop
     ? await Promise.all([
         db.jobRun.findFirst({
           where: { shopId: shop.id, kind: "dry_run" },
@@ -97,6 +98,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }),
       ])
     : [null, null, null, null, null];
+  // A row left "running" by a worker that was killed mid-job reads as stuck,
+  // not as work in progress, so it neither locks the buttons nor keeps the
+  // progress bar up (job-stale.ts).
+  const lastDry = presentJob(rawDry);
+  const lastBulk = presentJob(rawBulk);
+  const lastAlt = presentJob(rawAlt);
 
   // The headline tiles read whichever of the two ran last, which is what they
   // have always done.
@@ -118,12 +125,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const latestByAgent = new Map<string, (typeof checks)[number]>();
   for (const c of checks) if (!latestByAgent.has(c.agent)) latestByAgent.set(c.agent, c);
 
-  const crawlerJob = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: "crawler_check" },
-        orderBy: { startedAt: "desc" },
-      })
-    : null;
+  const crawlerJob = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "crawler_check" },
+          orderBy: { startedAt: "desc" },
+        })
+      : null,
+  );
 
   const collectionsJob = shop
     ? await db.jobRun.findFirst({
@@ -162,7 +171,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const STALL_MS = 3 * 60 * 1000;
   const activeJob = shop
     ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+        where: { shopId: shop.id, ...liveJobFilter() },
         orderBy: { updatedAt: "desc" },
         select: { kind: true, status: true, updatedAt: true },
       })
@@ -317,9 +326,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // A merchant who thinks nothing is happening presses the button again.
   // Progress itself is safe - it lives in the database, so refreshing or
   // closing the tab loses nothing - but a second job would double the API
-  // calls and muddle the report. One at a time.
+  // calls and muddle the report. One at a time. A row a killed worker left
+  // "running" does not count (job-stale.ts).
   const active = await db.jobRun.findFirst({
-    where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+    where: { shopId: shop.id, ...liveJobFilter() },
     select: { kind: true },
   });
   if (active) return { ok: false, alreadyRunning: true, blockingKind: active.kind };

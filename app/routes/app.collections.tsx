@@ -17,6 +17,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
+import { liveJobFilter, presentJob } from "../services/job-stale";
 import { hasPaidAccess } from "../services/billing.server";
 
 // The listing-page half of the product (PRD §4.8). A collection page is where
@@ -82,12 +83,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const shop = await db.shop.findUnique({ where: { domain: session.shop } });
-  const job = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: "collections" },
-        orderBy: { startedAt: "desc" },
-      })
-    : null;
+  const job = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "collections" },
+          orderBy: { startedAt: "desc" },
+        })
+      : null,
+  );
 
   return { rows, job };
 };
@@ -111,7 +114,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const active = await db.jobRun.findFirst({
-    where: { shopId: shop.id, status: { in: ["queued", "running"] } },
+    where: { shopId: shop.id, ...liveJobFilter() },
   });
   if (active) return { ok: false, alreadyRunning: true };
 

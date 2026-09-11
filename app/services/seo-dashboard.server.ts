@@ -15,6 +15,7 @@ import { dailyBudget, robotsBlock, blogPostReport } from "./seo-page.server";
 import { readCurrentFacts, readSeoSnapshot, serialiseFacts } from "./seo-snapshot.server";
 import { businessFor } from "./business.server";
 import { isQueueUsable } from "./seo-queue-metrics";
+import { presentJob } from "./job-stale";
 import type { CollectionSeoQueue } from "./seo-collections.server";
 import type { FactsRow } from "./seo-since";
 import type { FindingsAggregate, ThemeNodeAggregate } from "./seo-aggregate";
@@ -61,10 +62,12 @@ export async function readSeoDashboardSource(
       readCurrentFacts(shopId),
       businessFor(shopId),
       blogPostReport(shopId),
-      db.jobRun.findFirst({
-        where: { shopId, kind: "seo_collection_queue" },
-        orderBy: { createdAt: "desc" },
-      }),
+      db.jobRun
+        .findFirst({
+          where: { shopId, kind: "seo_collection_queue" },
+          orderBy: { createdAt: "desc" },
+        })
+        .then((job) => presentJob(job)),
     ]);
 
   // The last scan of the published theme, for "what your pages publish about

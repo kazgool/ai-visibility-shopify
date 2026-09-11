@@ -40,6 +40,7 @@ import {
 } from "../services/billing.server";
 import { adminGraphql } from "../services/admin.server";
 import { enqueue } from "../services/queue.server";
+import { presentJob } from "../services/job-stale";
 import { extractProduct } from "../engine";
 import { cleanOutput } from "../engine/normalize";
 
@@ -79,12 +80,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // The unlock is a job now, so this screen has to be able to say where that
   // job is. Progress lives in JobRun, never in the browser (CLAUDE.md).
-  const snapshotJob = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: "seo_snapshot" },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  const snapshotJob = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: "seo_snapshot" },
+          orderBy: { createdAt: "desc" },
+        })
+      : null,
+  );
 
   return {
     comped,

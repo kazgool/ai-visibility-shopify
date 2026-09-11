@@ -4,6 +4,13 @@
 app = "ai-visibility-all-in-one"
 primary_region = "ams"
 
+# Time between the stop signal and SIGKILL on a deploy or restart. Fly's
+# default is 5 s, shorter than the worker's 25 s shutdown ceiling
+# (worker/index.ts): a job still running at SIGKILL keeps its queue lock for
+# graphile's four hours and its JobRun row says "running" until then. The web
+# process exits at once on the signal and is unaffected.
+kill_timeout = "30s"
+
 [build]
   dockerfile = "Dockerfile"
 

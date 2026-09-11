@@ -30,6 +30,7 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
+import { liveJobFilter, presentJob, STUCK_STATUS } from "../services/job-stale";
 import { isSeoUnlocked, hasPaidAccess } from "../services/billing.server";
 import { checkAppEmbed, embedDeepLink } from "../services/embed-check.server";
 import {
@@ -179,8 +180,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the queue build (read-only, also carries the term-gap card's data) and
   // the apply (writes the approved rows). Read here, not recomputed in the
   // browser - JobRun is the record.
+  // Each row through presentJob: one a killed worker left "running" reads as
+  // stuck and stops locking this screen's buttons (job-stale.ts).
   const [queueJob, applyJob, collectionQueueJob, collectionApplyJob, pagesJob] = shop
-    ? await Promise.all([
+    ? (
+        await Promise.all([
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_queue" }, orderBy: { createdAt: "desc" } }),
         db.jobRun.findFirst({ where: { shopId: shop.id, kind: "seo_apply" }, orderBy: { createdAt: "desc" } }),
         // The Collections tab's own pair. Separate kinds on purpose: each tab
@@ -201,7 +205,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           where: { shopId: shop.id, kind: "seo_pages" },
           orderBy: { createdAt: "desc" },
         }),
-      ])
+        ])
+      ).map((job) => presentJob(job))
     : [null, null, null, null, null];
 
   // Per-product SEO scan (PRD-SEO-PER-PRODUCT build step 4). Both cards below
@@ -365,7 +370,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // nothing. Same per-shop budget as the cron, so this cannot spend more.
   if (intent === "seo_scan_pages") {
     const active = await db.jobRun.findFirst({
-      where: { shopId: shop.id, kind: "seo_pages", status: { in: ["queued", "running"] } },
+      where: { shopId: shop.id, kind: "seo_pages", ...liveJobFilter() },
     });
     if (active) return { error: "A page read is already running." };
 
@@ -376,7 +381,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "seo_build_queue") {
     const active = await db.jobRun.findFirst({
-      where: { shopId: shop.id, kind: "seo_queue", status: { in: ["queued", "running"] } },
+      where: { shopId: shop.id, kind: "seo_queue", ...liveJobFilter() },
     });
     if (active) return { error: "A preview is already running." };
 
@@ -393,7 +398,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       where: {
         shopId: shop.id,
         kind: "seo_collection_queue",
-        status: { in: ["queued", "running"] },
+        ...liveJobFilter(),
       },
     });
     if (active) return { error: "A collections preview is already running." };
@@ -477,7 +482,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const active = await db.jobRun.findFirst({
-      where: { shopId: shop.id, kind: "seo_apply", status: { in: ["queued", "running"] } },
+      where: { shopId: shop.id, kind: "seo_apply", ...liveJobFilter() },
     });
     if (active) return { error: "An apply is already running." };
 
@@ -1206,15 +1211,20 @@ function SeoListingsCard({
   const report = isQueueUsable(queueJob) ? (queueJob!.report as SeoQueue) : null;
   const queueStale = isQueueStale(queueJob);
   const queueTrouble =
-    queueJob && (queueJob.status === "failed" || queueJob.status === "refused")
+    queueJob &&
+    (queueJob.status === "failed" || queueJob.status === "refused" || queueJob.status === STUCK_STATUS)
       ? ((queueJob.report as { error?: string; reason?: string } | null) ?? null)
       : null;
   const applyReport =
-    applyJob && applyJob.status !== "queued" && applyJob.status !== "running" && applyJob.status !== "failed"
+    applyJob &&
+    applyJob.status !== "queued" &&
+    applyJob.status !== "running" &&
+    applyJob.status !== "failed" &&
+    applyJob.status !== STUCK_STATUS
       ? ((applyJob.report as (SeoApplyReport & { reason?: string }) | null) ?? null)
       : null;
   const applyFailed =
-    applyJob && applyJob.status === "failed"
+    applyJob && (applyJob.status === "failed" || applyJob.status === STUCK_STATUS)
       ? ((applyJob.report as { error?: string } | null) ?? null)
       : null;
 

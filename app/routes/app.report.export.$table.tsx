@@ -4,6 +4,7 @@ import db from "../db.server";
 import { hasPaidAccess } from "../services/billing.server";
 import { CSV_BOM, familiesCsv, readPass, weakestCsv } from "../services/report-metrics";
 import { exportFilename } from "../services/seo-report";
+import { presentJob } from "../services/job-stale";
 
 // The Report screen's CSV export (PRD-REPORT-SCREEN section 8).
 //
@@ -54,12 +55,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const passJob = shop
-    ? await db.jobRun.findFirst({
-        where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
-        orderBy: { startedAt: "desc" },
-      })
-    : null;
+  const passJob = presentJob(
+    shop
+      ? await db.jobRun.findFirst({
+          where: { shopId: shop.id, kind: { in: ["dry_run", "bulk_extract"] } },
+          orderBy: { startedAt: "desc" },
+        })
+      : null,
+  );
 
   const pass = readPass(
     passJob
