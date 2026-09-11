@@ -908,6 +908,15 @@ export function describeFinding(finding: Finding): string {
     }
     case "B1": {
       const n = Number(d.productNodes ?? 0);
+      const emitters = Array.isArray(d.emitters) ? d.emitters : [];
+      // The only B1 a merchant sees (addendum item 11): Full mode beside a
+      // theme that already describes the product.
+      if (n > 1 && emitters.includes("theme") && emitters.includes("app")) {
+        return (
+          "Two product descriptions on this page: your theme's and this app's, because the app " +
+          "embed is in Full mode. Yours stays until your theme's is removed; ours is complete."
+        );
+      }
       const who = Array.isArray(d.emitters) && d.emitters.length > 0 ? ` (${d.emitters.join(" and ")})` : "";
       return n === 0
         ? "No Product node on this page at all."
@@ -1095,16 +1104,16 @@ export function describeFinding(finding: Finding): string {
       return `Absent on this page: ${missing.join(", ")}.`;
     }
     case "B15": {
+      // Product photos only, and never an empty alt (addendum item 10).
       const parts = [
         Number(d.noAlt ?? 0) > 0 ? `${d.noAlt} with no alt attribute` : null,
-        Number(d.emptyAlt ?? 0) > 0 ? `${d.emptyAlt} with an empty alt` : null,
         Number(d.machineAlt ?? 0) > 0 ? `${d.machineAlt} whose alt reads as a filename` : null,
       ].filter(Boolean);
       const examples =
         Array.isArray(d.examples) && d.examples.length > 0
           ? ` For example: ${d.examples.map((e: string) => `"${e}"`).join(", ")}.`
           : "";
-      return `${d.count} of ${d.images} images on this page: ${parts.join(", ")}.${examples}`;
+      return `${d.count} of ${d.images} product photos on this page: ${parts.join(", ")}.${examples}`;
     }
     case "B16": {
       const broken = Array.isArray(d.broken) ? d.broken : [];

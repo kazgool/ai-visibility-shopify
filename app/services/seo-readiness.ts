@@ -212,6 +212,14 @@ export type ReadinessCounters = {
   /** The most recent page read and catalogue read, as ISO strings. Null when never. */
   lastPageReadAt: string | null;
   lastCatalogueReadAt: string | null;
+  /**
+   * B15 over the read set: product photos without a description, and product
+   * photos, summed over the pages whose B15 finding carries them (addendum
+   * item 10). A page with every photo described raises no finding and adds
+   * nothing, so the pair is whole only when B15 is on every page - which is
+   * the one place it is printed, the shop-wide card.
+   */
+  productPhotos: { missing: number; of: number };
 };
 
 export function createReadinessCounters(): ReadinessCounters {
@@ -226,6 +234,7 @@ export function createReadinessCounters(): ReadinessCounters {
     codeSets: new Map<string, number>(),
     lastPageReadAt: null,
     lastCatalogueReadAt: null,
+    productPhotos: { missing: 0, of: 0 },
   };
 }
 
@@ -317,6 +326,12 @@ export function foldReadinessRow(
     return;
   }
   counters.readSet += 1;
+  for (const f of findingsOf(row.findings)) {
+    if (f.code !== "B15" || !visible(f)) continue;
+    const d = (f.detail ?? {}) as Record<string, unknown>;
+    counters.productPhotos.missing += Number(d.count) || 0;
+    counters.productPhotos.of += Number(d.images) || 0;
+  }
   const codes = [
     ...new Set(findingsOf(row.findings).filter(visible).map((f) => String(f.code)).filter(groupsOn)),
   ].sort();
@@ -392,6 +407,8 @@ export type Readiness = {
   groups: GroupView[];
   /** Codes taken out of the grouping because they flag the whole read set. */
   shopWideCodes: FindingCode[];
+  /** B15's photos over the read set, when any page carried them (see ReadinessCounters). */
+  productPhotos?: { missing: number; of: number };
   lastPageReadAt: string | null;
   lastCatalogueReadAt: string | null;
 };
@@ -564,6 +581,7 @@ export function buildReadiness(counters: ReadinessCounters): Readiness {
     needSomething: tally.merchant + tally.theme + tally.app,
     groups,
     shopWideCodes,
+    ...(counters.productPhotos.of > 0 ? { productPhotos: { ...counters.productPhotos } } : {}),
     lastPageReadAt: counters.lastPageReadAt,
     lastCatalogueReadAt: counters.lastCatalogueReadAt,
   };
@@ -950,6 +968,18 @@ function identifierCounts(facts: ShopWideFacts): string | null {
   return parts.join(" ");
 }
 
+/**
+ * The shop-wide sentence for B15, with its count and denominator (addendum
+ * item 10). "No photo has a description" was false on a shop where this app
+ * had written descriptions and one photo per page was still missing one.
+ */
+function productPhotosSentence(photos: { missing: number; of: number }): string {
+  return (
+    `${formatCount(photos.missing)} of ${formatCount(photos.of)} product photos on the pages read ` +
+    `have no description of what is in them`
+  );
+}
+
 export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopWideItem[] {
   const items: ShopWideItem[] = [];
   const catalogue = facts.catalogue;
@@ -996,7 +1026,10 @@ export function shopWideItems(readiness: Readiness, facts: ShopWideFacts): ShopW
     const identifiers = code === "A1" ? identifierCounts(facts) : null;
     items.push({
       key: code,
-      title: SHOP_WIDE_LABEL[code],
+      title:
+        code === "B15" && readiness.productPhotos
+          ? productPhotosSentence(readiness.productPhotos)
+          : SHOP_WIDE_LABEL[code],
       what: OWNER_STEPS[code].what,
       ...(identifiers ? { why: identifiers } : {}),
       ...(code === "B6"

@@ -263,8 +263,12 @@ describe("a 189-product shop with one problem on every product", () => {
   it("names the group of every row in words and not only in colour", () => {
     // One row per group, each carrying its owner as a word.
     expect(text).toContain("Titles that are missing, or get cut off in a search result on a phone You");
-    expect(text).toContain("Pages that describe no product to search engines, or describe two Your theme");
-    expect(text).toContain("Photos with no description of what is in them Us");
+    // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum items 10 and 11:
+    // B1's row is the two-descriptions sentence, and B15 counts product photos.
+    expect(text).toContain(
+      "Two product descriptions on these pages: your theme's and this app's. Yours stays until your theme's is removed; ours is complete. Your theme",
+    );
+    expect(text).toContain("Product photos with no description of what is in them Us");
   });
 
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the columns account only for the 13 codes a merchant can see, 4 on the admin side (A3, A5, A6, B6) and 9 on the page side.

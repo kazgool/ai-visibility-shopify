@@ -326,44 +326,94 @@ export function checkTwitterCard(html: string): Finding | null {
 // --- B15: alt text on the page ----------------------------------------------
 
 /**
- * B15: images with no alt attribute, with an empty one, and with an alt that
- * reads as machine output.
- *
- * The third uses `looksLikeMachineAlt` from the engine, the same predicate the
- * alt text writer uses to decide what it may replace. Two screens disagreeing
- * about what counts as a filename would be worse than either being wrong.
- *
- * The empty alt is counted separately and not merged into "missing", because
- * `alt=""` is the correct markup for a decorative image and a merchant who
- * wrote it deliberately should see it named as what it is.
+ * The name a product photo is known by on both sides: the file name, with the
+ * query, the path and Shopify's size suffix taken off. A storefront serves
+ * "files/oak-chair.jpg?v=1&width=600" for the media the product lists as
+ * ".../files/oak-chair.jpg?v=1", and older themes add "_600x" before the
+ * extension.
  */
-export function checkPageAltText(html: string): Finding | null {
-  const images = extractImages(html);
-  if (images.length === 0) return null;
-
-  const noAlt: string[] = [];
-  const emptyAlt: string[] = [];
-  const machineAlt: { src: string | null; alt: string }[] = [];
-  for (const image of images) {
-    if (image.alt === null) noAlt.push(image.src ?? "");
-    else if (image.alt.trim() === "") emptyAlt.push(image.src ?? "");
-    else if (looksLikeMachineAlt(image.alt)) machineAlt.push({ src: image.src, alt: image.alt });
+export function productMediaKey(src: string | null | undefined): string {
+  if (!src) return "";
+  const path = src.split(/[?#]/)[0];
+  let name = path.slice(path.lastIndexOf("/") + 1);
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // A malformed escape is compared as written.
   }
+  return name
+    .toLowerCase()
+    .replace(
+      /_(?:\d+x\d*|\d*x\d+|pico|icon|thumb|small|compact|medium|large|grande|original|master)(?:@\dx)?(?=\.[a-z0-9]+$)/,
+      "",
+    );
+}
 
-  const count = noAlt.length + emptyAlt.length + machineAlt.length;
+/** An image with no alt, or with one that reads as machine output: the only
+ * case where it is worth asking which images are the product's photos. */
+export function altCandidates(html: string): boolean {
+  return extractImages(html).some(
+    (image) => image.alt === null || (image.alt.trim() !== "" && looksLikeMachineAlt(image.alt)),
+  );
+}
+
+/**
+ * B15: the product's own photos on the page with no alt attribute, or with an
+ * alt that reads as machine output (CC-PROMPT-AI-READABILITY-3 addendum,
+ * item 10).
+ *
+ * Only the product's media counts: the photos this app's alt writer can
+ * describe. The theme's logo, its icons and other products' thumbnails used to
+ * be counted as well, which raised B15 on pages whose product photos were all
+ * described and pointed the merchant at a button that cannot touch those
+ * images. `productMedia` is the product's media as the storefront lists them;
+ * without it no image can be told apart from another and the check says
+ * nothing. A photo shown several times on the page (gallery and thumbnail) is
+ * one photo, missing its description if any of its copies is.
+ *
+ * An empty alt is never counted: `alt=""` is the correct markup for a
+ * decorative image, and a merchant who wrote it on purpose is not wrong.
+ *
+ * The machine test is `looksLikeMachineAlt` from the engine, the predicate the
+ * alt text writer uses to decide what it may replace.
+ */
+export function checkPageAltText(html: string, productMedia?: readonly string[] | null): Finding | null {
+  if (!productMedia || productMedia.length === 0) return null;
+  const keys = new Set(productMedia.map(productMediaKey).filter(Boolean));
+  const photos = new Map<string, "ok" | "noAlt" | { machine: string }>();
+  for (const image of extractImages(html)) {
+    const key = productMediaKey(image.src);
+    if (!key || !keys.has(key)) continue;
+    const state =
+      image.alt === null
+        ? "noAlt"
+        : image.alt.trim() !== "" && looksLikeMachineAlt(image.alt)
+          ? { machine: image.alt }
+          : "ok";
+    // A missing description on any copy of the photo is what the page shows.
+    const before = photos.get(key);
+    if (before === undefined || before === "ok") photos.set(key, state);
+  }
+  if (photos.size === 0) return null;
+
+  let noAlt = 0;
+  const machineAlt: string[] = [];
+  for (const state of photos.values()) {
+    if (state === "noAlt") noAlt += 1;
+    else if (state !== "ok") machineAlt.push(state.machine);
+  }
+  const count = noAlt + machineAlt.length;
   if (count === 0) return null;
   return {
     code: "B15",
     source: "B",
     detail: {
       count,
-      images: images.length,
-      noAlt: noAlt.length,
-      emptyAlt: emptyAlt.length,
+      images: photos.size,
+      noAlt,
       machineAlt: machineAlt.length,
-      // Capped: a collection-heavy template carries hundreds, and a row is a
-      // sentence, not a file listing.
-      examples: machineAlt.slice(0, 5).map((m) => m.alt),
+      // Capped: a row is a sentence, not a file listing.
+      examples: machineAlt.slice(0, 5),
     },
   };
 }

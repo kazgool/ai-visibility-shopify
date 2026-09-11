@@ -137,7 +137,9 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   A13: "A redirect from this product's address lands on the home page",
   A15: "Image filename is a camera or upload default",
   A16: "In no collection and linked from no menu",
-  B1: "No Product node on the page, or two of them",
+  // Only the case a merchant sees (addendum items 9 and 11): the theme's node
+  // and this app's complete one on one page, which is Full mode.
+  B1: "Two Product nodes on the page: the theme's and this app's",
   B2: "Canonical points somewhere other than this page",
   B3: "The page tells search engines not to index it",
   B4: "The app block was not detected on the page",
@@ -168,14 +170,14 @@ export const CHECK_LABEL: Record<FindingCode, string> = {
   B12: "No H1 on the page, more than one, or an H1 that is the shop logo",
   B13: "Open Graph tags absent",
   B14: "Twitter card tags absent",
-  B15: "Images on the page with no alt text, or an alt that reads as a filename",
+  B15: "Product photos on the page with no alt text, or an alt that reads as a filename",
   B16: "Internal links on the page that answer 4xx or 5xx",
   B17: "Short description, or a page with little text",
   B18: "Handle carries characters that do not belong in a URL",
   B19: "The product URL answers after more than one redirect, or loops",
   B20: "http resources on an https page",
   B21: "The page's title tag is the same as another page's",
-  B22: "Structured data on the page that Google no longer shows",
+  B22: "This app's FAQPage on the page, emitted on purpose: Google no longer shows it as a rich result",
   B23: "robots.txt has been edited, or blocks products or collections",
   B24: "Meta keywords tag on the page",
   B25: "Only collection-prefixed links point at this product, never its canonical URL",
@@ -301,8 +303,9 @@ export const CHECK_METHOD: Partial<Record<FindingCode, string>> = {
   B15:
     "The same test the alt text writer uses (looksLikeMachineAlt): a filename, " +
     "an HTML entity, a UUID, or a camera or upload prefix such as IMG_ or " +
-    "DSC_. An alt written as an empty string is counted separately, because " +
-    "that is the correct markup for a decorative image.",
+    "DSC_. Only the product's own photos are counted, as the storefront lists " +
+    "them, and an alt written as an empty string never is, because that is the " +
+    "correct markup for a decorative image.",
   B16:
     "At most 20 links per page, each distinct address fetched once per pass " +
     "and charged once to the same daily budget as the pages. A page with more " +
@@ -435,7 +438,10 @@ export const FINDING_OWNER: Record<FindingCode, FindingOwner> = {
   B19: "merchant",
   B20: "theme",
   B21: "merchant",
-  B22: "theme",
+  // Shown only when the old-style data is this app's own FAQPage
+  // (MERCHANT_VISIBLE), so the row is ours and never the theme's (addendum
+  // item 11).
+  B22: "app",
   // robots.txt is a theme file on Shopify (robots.txt.liquid), and Shopify
   // calls editing it an unsupported customisation.
   B23: "theme",
@@ -479,7 +485,8 @@ export const OWNER_LABEL: Record<FindingCode, string> = {
   A13: "Old product links that drop visitors on your home page",
   A15: "Photos still named the way the camera saved them",
   A16: "Products in no collection and in no menu",
-  B1: "Pages that describe no product to search engines, or describe two",
+  // The brief's words (addendum item 11), for the one B1 a merchant sees.
+  B1: "Two product descriptions on these pages: your theme's and this app's. Yours stays until your theme's is removed; ours is complete.",
   B2: "Products telling Google the wrong main address",
   B3: "Pages that tell search engines not to list them",
   B4: "Pages where this app's block was not found",
@@ -496,14 +503,14 @@ export const OWNER_LABEL: Record<FindingCode, string> = {
   // most apps, the other the card on X, formerly Twitter (M3, 5 September 2026).
   B13: "Products with no preview when shared on WhatsApp, Facebook and most apps",
   B14: "Products with no preview card when shared on X, formerly Twitter",
-  B15: "Photos with no description of what is in them",
+  B15: "Product photos with no description of what is in them",
   B16: "Links on the page that lead nowhere",
   B17: "Products with very little text on the page",
   B18: "Product addresses carrying characters that do not belong in a web address",
   B19: "Products whose address bounces through more than one stop",
   B20: "Pages loading something over an unsecured connection",
   B21: "Pages whose search title is the same as another page's",
-  B22: "Extra details on the page that Google no longer shows",
+  B22: "Pages carrying this app's buyer questions for search engines, on purpose, in a form Google no longer shows",
   B23: "The file that tells search engines where they may go has been edited",
   B24: "Pages carrying a list of keywords that Google ignores",
   B25: "Products whose main address nothing links to",
@@ -616,11 +623,12 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
   },
   B1: {
     what:
-      "The page either tells search engines nothing about the product it is selling, or tells " +
-      "them about two products at once and leaves them to choose.",
+      "The app embed is in Full mode, so this app publishes a complete description of the " +
+      "product next to the one your theme already publishes, and assistants read two.",
     where:
-      "Your theme decides what the page publishes about the product. A developer changes it in " +
-      "one place and it applies to every page.",
+      "Remove the product description the theme publishes, a change a developer makes once for " +
+      "every page, or switch the app embed to Extend mode in the theme editor so this app adds " +
+      "only what the theme leaves out.",
   },
   B2: {
     what:
@@ -728,9 +736,14 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
   },
   B15: {
     what: "That description is what a blind visitor hears and what an image search reads.",
+    // "Write photo descriptions on the dashboard" named a button that does not
+    // exist (addendum item 10). The real one is on the home screen; its label
+    // (app._index.tsx) says "alt text", which the vocabulary rule keeps off
+    // these screens, so the step describes it rather than quoting it.
     where:
-      "Press Write photo descriptions on the dashboard. You get a list of what we propose, " +
-      "per photo, before anything is saved.",
+      "Press the button on the home screen of this app that writes the missing photo " +
+      "descriptions. It describes the product photos that have none, and never replaces one " +
+      "you wrote.",
   },
   B16: {
     what:
@@ -779,11 +792,9 @@ export const OWNER_STEPS: Record<FindingCode, OwnerStep> = {
   },
   B22: {
     what:
-      "The page publishes extra detail of a kind Google stopped showing, so it costs a little " +
-      "and earns nothing in Google. Assistants still read it.",
-    where:
-      "Your theme or an installed app publishes it. Nothing breaks if it stays; this row is " +
-      "here so nobody expects a Google feature from it.",
+      "This app publishes the buyer questions in a form Google stopped showing for most shops, " +
+      "on purpose: assistants still read it, and it costs nothing.",
+    where: "Nothing to do. This row is here so nobody expects a Google feature from it.",
   },
   B23: {
     what:
@@ -911,7 +922,7 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   A13: "Every old product link drops visitors on your home page",
   A15: "Every photo is still named the way the camera saved it",
   A16: "No product is in a collection or in a menu",
-  B1: "Your product pages describe no product to search engines, or describe two",
+  B1: "Two product descriptions on these pages: your theme's and this app's. Yours stays until your theme's is removed; ours is complete.",
   B2: "Every product tells Google the wrong main address",
   B3: "Every product page tells search engines not to list it",
   B4: "This app's block was not found on any page we read",
@@ -925,14 +936,16 @@ export const SHOP_WIDE_LABEL: Record<FindingCode, string> = {
   B12: "No product page uses the product as its largest heading",
   B13: "No product shows a preview when shared on WhatsApp, Facebook and most apps",
   B14: "No product shows a preview card when shared on X, formerly Twitter",
-  B15: "No photo has a description of what is in it",
+  // shopWideItems states the count with its denominator when the pages read
+  // carried it; this is the sentence when they did not (addendum item 10).
+  B15: "Product photos on every page read are missing a description of what is in them",
   B16: "Every product page carries links that lead nowhere",
   B17: "Every product has very little text on its page",
   B18: "Every product address carries characters that do not belong in a web address",
   B19: "Every product address bounces through more than one stop",
   B20: "Every page loads something over an unsecured connection",
   B21: "Every page carries the same search title as another page",
-  B22: "Every page carries extra details that Google no longer shows",
+  B22: "Every page carries this app's buyer questions for search engines, on purpose, in a form Google no longer shows",
   B23: "The file that tells search engines where they may go has been edited",
   B24: "Every page carries a list of keywords that Google ignores",
   B25: "Nothing on your shop links to any product's main address",
@@ -1033,7 +1046,11 @@ export function merchantVisible(finding: Pick<Finding, "code" | "detail">): bool
   const v = MERCHANT_VISIBLE[finding.code as FindingCode];
   if (v !== "ours") return v === "yes";
   const d = (finding.detail ?? {}) as Record<string, unknown>;
-  if (finding.code === "B1") return Array.isArray(d.emitters) && d.emitters.includes("app");
+  // Both: the theme's node beside this app's (Full mode). Two of ours alone is
+  // B7's row, and two of the theme's is not this app's to fix.
+  if (finding.code === "B1") {
+    return Array.isArray(d.emitters) && d.emitters.includes("app") && d.emitters.includes("theme");
+  }
   if (finding.code === "B22") return d.ours === true;
   return false;
 }

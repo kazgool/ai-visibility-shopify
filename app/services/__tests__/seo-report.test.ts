@@ -533,6 +533,14 @@ describe("the vocabulary guard covers all five merchant files (R1 4.2)", () => {
     expect(files.map(([t]) => t)).toEqual(["findings", "shopwide", "listing", "products", "since"]);
     expect(data.readiness.shopWideCodes).toContain("B6");
   });
+
+  // Addendum item 11: the full-mode row's own sentence goes through the guard
+  // like every other, so it is asserted to be in the files it is checked on.
+  it("carries the two-descriptions sentence, so the guard reads it", () => {
+    expect(files.map(([, f]) => f).join("\n")).toContain(
+      "Two product descriptions on these pages: your theme's and this app's. Yours stays until your theme's is removed; ours is complete.",
+    );
+  });
   for (const [table, file] of files) {
     it(`keeps the ${table} file free of it`, () => {
       for (const pattern of FORBIDDEN) {

@@ -65,6 +65,7 @@ import {
   checkMetaKeywords,
   checkMixedContent,
   checkNoindexOutOfStock,
+  altCandidates,
   checkPageAltText,
   checkRedirectChain,
   checkScriptOrigins,
@@ -976,6 +977,42 @@ export function isPasswordPage(html: string): boolean {
  * page - 500 unlock requests a night would be a worse citizen than the scan
  * itself.
  */
+/**
+ * B15's list of the product's own photos (addendum item 10): the storefront's
+ * product JSON, `/products/<handle>.js`, which lists the same media the alt
+ * text writer describes. One request, made only when the page shows an image
+ * with no alt or a machine one. Null on any failure - a non-200, a password
+ * page, anything that is not the JSON - and B15 then says nothing rather than
+ * counting the theme's images.
+ */
+export async function readProductMedia(
+  pageUrl: string,
+  cookie: string | null,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string[] | null> {
+  try {
+    const url = new URL(pageUrl);
+    url.search = "";
+    url.hash = "";
+    const headers: Record<string, string> = { "User-Agent": SCAN_USER_AGENT, Accept: "application/json" };
+    if (cookie) headers.Cookie = cookie;
+    const res = await fetchImpl(`${url.href.replace(/\/$/, "")}.js`, { headers });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      media?: { src?: unknown; preview_image?: { src?: unknown } }[];
+      images?: unknown[];
+    };
+    const fromMedia = Array.isArray(json.media)
+      ? json.media.map((m) => (typeof m?.src === "string" ? m.src : m?.preview_image?.src))
+      : [];
+    const fromImages = Array.isArray(json.images) ? json.images : [];
+    const list = [...fromMedia, ...fromImages].filter((s): s is string => typeof s === "string" && s !== "");
+    return list.length > 0 ? list : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readProductPage(
   url: string,
   cookie: string | null,
@@ -1166,6 +1203,13 @@ export type PageContext = {
    * page read from the product editor, for instance - and B21 is then silent.
    */
   titlesByKey?: Map<string, string[]> | null;
+  /**
+   * B15. The product's media as the storefront lists them, so the check counts
+   * the product's own photos and nothing else (addendum item 10). Undefined or
+   * null when they were not read - the page had no image worth asking about,
+   * or the read failed - and B15 then says nothing.
+   */
+  productMedia?: readonly string[] | null;
   /**
    * B16. What the link fetches answered, and how many of the page's links they
    * covered. Null means no link was fetched, and B16 says nothing: "not
@@ -1549,12 +1593,16 @@ export function readingOf(
   }
 
   // B33: the theme emits a Product node carrying no @id of its own, so the
-  // storefront block holds its own node back rather than publish a second
-  // one. Raised from the same nodes B1 counted, and only when our block is
-  // on the page at all - on a page without it there is nothing being held
-  // back and nothing to say.
+  // storefront block, in Extend mode, holds its own node back rather than
+  // publish a second one (ai-visibility.liquid, av_product_ld 'none').
+  // Raised only when that has actually happened (addendum item 11): our
+  // markup is on the page - the link to the plain text page, which the block
+  // prints whatever it does with the Product node - and no Product node of
+  // ours is. It used to require our node to be present, which is Full mode
+  // beside the theme's: two descriptions, which B1 now says in those words.
   const themeProductNodes = productNodes.filter((n) => !isOurNode(n));
-  if (ours && themeProductNodes.length > 0 && themeProductNodes.every((n) => !n.id)) {
+  const ourMarkup = page.html.includes("/apps/ai-visibility/");
+  if (ourMarkup && !ours && themeProductNodes.length > 0 && themeProductNodes.every((n) => !n.id)) {
     findings.push({
       code: "B33",
       source: "B",
@@ -1672,7 +1720,7 @@ export function readingOf(
     checkH1(page.html),
     checkOpenGraph(page.html),
     checkTwitterCard(page.html),
-    checkPageAltText(page.html),
+    checkPageAltText(page.html, context.productMedia),
     context.links
       ? checkInternalLinks(context.links.results, context.links.plan, context.links.checked)
       : null,
@@ -2165,10 +2213,22 @@ export async function scanShopPages(input: {
       }
     }
 
+    // B15's product photos (addendum item 10), only when an image on the page
+    // could be one with no description: one more request, charged to the same
+    // allowance as the link checks.
+    let productMedia: string[] | null = null;
+    if (page.status === 200 && !page.passwordProtected && !page.error && left > 0 && altCandidates(page.html)) {
+      await sleep(REQUEST_INTERVAL_MS);
+      productMedia = await readProductMedia(page.finalUrl, cookie, fetchImpl);
+      left -= 1;
+      await spendPages(shopId, 1, startedAt);
+    }
+
     const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null, {
       handle: row.handle,
       markets,
       sitemap: sitemap.read,
+      productMedia,
       robots: robotsReview,
       titlesByKey,
       links,
@@ -2359,10 +2419,16 @@ export async function scanOneProductPage(input: {
   // spend several requests to answer one row's question. Markets comes from
   // what the last pass recorded, which costs a Setting read.
   const markets = await marketsInfo(input.shopId);
+  // B15's product photos, as in the nightly pass (addendum item 10).
+  const productMedia =
+    page.status === 200 && !page.passwordProtected && !page.error && altCandidates(page.html)
+      ? await readProductMedia(page.finalUrl, cookie, fetchImpl)
+      : null;
   const reading = readingOf(page, (row.offer as OfferFacts | null) ?? null, {
     handle: row.handle,
     markets,
     sitemap: null,
+    productMedia,
     // B23 costs nothing extra: robots.txt was fetched two lines above, because
     // this button obeys the same Disallow the nightly pass obeys.
     robots: reviewRobots(robots),

@@ -971,6 +971,7 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
         <PublishedCard
           published={published}
           themeNodes={themeNodes}
+          heldBack={findings.rows.find((r) => r.code === "B33")?.count ?? 0}
         />
 
         {/* Counted, with no verdict */}
@@ -1359,12 +1360,54 @@ function SinceCard({
  * the last scan of one product page, which is a sample, and the card says the
  * date it was taken rather than implying a catalogue-wide figure.
  */
+/**
+ * The sentence under the card, true of the pages read (addendum item 11). It
+ * used to say "we reference what your theme already publishes" on every shop,
+ * including one in Full mode printing a second complete description and one
+ * whose theme left nowhere for ours to attach.
+ */
+export function publishedMethod(
+  t: { pagesRead: number; theme: number; two: number },
+  heldBack: number,
+): string {
+  const rating = " We never publish a star rating you did not receive.";
+  if (t.pagesRead === 0) {
+    return "What this app adds depends on what your theme already publishes, and the first page read shows it." + rating;
+  }
+  if (t.two > 0) {
+    return (
+      `On ${formatCount(t.two)} of ${formatCount(t.pagesRead)} pages read, your theme's description of the ` +
+      "product and this app's complete one are both on the page, so assistants read two." +
+      rating
+    );
+  }
+  if (heldBack > 0) {
+    return (
+      `On ${formatCount(heldBack)} of ${formatCount(t.pagesRead)} pages read, your theme's description leaves ` +
+      "nowhere for ours to attach, so this app adds none there. Elsewhere it adds only what your theme " +
+      "leaves out." +
+      rating
+    );
+  }
+  if (t.theme === 0) {
+    return "Your theme describes no product on the pages read, so this app publishes the complete description itself." + rating;
+  }
+  return (
+    "We add only what your pages leave out, and we reference what your theme already publishes rather " +
+    "than repeating it, so assistants read one product and not two." +
+    rating
+  );
+}
+
 function PublishedCard({
   published,
   themeNodes,
+  heldBack,
 }: {
   published: { at: string | null; reasons: { nodeType: string; emitted: boolean; reason: string | null }[] };
   themeNodes: { pagesRead: number; theme: number; none: number; two: number; appOnly: number };
+  /** Pages where our description is held back (B33). */
+  heldBack: number;
 }) {
   const namedKinds = published.reasons.filter((r) => PUBLISHED_LABEL[r.nodeType]);
   const unnamed = published.reasons.length - namedKinds.length;
@@ -1447,11 +1490,7 @@ function PublishedCard({
           </BlockStack>
         ) : null}
 
-        <Method>
-          We add only what your pages leave out, and we reference what your theme already
-          publishes rather than repeating it, so assistants read one product and not two. We never
-          publish a star rating you did not receive.
-        </Method>
+        <Method>{publishedMethod(themeNodes, heldBack)}</Method>
       </BlockStack>
     </Card>
   );

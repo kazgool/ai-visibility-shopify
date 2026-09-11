@@ -13,7 +13,9 @@ import {
   checkMetaKeywords,
   checkMixedContent,
   checkOpenGraph,
+  altCandidates,
   checkPageAltText,
+  productMediaKey,
   checkRedirectChain,
   checkThinContent,
   checkTitleTag,
@@ -221,30 +223,60 @@ describe("B13 and B14, the social tags", () => {
 
 // --- B15: alt text ----------------------------------------------------------
 
-describe("B15, alt text on the page", () => {
-  it("says nothing when every image carries an alt a person wrote", () => {
+// Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 10: B15 counts
+// only the product's own photos (the media the alt writer can describe), and
+// never an empty alt, which is correct markup for a decorative image.
+describe("B15, alt text on the product's photos", () => {
+  const MEDIA = ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg"];
+
+  it("says nothing without the product's media list: no image can be told from another", () => {
+    expect(checkPageAltText('<img src="/a.jpg">')).toBeNull();
+    expect(checkPageAltText('<img src="/a.jpg">', null)).toBeNull();
+    expect(checkPageAltText('<img src="/a.jpg">', [])).toBeNull();
+  });
+
+  it("says nothing when every product photo carries an alt a person wrote", () => {
     expect(
-      checkPageAltText('<img src="/a.jpg" alt="A dining chair in solid oak, from the front">'),
+      checkPageAltText('<img src="/a.jpg" alt="A dining chair in solid oak, from the front">', MEDIA),
     ).toBeNull();
   });
 
   it("says nothing at all on a page with no images", () => {
-    expect(checkPageAltText("<p>text</p>")).toBeNull();
+    expect(checkPageAltText("<p>text</p>", MEDIA)).toBeNull();
   });
 
-  it("reports count of denominator, with the three kinds counted apart", () => {
+  it("counts product photos only, never the theme's logo and never an empty alt", () => {
     const html =
+      '<img src="/logo.png">' +
       '<img src="/a.jpg">' +
       '<img src="/b.jpg" alt="">' +
       '<img src="/c.jpg" alt="IMG_20260527.jpg">' +
       '<img src="/d.jpg" alt="A dining chair in solid oak">';
-    const d = detail(checkPageAltText(html));
+    const d = detail(checkPageAltText(html, MEDIA));
     expect(d.images).toBe(4);
-    expect(d.count).toBe(3);
+    expect(d.count).toBe(2);
     expect(d.noAlt).toBe(1);
-    expect(d.emptyAlt).toBe(1);
     expect(d.machineAlt).toBe(1);
-    expect(describeFinding(checkPageAltText(html) as Finding)).toContain("3 of 4 images");
+    expect(d.emptyAlt).toBeUndefined();
+    expect(describeFinding(checkPageAltText(html, MEDIA) as Finding)).toContain("2 of 4 product photos");
+  });
+
+  it("matches the storefront's sized copy to the product's media, and counts a photo shown twice once", () => {
+    const media = ["https://cdn.shopify.com/s/files/1/0001/files/oak-chair.jpg?v=17"];
+    const html =
+      '<img src="//shop.example/cdn/shop/files/oak-chair_600x.jpg?v=17&width=600">' +
+      '<img src="//shop.example/cdn/shop/files/oak-chair.jpg?width=120" alt="Oak chair, side">';
+    const d = detail(checkPageAltText(html, media));
+    expect(d.images).toBe(1);
+    expect(d.count).toBe(1);
+    expect(productMediaKey("//x/cdn/shop/files/Oak-Chair_600x.JPG?v=1")).toBe("oak-chair.jpg");
+  });
+
+  it("asks for the product's media only when an image could be missing a description", () => {
+    expect(altCandidates('<img src="/a.jpg">')).toBe(true);
+    expect(altCandidates('<img src="/a.jpg" alt="IMG_2026.jpg">')).toBe(true);
+    expect(altCandidates('<img src="/a.jpg" alt="">')).toBe(false);
+    expect(altCandidates('<img src="/a.jpg" alt="A dining chair">')).toBe(false);
   });
 
   it("uses the same heuristic looksLikeMachineAlt uses, entities included", () => {
@@ -260,10 +292,11 @@ describe("B15, alt text on the page", () => {
     // exists for - is written "&amp;#8211;" and decodes to "&#8211;", which
     // does. Testing the raw attribute would flag every alt containing an
     // ampersand on every page in existence.
-    expect(checkPageAltText('<img alt="Set Masa &amp; 6 Scaune">')).toBeNull();
-    expect(detail(checkPageAltText('<img alt="Set Masa &amp;#8211; 6 Scaune">')).machineAlt).toBe(1);
-    expect(detail(checkPageAltText('<img alt="8f14e45f-ceea-467a-9bd2">')).machineAlt).toBe(1);
-    expect(checkPageAltText('<img alt="Masa extensibila, cod 20260527, stejar natural">')).toBeNull();
+    const media = ["/p.jpg"];
+    expect(checkPageAltText('<img src="/p.jpg" alt="Set Masa &amp; 6 Scaune">', media)).toBeNull();
+    expect(detail(checkPageAltText('<img src="/p.jpg" alt="Set Masa &amp;#8211; 6 Scaune">', media)).machineAlt).toBe(1);
+    expect(detail(checkPageAltText('<img src="/p.jpg" alt="8f14e45f-ceea-467a-9bd2">', media)).machineAlt).toBe(1);
+    expect(checkPageAltText('<img src="/p.jpg" alt="Masa extensibila, cod 20260527, stejar natural">', media)).toBeNull();
   });
 });
 

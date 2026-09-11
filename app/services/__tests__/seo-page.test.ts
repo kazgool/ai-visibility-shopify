@@ -58,6 +58,7 @@ import { OUR_NODE_MARKER } from "../conflicts";
 import {
   BUDGET_SETTING_KEY,
   cappedBudget,
+  readProductMedia,
   ROBOTS_BLOCK_SETTING_KEY,
   SPEND_SETTING_KEY,
   DEFAULT_DAILY_BUDGET,
@@ -243,6 +244,82 @@ describe("robots.txt", () => {
 
   it("treats an empty Disallow as allowing everything", () => {
     expect(productsDisallow("User-agent: *\nDisallow:")).toBeNull();
+  });
+});
+
+// --- CC-PROMPT-AI-READABILITY-3 addendum items 10 and 11 ----------------------
+
+describe("B33 only when our description is really held back (addendum item 11)", () => {
+  it("raises B33 when our block is on the page, our node is not, and the theme's has no @id", () => {
+    const row = readingOf(page(CLEAN_HEAD + CANONICAL + productLd("") + MIRROR_LINK + CLEAN_BODY), null);
+    expect(codes(row.findings)).toContain("B33");
+    expect(codes(row.findings)).not.toContain("B1");
+  });
+
+  it("tells Full mode beside the theme's node as two descriptions (B1), never as held back", () => {
+    const html =
+      CLEAN_HEAD + CANONICAL + productLd("") + ourProductLd(`${URL_A}#product`) + MIRROR_LINK + CLEAN_BODY;
+    const row = readingOf(page(html), null);
+    expect(codes(row.findings)).not.toContain("B33");
+    expect(row.findings.find((f) => f.code === "B1")?.detail).toMatchObject({
+      productNodes: 2,
+      emitters: ["theme", "app"],
+    });
+  });
+
+  it("says nothing about holding back on a page without our block", () => {
+    const row = readingOf(page(CLEAN_HEAD + CANONICAL + productLd("") + CLEAN_BODY), null);
+    expect(codes(row.findings)).not.toContain("B33");
+  });
+});
+
+describe("B15 counts the product's own photos, read from the storefront (addendum item 10)", () => {
+  const BODY =
+    "<body><h1>A chair in solid oak</h1>" +
+    '<img src="https://shop.example/logo.png">' +
+    '<img src="https://shop.example/cdn/shop/files/chair_600x.jpg?v=1&width=600">' +
+    "</body>";
+  const HTML = CLEAN_HEAD + CANONICAL + productLd(`${URL_A}#product-theme`) + MIRROR_LINK + BODY;
+
+  it("counts a product photo with no description, and never the theme's logo", () => {
+    const row = readingOf(page(HTML), null, {
+      handle: "a-chair",
+      markets: null,
+      sitemap: null,
+      productMedia: ["https://cdn.shopify.com/s/files/1/0001/files/chair.jpg?v=1"],
+    });
+    expect(row.findings.find((f) => f.code === "B15")?.detail).toMatchObject({ count: 1, images: 1, noAlt: 1 });
+  });
+
+  it("says nothing when the product's media were not read", () => {
+    const row = readingOf(page(HTML), null, { handle: "a-chair", markets: null, sitemap: null });
+    expect(codes(row.findings)).not.toContain("B15");
+  });
+
+  it("reads the media from the product's storefront JSON, and nothing from a page that is not JSON", async () => {
+    const json = vi.fn(
+      async () =>
+        ({
+          ...reply(""),
+          json: async () => ({ media: [{ src: "https://cdn/a.jpg" }], images: ["https://cdn/b.jpg"] }),
+        }) as unknown as Response,
+    );
+    expect(await readProductMedia(`${URL_A}?variant=1`, "c=1", json as unknown as typeof fetch)).toEqual([
+      "https://cdn/a.jpg",
+      "https://cdn/b.jpg",
+    ]);
+    expect((json.mock.calls[0] as unknown[])[0]).toBe(`${URL_A}.js`);
+
+    const html = vi.fn(
+      async () =>
+        ({
+          ...reply("<html></html>"),
+          json: async () => {
+            throw new Error("not JSON");
+          },
+        }) as unknown as Response,
+    );
+    expect(await readProductMedia(URL_A, null, html as unknown as typeof fetch)).toBeNull();
   });
 });
 
