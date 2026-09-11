@@ -372,6 +372,53 @@ export async function refreshCurrentPageFacts(
   return { written: true };
 }
 
+/**
+ * Recount "written by this app since the snapshot" after this app writes
+ * (CC-PROMPT-AI-READABILITY-3 addendum, item 12).
+ *
+ * The count used to be taken only at the end of a complete catalogue pass,
+ * inside `recordCurrentFacts`. A meta title applied on the SEO screen the day
+ * after that pass was therefore on the page and in its state metafield, dated,
+ * and absent from the counter until the next weekly pass: on 11 September the
+ * SEO screen said "Written: 2" while the counter still read 103 with a window
+ * ending 10 September. `bulk_alt_text` had the same gap inside one job, because
+ * it runs source A, and so this count, before its own writes.
+ *
+ * So the jobs that write call this afterwards. It reads the catalogue the same
+ * way the pass does, counts every dated state entry after the snapshot, and
+ * rewrites only the written-since half of the `current` row. `takenAt` and the
+ * catalogue figures stay as the last pass wrote them: the method line names
+ * that pass, and this is not one. Nothing is written on a short read, without
+ * a snapshot, without a current row, or when the count has not moved.
+ */
+export async function refreshWrittenSince(
+  shopId: string,
+  graphql: GraphqlFn,
+): Promise<{ written: boolean; reason?: "no_snapshot" | "no_current" | "short_read" | "unchanged" }> {
+  const before = await readSeoSnapshot(shopId);
+  if (!before) return { written: false, reason: "no_snapshot" };
+  const current = await db.seoSnapshot.findUnique({
+    where: { shopId_takenBy: { shopId, takenBy: CURRENT } },
+  });
+  if (!current) return { written: false, reason: "no_current" };
+
+  const read = await fetchAllProducts(graphql, catalogueQuery(await prefsFor(shopId)));
+  if (!read.complete) return { written: false, reason: "short_read" };
+
+  const since = writtenSince(read.products, before.takenAt);
+  const sameDate =
+    current.writtenSinceAt !== null && current.writtenSinceAt.getTime() === before.takenAt.getTime();
+  if (sameDate && JSON.stringify(current.writtenSince ?? {}) === JSON.stringify(since)) {
+    return { written: false, reason: "unchanged" };
+  }
+
+  await db.seoSnapshot.update({
+    where: { shopId_takenBy: { shopId, takenBy: CURRENT } },
+    data: { writtenSince: since as never, writtenSinceAt: before.takenAt },
+  });
+  return { written: true };
+}
+
 /** What `takeSeoSnapshot` did, so callers can say it rather than guess. */
 export type TakeSnapshotResult =
   | { written: true; facts: SnapshotFacts; takenBy: SnapshotOrigin }

@@ -27,7 +27,7 @@ import {
 } from "../app/services/llms-txt.server";
 import { fetchAllProducts } from "../app/services/catalogue.server";
 import { computeSourceA } from "../app/services/seo-scan.server";
-import { refreshCurrentPageFacts } from "../app/services/seo-snapshot.server";
+import { refreshCurrentPageFacts, refreshWrittenSince } from "../app/services/seo-snapshot.server";
 import {
   runCollectionSeoApply,
   runCollectionSeoQueueBuild,
@@ -752,6 +752,13 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
 
     // Media updates also mark products as changed; same storm, same cursor fix.
     if (written > 0) await advancePollCursor(shopId);
+
+    // Source A ran before the writes above, so its written-since count did not
+    // include them; recount now that they are stamped (addendum item 12).
+    if (written > 0) {
+      const recount = await refreshWrittenSince(shopId, graphql);
+      helpers.logger.info(`bulk_alt_text ${shop.domain}: written-since recount ${recount.written ? "updated" : recount.reason}`);
+    }
 
     await db.jobRun.update({
       where: { id: jobRunId },
@@ -1765,6 +1772,22 @@ export const seo_apply: Task = async (payload, helpers) => {
     // makes every touched product look "recently changed" to poll_changes,
     // which would otherwise queue a no-op extract_product per product.
     if (report.written > 0) await advancePollCursor(shopId);
+
+    // The meta titles and descriptions just written are dated in their state
+    // entries; the counter under "written by this app" learns of them now,
+    // not at the next catalogue pass (addendum item 12). Best effort: the
+    // writes are done whatever the recount does.
+    if (report.written > 0) {
+      try {
+        const shop = await db.shop.findUnique({ where: { id: shopId } });
+        if (shop) {
+          const recount = await refreshWrittenSince(shopId, await adminGraphql(shop.domain));
+          helpers.logger.info(`seo_apply ${shopId}: written-since recount ${recount.written ? "updated" : recount.reason}`);
+        }
+      } catch (error) {
+        helpers.logger.warn(`seo_apply ${shopId}: written-since recount failed, ${describeError(error)}`);
+      }
+    }
 
     await db.jobRun.update({
       where: { id: jobRunId },

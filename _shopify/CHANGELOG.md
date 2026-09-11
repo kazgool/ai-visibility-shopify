@@ -160,6 +160,26 @@ it. Dev, 29 stores: 37.4% wrong (3,044 of 8,132). Hold-out: 48.1% (1,047 of
 only; no default changed. This is the number behind the "On the product
 page" switches, and the question whether facts should show by default.
 
+### "Written by this app" counts a write when the job that made it finishes (11 September 2026)
+
+The count under "written by this app since" was taken only at the end of a
+complete catalogue pass. A meta title applied on the SEO screen after that
+pass was on the page and dated in its state entry, and missing from the
+counter until the next weekly pass: on 11 September the SEO screen said
+"Written: 2" while the counter still read 103 with a window ending 10
+September. The alt-text button had the same gap inside one job, because it
+runs the catalogue half of the scan, and with it the count, before it
+writes. Both jobs now recount when they have written something
+(`refreshWrittenSince`): one catalogue read, the count against the same
+snapshot, and only the written-since half of the current row rewritten -
+never on a short read, never without a snapshot, never when nothing moved.
+A single product's webhook write still waits for the next pass; recounting
+the catalogue per product was not worth a catalogue read each. Tested on the
+11 September case (1 before, 2 after). `scripts/read-written-since.ts`
+prints the stored count beside the live one for a shop, read only; it has
+not been run against Republica BIO yet, so its before and after on the live
+store are Marius's to read.
+
 ### The engine measured before anything changed (11 September 2026)
 
 `scripts/audit-engine-run.ts` pointed at a sandbox that no longer exists
