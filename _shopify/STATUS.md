@@ -1,55 +1,62 @@
 # STATUS — where this project stands
 
-Last updated 2 September 2026. Read this first in a new session, then
-`PRD.md` for what we are building and `ARCHITECTURE.md` for how.
+Last updated 11 September 2026. Read this first in a new session, then
+`HANDOFF-2026-09-11.md`, then `PRD-AI-READABILITY.md` and the Unreleased
+section of `CHANGELOG.md`.
 
 ---
 
-## Where things stand, 2 September 2026
+## Where things stand, 11 September 2026
 
-The body of this file below section 0 was written on 3 August and describes
-production day. A month of work sits between that and today, and this
-section is the bridge. Everything in it is in `CHANGELOG.md` in detail.
+The app is live on the App Store (approved 7 August) and has its first paying
+store, Republica BIO (Standard plan, since 8 September, 189 published
+products, Shella theme). Everything below section 0 was written on 3 August;
+`CHANGELOG.md` carries the month between in detail, and
+`HANDOFF-2026-09-11.md` carries the setup of that store.
 
-**Shipped since.** The free tier (crawler check, coverage score, three
-merchant-chosen products, no expiry). The SEO capability behind an operator
-key, with its own screen, live scan, conflict detection, meta field audit,
-term gap and weekly watch. Crawler hit logging through the app proxy, with
-30-day retention. llms.txt and agents.md served over the proxy. Preferred
-Sources. IndexNow. Alt text. Collections with comparison tables. Six waves
-of entitlement and data-integrity fixes.
+**Committed on 11 September, not pushed, not deployed.** One batch built from
+`PRD-AI-READABILITY.md`, for one deploy:
 
-**Shipped 1 and 2 September, the two heaviest days.** An engine safety wave:
-negation (the engine published `contine gluten` on 21 products whose text
-says `nu contine gluten`), dotted abbreviations, decimal and thousands
-separators, capture truncation, and an alt-text guard that was overwriting
-human descriptions containing an 8-digit number. Then a Report screen at
-`/app/report`. Both are committed.
+- Visible content. A new app embed, "AI Visibility content", prints the
+  summary, key facts, who it suits and the buyer questions as text on
+  product pages, and summary, criteria, questions and the comparison table
+  on collection pages; a placeable block, "AI Visibility details", prints
+  the same markup where a merchant puts it. One snippet holds the markup.
+  Nothing renders when there is nothing to show.
+- Structured data describes only what the page shows. FAQPage moved from
+  the head into the body, next to the questions; the head's Product node
+  takes the theme's description and no facts; extend mode adds nothing to a
+  theme's own Product node and emits the complete node when the theme has
+  none; our WebSite node goes out only when the theme has none.
+- Measurement. B34 counts pages carrying the visible block ("Visible on the
+  page: N of M eligible products", SEO screen, merchant SEO dashboard,
+  Report screen). `scripts/read-ld-visible.ts` lists our JSON-LD strings
+  that are not visible text. The crawler check reports three families
+  (training, search index, user fetch) for robots.txt, the page's answer and
+  the visible block.
+- Operations. The worker releases its jobs on SIGTERM and SIGINT; a JobRun
+  row left "running" for 30 minutes with no progress reads as stuck and
+  stops blocking buttons.
+- Documents. Uninstall paragraph in SUPPORT and PRIVACY; the refund answer
+  no longer states a policy nobody decided.
 
-**Uncommitted, verified at the unit level, 3 September.** Wave A of the
-WordPress 1.7.8 port: withdrawal of mirror and llms.txt pages for products
-that leave the published state, and two merchant toggles (out of stock,
-unlisted). Two independent QA rounds and an adjudication
-(`QA-WAVE-A-2026-09-03.md`) produced three blocking fixes and ten more, all
-applied the same day; 41 test files, 502 tests, green with `.env` renamed
-away. Not yet observed on a running store: the six checks at the end of the
-QA report, each needing Marius. Commit is his call.
+Last full run: see the handover of 11 September and the CHANGELOG entries.
 
-**Two documents supersede the sections below for anything about the engine,
-the pipeline or the screens:** `AUDIT-2026-09-02.md` (functionality, UI, UX)
-and `AUDIT-MODULE-2026-09-02.md` (engine, published outputs, pipeline). The
-latter is the one that ran the real engine over 189 Republica BIO products
-and 355 furniture products, and it is the only document here whose findings
-came from execution rather than reading.
+**Not yet observed on a store**, and each needs Marius: the App embeds toggle
+for "AI Visibility content" on Republica BIO, the nightly page read that
+fills B34, `npx tsx scripts/read-ld-visible.ts republicabio.myshopify.com 20`,
+`npx tsx scripts/read-llms-txt.ts republicabio.myshopify.com`, and the Gemini
+test in the PRD's success metrics.
 
-**What is next** is in `PRD-PORT-1.7.8.md` section H and in the audits'
-closing sections, not in section 7 below.
+**Open decisions for Marius**: the refund policy text (SUPPORT.md now
+promises only an answer), the three PRD amendments at the end of
+`PRD-AI-READABILITY.md`, and whether the new embed ships on for existing
+installs (it does not: app embeds are off after install until the merchant
+switches them on).
 
-**One command has been outstanding for twelve days** and blocks four
-features: `npx tsx scripts/read-forwarding.ts`. It is read-only and prints
-no addresses. It answers whether a real client IP survives Shopify's edge
-and Fly, which decides whether crawler verification can exist on Shopify at
-all.
+**Still open from the handoff**: the four-context table in `extract.ts`,
+the llms.txt request path reading every mirror body, alt-text provenance,
+post-lapse webhooks, and the sales-folder payout correction.
 
 ---
 

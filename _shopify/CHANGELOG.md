@@ -16,6 +16,205 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+The 11 September 2026 batch, built from `PRD-AI-READABILITY.md` for one
+deploy, in the order it was built. Test counts are the full suite with
+`.env` renamed away, at the commit named. Final run, after the last code
+commit: `check.bat` green - 78 test files, 1,499 tests, typecheck, both builds,
+Liquid syntax, and the JSON check at 7 nodes and 1,036 combinations - and
+`shopify theme check` on the extension, 8 files, no offenses. Nothing here has
+been observed on a store yet.
+
+### Baseline, and the llms.txt shape written blind (11 September 2026)
+
+The blockquote after the H1 and the move of collections below the products,
+under "Optional", had been written on 11 September without a test run.
+`check.bat` before anything else in this batch: 70 test files, 1,404 tests,
+typecheck, build, Liquid syntax and the 8,221-combination JSON check, all
+green, so it was committed as written with `scripts/read-llms-txt.ts`. The
+prompt for this batch listed `queue-unstick.ts` and the describedby move as
+uncommitted; both were already in 8c349e8, with a stray CSV and a 2.4 MB
+repository tarball that should not be in the repository and were left for
+Marius to remove.
+
+### The worker lets go of its jobs on a deploy; a row left running reads as stuck (11 September 2026)
+
+A deploy that landed mid-job killed the worker with nothing handling the
+signal. The job's queue lock was orphaned, its JobRun row said "running", and
+the one-job-at-a-time guard greyed out every button on the first paying
+store's setup day until the lock was released by hand on Neon.
+
+The handoff recorded "maxJobExpiry default 4 h not overridden", and the brief
+asked for it at 30 minutes. graphile-worker 0.16.6 has no such option; the
+four hours are written into its SQL (`get_job`, `resetLockedAt`). So the lock
+is not left to expire. `worker/index.ts` handles SIGTERM and SIGINT itself
+(`noHandleSignals`), calls `runner.stop()` with a 25 s ceiling, and when a job
+is still running at the ceiling fails it back through the pool's
+`forcefulShutdown`, which clears the lock at once and lets graphile retry it
+with its backoff. Both signals are logged, and the process exits 0.
+`fly.toml` gains `kill_timeout = "30s"`: Fly's default is 5 s, which would
+have killed the worker long before the ceiling.
+
+The screens get their own rule for a row still left "running":
+`app/services/job-stale.ts`. A running row whose start and last progress
+write are both older than 30 minutes is presented as "stuck" with the
+sentence "Stuck, released: this job stopped without finishing, ..." and
+`liveJobFilter()` keeps it out of every guard. Both timestamps, not the start
+alone, so a long pass that is still writing progress never reads as stuck.
+Every guard and every loader that shows a JobRun goes through it; the list
+by file is in the PRD's amendments section.
+
+Tests: `job-stale.test.ts`, 11. This change was committed with
+`publish-prefs.test.ts` red (2 failures): its fake database understood
+`status.in` and not the OR filter the guard now sends, and the run before
+the commit had covered route and component tests only. The next commit
+teaches the fake the filter and adds two tests that drive the guard through
+the real route action (a stale row does not block, live progress does).
+Not observed: the signal path on a running Fly worker.
+
+### theme_scan records whether the theme has a Product node and a WebSite node (11 September 2026)
+
+`hasProductLd` and `hasWebSiteLd` join `organizationId` and `productId` in the
+`theme_scan` shop metafield, built by a pure `themeScanMirror()`. Both exclude
+this app's own nodes by the marker, for the reason `productNodes` already
+does: a scan that counts our output as the theme's switches our node off,
+and the next one switches it back on. Readers of `theme_scan`:
+`ai-visibility.liquid` (the only consumer of the value),
+`theme-scan.server.ts` (the writer), `metafields.server.ts` (the
+definition), `worker/tasks.ts` (a comment). Tests:
+`theme-scan.mirror.test.ts`, 9, both values of each flag.
+
+### Extend mode emits the complete node when the theme has none (11 September 2026)
+
+Until now extend mode held its Product node back whenever the theme's node
+had no @id - including when the theme had no Product node at all, which left
+such a page with none and made the merchant switch to Full by hand after the
+developer removed the theme's schema. The block now reads `hasProductLd`: a
+theme node with an @id, a theme node without one (held back, B33), or no
+theme node (the complete node, as full mode emits it). A `theme_scan` written
+before the flag existed has neither true nor false and holds back, because
+guessing "no theme node" on Shella would print the second complete node.
+`deriveMissingReasons` follows the same cases, and both its construction
+sites pass the theme's side.
+
+Tests: a liquidjs harness renders the whole block
+(`storefront-head.liquid.test.ts`, 7 at this commit), counting our Product
+nodes and reading the @id in each case. Full suite 73 files, 1,434 tests. A
+TypeError on scan results without `emitters` surfaced in the SEO route test
+and was fixed before the commit.
+
+### One WebSite node (11 September 2026)
+
+Our WebSite node went out on the home page beside the theme's, carried no
+marker, and the SEO screen reported the pair as "unknown source". It now
+carries the marker and goes out only when `hasWebSiteLd` is false. The
+conflicts card and the findings list share `conflictSentence()`: a pair with
+ours says so and that it disappears after the next scan; a pair with neither
+marked says the read predates the marker. A WebSite pair no longer tells the
+merchant to switch to Extend mode, which concerns Product only. Tests:
+`conflict-sentence.test.ts`, 5; four WebSite render tests.
+
+### What the app wrote, visible on the page (11 September 2026)
+
+Every AI reader reads rendered text, and none of this app's three outputs was
+rendered text. `blocks/ai-visibility-content.liquid` is a new app embed
+(target body): on product pages the heading, the summary, the facts as a
+`<dl>` in stored order, "Suits: ...", the questions one level below the
+heading, and links to the plain-text page and llms.txt; on collection pages
+the summary, the criteria, the questions and the comparison table. Every
+value through `escape`. Inline styles are spacing, a max-width and the facts
+list's two columns; no font, no colour, no script. It renders nothing unless a
+switched-on part has content, so a product with nothing to say gets no box
+and no heading.
+
+`blocks/product-content.liquid`, "AI Visibility details", is the same content
+as a block the merchant places. The embed cannot detect it, so it gains "I
+placed the content block myself; hide the automatic one", which empties it on
+product pages and leaves only the questions on collection pages, where the
+comparison block shows the rest. SUPPORT.md says how. The markup exists once,
+in `snippets/ai-visibility-content.liquid`; the comparison table moved into
+`snippets/ai-visibility-table.liquid`, shared with the comparison block, which
+keeps its borders and now escapes its cells.
+
+Tests: `storefront-content.liquid.test.ts`, rendered through liquidjs: order,
+escaping, the empty rule, the settings, the placeable block producing the
+embed's markup byte for byte, the comparison block unchanged. Not observed on
+a store.
+
+### Structured data describes only what the page shows (11 September 2026)
+
+Google: "Don't mark up content that is not visible to readers of the page"
+(https://developers.google.com/search/docs/appearance/structured-data/sd-policies).
+The head block marked up the summary, the facts and the questions whatever
+the page showed, and it cannot see the content blocks' settings. So FAQPage
+left `ai-visibility.liquid` entirely, for products and collections, and the
+content snippet emits it right after the questions it describes, only when
+they are shown. The complete Product node takes the theme's own description,
+truncated as before, and carries no `additionalProperty`. The extend fragment
+carried summary, audience and facts and nothing else, so it is gone, and on a
+theme with its own Product node the page carries that node alone. The
+CollectionPage node takes the collection's own description and drops the
+criteria. `deriveMissingReasons` gained two reasons (the theme's node stands;
+waiting for a theme read) and retired "extend mode has nothing to add" to the
+legacy table; B33's how-to no longer promises details in the description.
+`check-liquid-json.mjs` now also renders the snippet's nodes: 7 nodes, 1,036
+combinations, all valid. Four tests that pinned the old behaviour were
+rewritten, each with the reason in a comment. Full suite 75 files, 1,474
+tests.
+
+### read-ld-visible: our JSON-LD against the page's visible text (11 September 2026)
+
+`scripts/read-ld-visible.ts <shop> [N]`, read only: N product pages through
+the page read's own fetcher, every string in our marked nodes compared with
+the body's visible text, counts with denominators, URL values counted apart,
+the first 20 misses with handle, node type and key. Not yet run on a store.
+
+### B34, the delivery counter (11 September 2026)
+
+"Delivered" was a claim. B34 is raised when a page read finds
+`class="ai-visibility-content"`, counted and never judged, over the pages
+read like every page check. The SEO screen, the merchant SEO dashboard and the
+Report screen say "Visible on the page: N of M eligible products". Two tests
+had the page-side check count at 32 and now say 33, deliberately; the
+counting-codes list in `seo-practice.test.ts` gained B34. Merchant text checked
+against the forbidden list in `seo-b34.test.ts`. Full suite 76 files, 1,482
+tests.
+
+### The crawler check by family (11 September 2026)
+
+The check tested eight agents without saying what each is for. It now
+groups them, with each vendor's purpose quoted and the page in a code
+comment: training (GPTBot, ClaudeBot, Google-Extended, CCBot), search index
+(OAI-SearchBot, Claude-SearchBot, PerplexityBot, Googlebot, Bingbot), user
+fetch (ChatGPT-User, Claude-User, Perplexity-User). Per family: allowed by
+robots.txt, page returned 200, visible block in the response. A blocked
+training crawler gets one sentence: "This crawler collects pages that train
+the model. Blocking it means the model will not learn your products from
+your own site." Six agents added, none removed. Google-Extended is a
+robots.txt token and is asked of robots.txt only. Bing's crawler page renders
+client-side and could not be quoted; its line says so. A refusal of
+Googlebot or Bingbot says that a firewall checking their addresses refuses
+our test and not necessarily them. The Report screen's search-engine note was
+rewritten to stay true. One test changed deliberately: CCBot's user agent has
+no "Mozilla" prefix. Tests: `crawler-families.test.ts`. Full suite 77 files,
+1,496 tests.
+
+### What stays at uninstall, and the refund answer (11 September 2026)
+
+SUPPORT.md and PRIVACY.md say in one paragraph what stays (attributes,
+summaries, tables, meta titles and descriptions, alt text: metafields and
+fields in the store) and what stops (the visible blocks, the structured data
+block, the plain-text pages, llms.txt, agents.md). The refund answer stated a
+14-day policy nobody had decided; it now says billing runs through Shopify
+and that we answer within two working days. The policy is Marius's call.
+
+### A theme file for the developer, as copy text (11 September 2026)
+
+Behind the operator key, Diagnostics shows `templates/agents.md.liquid`,
+which Shopify also serves as /llms.txt, pointing at the app's live index and
+listing the UCP fields. The app never writes it. No robots.txt fragment:
+Shopify's default blocks no AI crawler. Tests: `theme-templates.test.ts`, the
+body line for line.
+
 ### The app embed's "enabled" default stays, and why (11 September 2026)
 
 Asked on 11 September: drop `"default": true` from the "enabled" setting of
