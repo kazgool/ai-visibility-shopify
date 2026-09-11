@@ -11,6 +11,7 @@
 
 import type { Fact } from "./extract";
 import { cleanOutput, stripTags } from "./normalize";
+import { phrases, type Language, type Phrases } from "./phrases";
 
 export type CollectionMember = {
   id: string;
@@ -27,6 +28,8 @@ export type CollectionInput = {
   maxColumns?: number;
   /** Rows in the comparison table. A 400-row table helps nobody. */
   maxRows?: number;
+  /** The shop's content language (phrases.ts). Absent is English. */
+  language?: Language | null;
 };
 
 export type ComparisonTable = {
@@ -172,11 +175,11 @@ function firstSentence(text: string, maxWords: number): string {
   return words.length <= maxWords ? sentence : `${words.slice(0, maxWords).join(" ")}...`;
 }
 
-function listValues(values: string[], max = 4): string {
+function listValues(values: string[], max: number, p: Phrases): string {
   const shown = values.slice(0, max);
   const rest = values.length - shown.length;
   const joined = shown.join(", ");
-  return rest > 0 ? `${joined} and ${rest} more` : joined;
+  return rest > 0 ? p.andMore(joined, rest) : joined;
 }
 
 /**
@@ -185,6 +188,7 @@ function listValues(values: string[], max = 4): string {
  */
 export function buildCollectionSummary(input: CollectionInput): string {
   const count = input.products.length;
+  const p = phrases(input.language);
   const parts: string[] = [];
 
   const opener = firstSentence(input.descriptionHtml ?? "", 40);
@@ -192,11 +196,7 @@ export function buildCollectionSummary(input: CollectionInput): string {
     parts.push(opener.endsWith(".") ? opener : `${opener}.`);
   }
 
-  parts.push(
-    count === 1
-      ? `${input.title} has 1 product.`
-      : `${input.title} has ${count} products.`,
-  );
+  parts.push(p.collectionCount(input.title, count));
 
   const labels = comparableLabels(input.products, input.maxColumns ?? 5);
   const values = valuesByLabel(input.products);
@@ -205,10 +205,10 @@ export function buildCollectionSummary(input: CollectionInput): string {
   // reads as twenty different sizes is often five sizes seen four times.
   const clauses = labels
     .slice(0, 3)
-    .map((label) => `${label.toLowerCase()}: ${listValues(values.get(label) ?? [])}`);
+    .map((label) => `${label.toLowerCase()}: ${listValues(values.get(label) ?? [], 4, p)}`);
 
   if (clauses.length > 0) {
-    parts.push(`They differ by ${clauses.join("; ")}.`);
+    parts.push(p.collectionDiffer(clauses.join("; ")));
   }
 
   return cleanOutput(parts.join(" "));
@@ -223,8 +223,9 @@ export function buildCollectionCriteria(input: CollectionInput): string[] {
   const labels = comparableLabels(input.products, input.maxColumns ?? 5);
   const values = valuesByLabel(input.products);
 
+  const p = phrases(input.language);
   return labels.map((label) =>
-    cleanOutput(`${label}: ${listValues(values.get(label) ?? [], 6)}`),
+    cleanOutput(`${label}: ${listValues(values.get(label) ?? [], 6, p)}`),
   );
 }
 
@@ -235,15 +236,12 @@ export function buildCollectionQuestions(
   const labels = comparableLabels(input.products, input.maxColumns ?? 5);
   const values = valuesByLabel(input.products);
   const out: { q: string; a: string }[] = [];
+  const p = phrases(input.language);
 
   if (input.products.length > 0) {
     out.push({
-      q: `How many products are in ${input.title}?`,
-      a: cleanOutput(
-        input.products.length === 1
-          ? "1 product."
-          : `${input.products.length} products.`,
-      ),
+      q: p.qCollectionCount(input.title),
+      a: cleanOutput(p.aCollectionCount(input.products.length)),
     });
   }
 
@@ -251,8 +249,8 @@ export function buildCollectionQuestions(
     const list = values.get(label) ?? [];
     if (list.length === 0) continue;
     out.push({
-      q: `What ${label.toLowerCase()} options are there in ${input.title}?`,
-      a: cleanOutput(`${listValues(list, 6)}.`),
+      q: p.qCollectionOptions(label.toLowerCase(), input.title),
+      a: cleanOutput(`${listValues(list, 6, p)}.`),
     });
   }
 

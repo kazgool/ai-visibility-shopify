@@ -22,15 +22,15 @@ type Dump = { which: string; lang: string; business: boolean; products: Row[] };
 // wording of every template the engine has emitted, so a before and an after
 // in different languages are counted against the same names.
 const TEMPLATES: [string, RegExp][] = [
-  ["price", /^How much does .* cost\?$|^Cât costă .*\?$/],
+  ["price", /^How much does .* cost\?$/],
   ["delivery", /^How long does delivery take for |^În cât timp se livrează /],
   ["returns", /^Can I return |^Pot returna /],
   ["warranty", /^What warranty does |^Ce garanție are /],
   ["payment", /^How can I pay\?$|^Cum pot plăti\?$/],
-  ["material", / made of\?$|^Din ce este făcut /],
+  ["material", / made of\?$|^Ce material are /],
   ["dimensions", /^What are the dimensions of |^Ce dimensiuni are /],
-  ["seats", /^How many people does .* seat\?$|^Câte persoane /],
-  ["includes-or-seats", / include or seat\?$|^Ce include sau câte locuri /],
+  ["seats", /^How many people does .* seat\?$|^Câte locuri are /],
+  ["includes-or-seats", / include or seat\?$|^Ce include sau câte locuri are /],
   ["includes", /^What does .* include\?$|^Ce include /],
   ["room", /^Where is .* used\?$|^Unde se folosește /],
   ["generic", /^What .+ does .+ have\?$|^Ce .+ are .+\?$/],

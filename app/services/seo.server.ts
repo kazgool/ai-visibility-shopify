@@ -16,7 +16,7 @@
 
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE, ENGINE_VERSION, parseState, type ProductState } from "./facts.server";
-import type { Fact } from "../engine";
+import type { Fact, Language } from "../engine";
 import { buildMetaTitle, buildMetaDescription, type MetaInput } from "../engine/meta";
 import { cleanOutput } from "../engine/normalize";
 import { computeTermGap, type TermGapRow } from "../engine/term-gap";
@@ -391,6 +391,9 @@ export function buildSeoQueue(
   products: SeoQueueProduct[],
   shopName: string | null,
   stopwords: Set<string>,
+  /** The shop's content language, for the description's connective
+   * (engine/phrases.ts). Absent is English. */
+  language?: Language | null,
 ): SeoQueue {
   const rows: SeoQueueRow[] = [];
   const protectedRows: SeoProtectedRow[] = [];
@@ -463,6 +466,7 @@ export function buildSeoQueue(
       facts: product.facts ?? [],
       vendor: product.vendor ?? null,
       shopName,
+      language,
     };
 
     const titleSuggestion = canProposeTitle ? buildMetaTitle(metaInput) || null : null;

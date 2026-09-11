@@ -30,6 +30,7 @@ import {
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
 import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
+import { contentLanguageFor } from "../services/business.server";
 import { describeFinding, findingsForProduct } from "../services/seo-aggregate";
 import { checkMetaFields } from "../services/seo-scan";
 import { CHECK_METHOD } from "../services/seo-findings";
@@ -226,6 +227,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     facts,
     vendor: product.vendor ?? null,
     shopName,
+    // The same language the bulk queue writes in (item 5).
+    language: shop ? (await contentLanguageFor(shop.id)).language : ("en" as const),
   };
   const titleSuggestion = buildMetaTitle(metaInput);
   const descriptionSuggestion = buildMetaDescription(metaInput);

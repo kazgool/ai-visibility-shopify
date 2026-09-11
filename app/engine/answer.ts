@@ -14,6 +14,7 @@
 
 import type { Fact } from "./extract";
 import { cleanOutput } from "./normalize";
+import { ADMIN_PREVIEW, isMaterialQuestion } from "./phrases";
 
 export type AnswerInput = {
   title: string;
@@ -58,9 +59,7 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
   const size = labelled(facts, ["dimensions", "dimensiuni", "size", "marime"]);
   const colour = labelled(facts, ["colour", "color", "culoare"]);
 
-  const question = material
-    ? `What is ${title} made of, and what size is it?`
-    : `Tell me about ${title}.`;
+  const question = material ? ADMIN_PREVIEW.qMaterialAndSize(title) : ADMIN_PREVIEW.qTellMe(title);
 
   const parts: string[] = [];
   const sources: string[] = [];
@@ -72,7 +71,7 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
 
   const details: string[] = [];
   if (material) {
-    details.push(`made of ${material.v}`);
+    details.push(ADMIN_PREVIEW.madeOf(material.v));
     sources.push(material.k);
   }
   if (size) {
@@ -80,11 +79,11 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
     sources.push(size.k);
   }
   if (colour) {
-    details.push(`in ${colour.v}`);
+    details.push(ADMIN_PREVIEW.inColour(colour.v));
     sources.push(colour.k);
   }
   if (details.length > 0 && !input.summary) {
-    parts.push(cleanOutput(`${title} is ${details.join(", ")}.`));
+    parts.push(cleanOutput(ADMIN_PREVIEW.is(title, details.join(", "))));
   }
 
   // A published answer to a real buyer question is the strongest evidence
@@ -94,7 +93,8 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
   const said = parts.join(" ").toLowerCase();
   const extra = (input.questions ?? []).find((qa) => {
     if (!qa.a || qa.a.trim() === "") return false;
-    if (qa.q.toLowerCase().includes("made of")) return false;
+    // The material question in either content language (phrases.ts).
+    if (isMaterialQuestion(qa.q)) return false;
     const answer = qa.a.replace(/\.$/, "").trim().toLowerCase();
     return answer !== "" && !said.includes(answer);
   });
@@ -111,9 +111,7 @@ export function buildAnswerPreview(input: AnswerInput): AnswerPreview | null {
   const bare = input.price
     ? `${title}, ${input.price}${input.currency ? ` ${input.currency}` : ""}.`
     : `${title}.`;
-  const withoutApp = cleanOutput(
-    `${bare} No stated material, size or colour an assistant could compare.`,
-  );
+  const withoutApp = cleanOutput(ADMIN_PREVIEW.withoutApp(bare));
 
   return {
     question,

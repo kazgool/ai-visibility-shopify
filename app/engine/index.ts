@@ -20,6 +20,7 @@ export type { ProductLike } from "./types";
 export {
   buildSummary,
   buildQuestions,
+  MAX_QUESTIONS,
   warrantyWithUnit,
   buildFitFor,
   orderFacts,
@@ -28,6 +29,15 @@ export {
   type QA,
 } from "./summary";
 export { buildMetaTitle, buildMetaDescription, type MetaInput } from "./meta";
+export {
+  phrases,
+  PHRASES,
+  LANGUAGES,
+  roCount,
+  isMaterialQuestion,
+  type Language,
+  type Phrases,
+} from "./phrases";
 export {
   computeTermGap,
   extractTerms,

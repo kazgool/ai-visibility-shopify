@@ -4,31 +4,39 @@
 // sentence is assembled from things the merchant already wrote or from facts
 // the dictionary extracted, so nothing can be hallucinated into a product page.
 //
-// The rule that matters most, carried from the WordPress module: an assistant
-// answers with the sentence it can lift. If the price exists only in markup,
-// the answer becomes "contact them for pricing"; if it is in the prose, the
-// answer is "Model X, 3000 RON". So commercials go in the capsule text.
+// The price is not in here any more. The rule carried from the WordPress
+// module was that an assistant answers with the sentence it can lift, so the
+// price went into the capsule text and a "how much" question went into the
+// list. Removed on 11 September 2026 (CC-PROMPT-AI-READABILITY-2 item 5c): the
+// page and the Product node's offers carry the live price, and a price frozen
+// into generated text is wrong at the first sale - Ashwagandha read 81.01 in
+// our text and 98.80 lei on its own page the same day. The business answers
+// stay: they are the merchant's standing policy, not a figure a sale changes.
+//
+// Every fixed phrase comes from phrases.ts, in the shop's content language.
 
 import type { Fact } from "./extract";
+import { isInstructionValue } from "./extract";
 import { stripTags, cleanOutput } from "./normalize";
+import { phrases, type Language } from "./phrases";
 
-/**
- * Shop-level commercial answers, set once by the merchant (WP 1.6.7 port).
- * Every field is optional and a question is only asked when its answer is
- * real - a policy nobody filled in produces nothing, never a placeholder.
- */
 /**
  * Warranty is always stated in months. A merchant who types "24" means 24
  * months, and publishing the bare number leaves an assistant unable to tell
  * months from years - the only thing the buyer wanted to know. A value written
  * in words already carries its unit and is returned untouched.
  */
-export function warrantyWithUnit(warranty: string): string {
+export function warrantyWithUnit(warranty: string, language?: Language | null): string {
   const trimmed = warranty.trim();
   if (!/^\d+$/.test(trimmed)) return trimmed;
-  return trimmed === "1" ? "1 month" : `${trimmed} months`;
+  return phrases(language).months(Number(trimmed));
 }
 
+/**
+ * Shop-level commercial answers, set once by the merchant (WP 1.6.7 port).
+ * Every field is optional and a question is only asked when its answer is
+ * real - a policy nobody filled in produces nothing, never a placeholder.
+ */
 export type BusinessInfo = {
   /** e.g. "2-4 working days". Left empty when it varies by product. */
   deliveryTime?: string;
@@ -50,6 +58,9 @@ export type CapsuleInput = {
   title: string;
   descriptionHtml?: string | null;
   facts: Fact[];
+  /** Not read by buildSummary or buildQuestions since the price left the
+   * generated text (see the top of this file). Kept because the callers
+   * build one input for the capsule and the mirror. */
   price?: string | null;
   currency?: string | null;
   available?: boolean;
@@ -57,6 +68,9 @@ export type CapsuleInput = {
   productType?: string | null;
   maxWords?: number;
   business?: BusinessInfo | null;
+  /** The language the summary and questions are written in. Absent is
+   * English, which is what every store had before it existed. */
+  language?: Language | null;
 };
 
 /** Labels that describe what a thing *is*, in the order they read naturally. */
@@ -90,36 +104,26 @@ function firstSentence(text: string, maxWords: number): string {
 }
 
 /**
- * A self-contained paragraph an assistant can quote whole: what it is, what
- * it is made of, and what it costs.
+ * A self-contained paragraph an assistant can quote whole: what it is and
+ * what it is made of.
  */
 export function buildSummary(input: CapsuleInput): string {
   const maxWords = input.maxWords ?? 80;
+  const p = phrases(input.language);
   const parts: string[] = [];
   // Imported titles carry entities; every sentence we build from one must not.
-  input = { ...input, title: cleanOutput(input.title) };
+  const title = cleanOutput(input.title);
 
   const opener = firstSentence(input.descriptionHtml ?? "", 40);
   if (opener) {
     parts.push(opener.endsWith(".") ? opener : `${opener}.`);
   } else {
-    const what = input.productType ? `${input.productType}` : "product";
-    parts.push(`${input.title} is a ${what}.`);
+    parts.push(input.productType ? p.isA(title, input.productType) : p.isAProduct(title));
   }
 
   const ordered = orderFacts(input.facts).slice(0, 4);
   if (ordered.length > 0) {
-    const clauses = ordered.map((f) => `${f.k.toLowerCase()}: ${f.v}`);
-    parts.push(`Key details: ${clauses.join("; ")}.`);
-  }
-
-  // Commercials in the sentence, not only in the markup.
-  if (input.price) {
-    const price = `${input.price}${input.currency ? ` ${input.currency}` : ""}`;
-    const availability =
-      input.available === false ? ", currently out of stock" : "";
-    const brand = input.vendor ? ` from ${input.vendor}` : "";
-    parts.push(`Priced at ${price}${brand}${availability}.`);
+    parts.push(p.keyDetails(ordered.map((f) => `${f.k.toLowerCase()}: ${f.v}`).join("; ")));
   }
 
   const text = cleanOutput(parts.join(" "));
@@ -129,77 +133,81 @@ export function buildSummary(input: CapsuleInput): string {
 
 export type QA = { q: string; a: string };
 
+/** Questions per product, across all three kinds (item 5d). */
+export const MAX_QUESTIONS = 6;
+
+/**
+ * Labels the specific templates below own, under every alias they answer to.
+ * None of them gets the generic question as well: "capacity" beside "seats"
+ * is deliberately left unasked, and a second "fabric" question beside
+ * "material" would ask the same thing twice.
+ */
+const SPECIFIC_LABELS = new Set([
+  "material", "materials", "fabric",
+  "dimensions", "dimensiuni", "size",
+  "seats", "locuri",
+  "includes", "continut", "set",
+  "capacity", "capacitate",
+  "room", "camera", "occasion",
+]);
+
 /**
  * The questions people actually ask an assistant, answered from the facts we
  * hold. A question without a real answer is never emitted.
+ *
+ * Order (item 5d): the label-specific templates, then one generic question per
+ * other label in orderFacts order, then the business questions; at most
+ * MAX_QUESTIONS in all.
  */
 export function buildQuestions(input: CapsuleInput): QA[] {
+  const p = phrases(input.language);
   // "What is Set Masa &amp; 6 Scaune made of?" is the exact failure the
   // plain-characters rule exists for; clean the title once, at the top.
-  input = { ...input, title: cleanOutput(input.title) };
+  const title = cleanOutput(input.title);
   const out: QA[] = [];
   const byLabel = new Map(input.facts.map((f) => [f.k.toLowerCase(), f]));
 
   const material =
     byLabel.get("material") ?? byLabel.get("materials") ?? byLabel.get("fabric");
-  if (material) {
-    out.push({
-      q: `What is ${input.title} made of?`,
-      a: `${material.v}.`,
-    });
-  }
+  if (material) out.push({ q: p.qMaterial(title), a: `${material.v}.` });
 
   const size =
     byLabel.get("dimensions") ?? byLabel.get("dimensiuni") ?? byLabel.get("size");
-  if (size) {
-    out.push({
-      q: `What are the dimensions of ${input.title}?`,
-      a: `${size.v}.`,
-    });
-  }
+  if (size) out.push({ q: p.qDimensions(title), a: `${size.v}.` });
 
   // Seats (people/places) and set contents (6 chairs) are different facts.
   // The presets keep them under separate labels; each gets its own question.
   const seats = byLabel.get("seats") ?? byLabel.get("locuri");
-  if (seats) {
-    out.push({
-      q: `How many people does ${input.title} seat?`,
-      a: `${seats.v}.`,
-    });
-  }
+  if (seats) out.push({ q: p.qSeats(title), a: `${seats.v}.` });
 
   const includes = byLabel.get("includes") ?? byLabel.get("continut") ?? byLabel.get("set");
-  if (includes) {
-    out.push({
-      q: `What does ${input.title} include?`,
-      a: `${includes.v}.`,
-    });
-  }
+  if (includes) out.push({ q: p.qIncludes(title), a: `${includes.v}.` });
 
   // A merchant's own dictionary may still use one combined "Capacity" label;
   // stay neutral there rather than guess which meaning they intended.
   const capacity = byLabel.get("capacity") ?? byLabel.get("capacitate");
   if (capacity && !seats && !includes) {
-    out.push({
-      q: `What does ${input.title} include or seat?`,
-      a: `${capacity.v}.`,
-    });
-  }
-
-  if (input.price) {
-    out.push({
-      q: `How much does ${input.title} cost?`,
-      a: `${input.price}${input.currency ? ` ${input.currency}` : ""}${
-        input.available === false ? ", currently out of stock" : ""
-      }.`,
-    });
+    out.push({ q: p.qIncludesOrSeats(title), a: `${capacity.v}.` });
   }
 
   const room = byLabel.get("room") ?? byLabel.get("camera") ?? byLabel.get("occasion");
-  if (room) {
+  if (room) out.push({ q: p.qRoom(title), a: `${room.v}.` });
+
+  // Every other label the merchant's dictionary produced, in its own words:
+  // on a 26-group food dictionary the specific templates above match nothing,
+  // and the list used to be the same four commerce questions on every
+  // product. Skipped: a value that is a dose or an instruction to the buyer
+  // (isInstructionValue, the two contexts extract.ts already treats apart),
+  // because "3 capsule zilnic" is a dosage and not an answer to lift.
+  const asked = new Set<string>();
+  for (const fact of orderFacts(input.facts)) {
+    const key = fact.k.toLowerCase();
+    if (SPECIFIC_LABELS.has(key) || asked.has(key)) continue;
+    if (isInstructionValue(fact.v)) continue;
+    asked.add(key);
     out.push({
-      q: `Where is ${input.title} used?`,
-      a: `${room.v}.`,
+      q: p.qGeneric(cleanOutput(fact.k).toLowerCase(), title),
+      a: cleanOutput(`${fact.v}.`),
     });
   }
 
@@ -211,19 +219,12 @@ export function buildQuestions(input: CapsuleInput): QA[] {
   if (b) {
     if (b.deliveryTime && !b.deliveryVaries) {
       out.push({
-        q: `How long does delivery take for ${input.title}?`,
-        a: cleanOutput(
-          b.deliveryCost
-            ? `${b.deliveryTime}. Delivery costs ${b.deliveryCostIsFrom ? "from " : ""}${b.deliveryCost}.`
-            : `${b.deliveryTime}.`,
-        ),
+        q: p.qDelivery(title),
+        a: cleanOutput(p.aDelivery(b.deliveryTime, b.deliveryCost || null, Boolean(b.deliveryCostIsFrom))),
       });
     }
     if (typeof b.returnDays === "number" && b.returnDays > 0) {
-      out.push({
-        q: `Can I return ${input.title}?`,
-        a: `Yes, within ${b.returnDays} days.`,
-      });
+      out.push({ q: p.qReturns(title), a: p.aReturns(b.returnDays) });
     }
     // A bare number is the most common way this gets filled in, and "warranty:
     // 12" tells an assistant nothing - months or years is exactly the part that
@@ -231,19 +232,16 @@ export function buildQuestions(input: CapsuleInput): QA[] {
     // the unit. Anything the merchant wrote in words is left untouched.
     if (b.warranty) {
       out.push({
-        q: `What warranty does ${input.title} have?`,
-        a: cleanOutput(`${warrantyWithUnit(b.warranty)}.`),
+        q: p.qWarranty(title),
+        a: cleanOutput(`${warrantyWithUnit(b.warranty, input.language)}.`),
       });
     }
     if (b.paymentMethods) {
-      out.push({
-        q: "How can I pay?",
-        a: cleanOutput(`${b.paymentMethods}.`),
-      });
+      out.push({ q: p.qPayment(), a: cleanOutput(`${b.paymentMethods}.`) });
     }
   }
 
-  return out.slice(0, 8);
+  return out.slice(0, MAX_QUESTIONS);
 }
 
 /**

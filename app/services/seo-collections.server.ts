@@ -21,6 +21,7 @@
 
 import type { GraphqlFn } from "./admin.server";
 import { buildMetaDescription, buildMetaTitle, type MetaInput } from "../engine/meta";
+import type { Language } from "../engine/phrases";
 import { stripTags } from "../engine/normalize";
 import { ENGINE_VERSION, NAMESPACE, parseState, type ProductState } from "./facts.server";
 import type { CollectionNode } from "./collections.server";
@@ -188,7 +189,11 @@ export type CollectionSeoQueue = {
  * earlier pass is left alone here, because regenerating an existing auto value
  * is an explicit action and never a silent bulk rewrite.
  */
-export function buildCollectionSeoQueue(collections: CollectionNode[]): CollectionSeoQueue {
+export function buildCollectionSeoQueue(
+  collections: CollectionNode[],
+  /** The shop's content language (engine/phrases.ts). Absent is English. */
+  language?: Language | null,
+): CollectionSeoQueue {
   const rows: CollectionQueueRow[] = [];
   const protectedRows: CollectionProtectedRow[] = [];
   const findings: CollectionFinding[] = [];
@@ -263,6 +268,7 @@ export function buildCollectionSeoQueue(collections: CollectionNode[]): Collecti
       title: collection.title,
       descriptionHtml: collection.descriptionHtml,
       facts: [],
+      language,
     };
 
     const titleSuggestion = canProposeTitle

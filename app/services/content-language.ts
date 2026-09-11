@@ -23,9 +23,13 @@
 //
 // Pure: the Admin call is injected, so this module imports nothing server-side.
 
-export type ContentLanguage = "en" | "ro";
+import { LANGUAGES, type Language } from "../engine/phrases";
 
-export const CONTENT_LANGUAGES: readonly ContentLanguage[] = ["en", "ro"];
+/** The engine's own list (phrases.ts): one place decides which languages the
+ * app writes, and a language with no phrases cannot be chosen. */
+export type ContentLanguage = Language;
+
+export const CONTENT_LANGUAGES: readonly ContentLanguage[] = LANGUAGES;
 
 export const CONTENT_LANGUAGE_NAMES: Record<ContentLanguage, string> = {
   en: "English",

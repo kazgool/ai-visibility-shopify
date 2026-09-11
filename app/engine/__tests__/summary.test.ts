@@ -24,8 +24,13 @@ describe("buildSummary", () => {
     expect(summary).toContain("Masa are blatul din PAL Laminat");
   });
 
-  it("states the price in the sentence, not only in markup", () => {
-    expect(summary).toContain("1050.00 USD");
+  // Changed deliberately, 11 September 2026 (CC-PROMPT-AI-READABILITY-2 5c):
+  // this test used to require the price in the sentence. The page and the
+  // Product node's offers carry the live price; a price frozen into
+  // generated text is wrong at the first sale.
+  it("carries no price: the page and the offer state the live one", () => {
+    expect(summary).not.toContain("1050.00");
+    expect(summary).not.toMatch(/Priced at|USD/);
   });
 
   it("carries the comparable attributes", () => {
@@ -50,8 +55,9 @@ describe("buildQuestions", () => {
     expect(qa.some((q) => /made of/i.test(q.q))).toBe(true);
   });
 
-  it("answers how much it costs", () => {
-    expect(qa.some((q) => /cost/i.test(q.q) && q.a.includes("1050.00"))).toBe(true);
+  // Changed deliberately with the summary test above: no price question.
+  it("asks no price question", () => {
+    expect(qa.some((q) => /cost|1050/i.test(`${q.q} ${q.a}`))).toBe(false);
   });
 
   it("never emits a question without an answer", () => {

@@ -66,6 +66,7 @@ import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/service
 import { crawlerHitCutoff } from "../app/services/retention";
 import { describeGraphqlError } from "../app/services/graphql-errors";
 import { beatingGraphql, createHeartbeat } from "../app/services/job-heartbeat";
+import { contentLanguageFor } from "../app/services/business.server";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -1411,6 +1412,8 @@ export const bulk_collections: Task = async (payload, helpers) => {
 
     const collections = await fetchCollections(graphql);
     const prefs = await prefsFor(shopId);
+    // The capsules are written in the shop's content language (item 5).
+    const { language } = await contentLanguageFor(shopId);
 
     if (jobRunId) {
       await db.jobRun.update({
@@ -1422,7 +1425,7 @@ export const bulk_collections: Task = async (payload, helpers) => {
     const outcomes = [];
     for (let i = 0; i < collections.length; i += 5) {
       const batch = collections.slice(i, i + 5);
-      outcomes.push(...(await writeCollections(graphql, batch, prefs)));
+      outcomes.push(...(await writeCollections(graphql, batch, prefs, language)));
       if (jobRunId) {
         await db.jobRun.update({
           where: { id: jobRunId },

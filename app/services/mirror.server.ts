@@ -5,8 +5,8 @@
 // (ARCHITECTURE §3). A crawler that cannot parse a themed page can still read
 // this.
 
-import type { BusinessInfo, Fact } from "../engine";
-import { warrantyWithUnit } from "../engine";
+import type { BusinessInfo, Fact, Language } from "../engine";
+import { phrases, warrantyWithUnit } from "../engine";
 import { cleanOutput } from "../engine/normalize";
 import type { SocialProfiles } from "./social-profiles";
 import { SOCIAL_PLATFORMS } from "./social-profiles";
@@ -51,6 +51,11 @@ export type MirrorInput = {
   // "which collections is this in" answer, rendered as links to the
   // storefront collection pages. Collections have no mirror of their own.
   collections?: { title: string; url: string }[] | null;
+  /** Headings and row labels follow the shop's content language, the same as
+   * the summary and questions above them (engine/phrases.ts). Absent is
+   * English. The front matter's keys and values stay English: they are
+   * field names for a parser, not text for a reader. */
+  language?: Language | null;
 };
 
 function yamlEscape(value: string): string {
@@ -67,6 +72,7 @@ export function renderMirror(raw: MirrorInput): string {
     facts: raw.facts.map((f) => ({ k: cleanOutput(f.k), v: cleanOutput(f.v) })),
   };
   const lines: string[] = [];
+  const m = phrases(raw.language).mirror;
 
   lines.push("---");
   lines.push(`title: ${yamlEscape(input.title)}`);
@@ -98,7 +104,7 @@ export function renderMirror(raw: MirrorInput): string {
   }
 
   if (input.facts.length > 0) {
-    lines.push("| Attribute | Value |");
+    lines.push(m.attributeHeader);
     lines.push("| --- | --- |");
     for (const fact of input.facts) {
       lines.push(`| ${fact.k} | ${fact.v} |`);
@@ -107,14 +113,14 @@ export function renderMirror(raw: MirrorInput): string {
   }
 
   if (input.description) {
-    lines.push("## Description");
+    lines.push(m.description);
     lines.push("");
     lines.push(cleanOutput(input.description.replace(/<[^>]*>/g, " ")));
     lines.push("");
   }
 
   if (input.questions && input.questions.length > 0) {
-    lines.push("## Questions");
+    lines.push(m.questions);
     lines.push("");
     for (const qa of input.questions) {
       lines.push(`**${cleanOutput(qa.q)}**`);
@@ -125,7 +131,7 @@ export function renderMirror(raw: MirrorInput): string {
   }
 
   if (input.fitFor) {
-    lines.push("## Who it suits");
+    lines.push(m.whoItSuits);
     lines.push("");
     lines.push(cleanOutput(input.fitFor));
     lines.push("");
@@ -138,20 +144,22 @@ export function renderMirror(raw: MirrorInput): string {
   if (b) {
     const rows: [string, string][] = [];
     if (b.deliveryVaries) {
-      rows.push(["Delivery", "Varies by product, stated on each product page"]);
+      rows.push([m.delivery, m.deliveryVaries]);
     } else if (b.deliveryTime) {
-      rows.push(["Delivery", cleanOutput(b.deliveryTime)]);
+      rows.push([m.delivery, cleanOutput(b.deliveryTime)]);
     }
     if (b.deliveryCost) {
       const cost = cleanOutput(b.deliveryCost);
-      rows.push(["Delivery cost", b.deliveryCostIsFrom ? `From ${cost}` : cost]);
+      rows.push([m.deliveryCost, b.deliveryCostIsFrom ? m.from(cost) : cost]);
     }
-    if (b.returnDays) rows.push(["Returns", `${b.returnDays} days`]);
-    if (b.warranty) rows.push(["Warranty", cleanOutput(warrantyWithUnit(b.warranty))]);
-    if (b.paymentMethods) rows.push(["Payment", cleanOutput(b.paymentMethods)]);
+    if (b.returnDays) rows.push([m.returns, m.days(b.returnDays)]);
+    if (b.warranty) {
+      rows.push([m.warranty, cleanOutput(warrantyWithUnit(b.warranty, raw.language))]);
+    }
+    if (b.paymentMethods) rows.push([m.payment, cleanOutput(b.paymentMethods)]);
 
     if (rows.length > 0) {
-      lines.push("## Buying it");
+      lines.push(m.buyingIt);
       lines.push("");
       lines.push("| | |");
       lines.push("| --- | --- |");
@@ -161,7 +169,7 @@ export function renderMirror(raw: MirrorInput): string {
   }
 
   if (input.collections && input.collections.length > 0) {
-    lines.push("## Part of");
+    lines.push(m.partOf);
     lines.push("");
     for (const c of input.collections) {
       lines.push(`- [${cleanOutput(c.title)}](${c.url})`);
@@ -178,7 +186,7 @@ export function renderMirror(raw: MirrorInput): string {
       (v): v is string => !!v,
     );
     if (store.name || store.url || profileUrls.length > 0) {
-      lines.push("## Store");
+      lines.push(m.store);
       lines.push("");
       if (store.name) lines.push(cleanOutput(store.name));
       if (store.url) lines.push(store.url);
@@ -187,7 +195,7 @@ export function renderMirror(raw: MirrorInput): string {
     }
   }
 
-  lines.push(`Source: ${input.url}`);
+  lines.push(m.source(input.url));
   lines.push("");
 
   return lines.join("\n");

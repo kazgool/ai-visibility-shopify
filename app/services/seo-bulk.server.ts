@@ -31,6 +31,7 @@ import {
   type SeoQueueProduct,
 } from "./seo.server";
 import { beatingGraphql } from "./job-heartbeat";
+import { contentLanguageFor } from "./business.server";
 
 export async function runSeoQueueBuild(
   shopId: string,
@@ -101,7 +102,12 @@ export async function runSeoQueueBuild(
 
   if (options.onProgress) await options.onProgress(products.length, products.length);
 
-  return buildSeoQueue(queueProducts, shopInfo?.name ?? null, stopwordSet(extraStopwords));
+  return buildSeoQueue(
+    queueProducts,
+    shopInfo?.name ?? null,
+    stopwordSet(extraStopwords),
+    (await contentLanguageFor(shopId)).language,
+  );
 }
 
 export type SeoApplyItem = { productId: string; field: SeoKey; value: string };
@@ -249,7 +255,7 @@ export async function runCollectionSeoQueueBuild(
   const collections = await fetchCollections(graphql, 1);
   if (options.onProgress) await options.onProgress(collections.length, collections.length);
 
-  return buildCollectionSeoQueue(collections);
+  return buildCollectionSeoQueue(collections, (await contentLanguageFor(shopId)).language);
 }
 
 export type CollectionSeoApplyItem = { collectionId: string; field: SeoKey; value: string };

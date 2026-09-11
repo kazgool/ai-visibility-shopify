@@ -10,8 +10,12 @@
 import type { Fact } from "./extract";
 import { stripTags, cleanOutput } from "./normalize";
 import { orderFacts } from "./summary";
+import { phrases, type Language } from "./phrases";
 
 export type MetaInput = {
+  /** The connective in the description ("Key details:") follows the shop's
+   * content language (phrases.ts). Absent is English. */
+  language?: Language | null;
   title: string;
   descriptionHtml?: string | null;
   facts: Fact[];
@@ -156,7 +160,7 @@ export function buildMetaDescription(
   const facts = orderFacts(input.facts ?? []).slice(0, 3);
   if (facts.length > 0) {
     const clauses = facts.map((f) => `${f.k.toLowerCase()}: ${f.v}`);
-    parts.push(`Key details: ${clauses.join("; ")}.`);
+    parts.push(phrases(input.language).keyDetails(clauses.join("; ")));
   }
 
   const text = cleanOutput(parts.join(" "));

@@ -421,6 +421,16 @@ function isDoseTerm(base: string): boolean {
 }
 
 /**
+ * A fact value that is a dose ("3 capsule zilnic", DOSE_MARKERS) or opens
+ * like an instruction to the buyer (SERVING_LEADS), in any of its ", "
+ * parts. summary.ts asks no generic question about one: a dosage is not an
+ * answer an assistant should lift as the product's property.
+ */
+export function isInstructionValue(value: string): boolean {
+  return value.split(/,\s/).some((part) => isDoseTerm(part) || opensWithServingLead(part));
+}
+
+/**
  * A list of what a product was tested NOT to contain reads exactly like a
  * list of what it does contain. "Testata impotriva adaosurilor de zahar si
  * agenti de falsificare (glucoza, faina de cereale, amidon, gelatina si

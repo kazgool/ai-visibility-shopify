@@ -38,10 +38,15 @@ import { reconcileMirrors, type Reconciliation } from "./mirror-reconcile.server
 import { computeSourceA, type SourceAReport } from "./seo-scan.server";
 import { enqueue } from "./queue.server";
 import { renderMirror } from "./mirror.server";
-import { businessFor, saveShopLocale, type BusinessRecord } from "./business.server";
+import {
+  businessFor,
+  contentLanguageFor,
+  saveShopLocale,
+  type BusinessRecord,
+} from "./business.server";
 import { fetchShopLocale } from "./content-language";
 import { formatPrice } from "./price.server";
-import type { BusinessInfo } from "../engine";
+import type { BusinessInfo, Language } from "../engine";
 
 /**
  * The three companion fields, built from the same facts. Each is written only
@@ -51,6 +56,7 @@ function capsuleFields(
   product: ProductInput,
   facts: Fact[],
   business: BusinessInfo | null = null,
+  language: Language = "en",
 ): FieldValue[] {
   const input = {
     title: product.title,
@@ -62,6 +68,7 @@ function capsuleFields(
     vendor: product.vendor ?? null,
     productType: product.productType ?? null,
     business,
+    language,
   };
 
   const summary = buildSummary(input);
@@ -92,6 +99,7 @@ async function cacheMirror(
   // commercial answers the engine reads.
   business: BusinessRecord | null = null,
   shopInfo: ShopInfo | null = null,
+  language: Language = "en",
 ) {
   const handle = product.handle;
   if (!handle) return;
@@ -111,6 +119,7 @@ async function cacheMirror(
     vendor: product.vendor ?? null,
     productType: product.productType ?? null,
     business,
+    language,
   };
 
   // The mirror body must carry the store's public domain, not the
@@ -122,6 +131,7 @@ async function cacheMirror(
 
   const body = renderMirror({
     handle,
+    language,
     title: product.title,
     url: product.onlineStoreUrl ?? `${publicBase}/products/${handle}`,
     description: product.descriptionHtml ?? "",
@@ -353,6 +363,9 @@ export async function runBulkExtract(
     const storeLocale = await fetchShopLocale(graphql);
     if (storeLocale) await saveShopLocale(shopId, storeLocale);
   }
+  // Once per pass, after the store's language is known: every summary,
+  // question and mirror heading below is written in it.
+  const { language } = await contentLanguageFor(shopId);
 
   // The merchant's toggles widen or narrow the read itself: with unlisted
   // products excluded they are not read by the pass at all, which is what the
@@ -440,7 +453,7 @@ export async function runBulkExtract(
         batch.push({
           product,
           facts: split.productFacts,
-          fields: capsuleFields(product, split.productFacts, business),
+          fields: capsuleFields(product, split.productFacts, business, language),
         });
         if (batch.length >= 8) await flush();
       }
@@ -473,7 +486,7 @@ export async function runBulkExtract(
     // row one Admin round trip at a time - hundreds of jobs on a large store
     // to produce what the pass had in memory.
     if (!options.dryRun && eligibility(product, prefs) === "eligible") {
-      await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
+      await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo, language);
     }
 
     done += 1;
@@ -560,6 +573,7 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
+  const { language } = await contentLanguageFor(shopId);
   const shopInfo = isPublished ? await fetchShopInfo(graphql) : null;
   if (shopInfo) await saveShopInfo(shopId, shopInfo);
   const facts = extractProduct(product, dictionary, { extraStopwords });
@@ -587,12 +601,12 @@ export async function extractOneProduct(shopId: string, productGid: string) {
     {
       product,
       facts: split.productFacts,
-      fields: capsuleFields(product, split.productFacts, business),
+      fields: capsuleFields(product, split.productFacts, business, language),
     },
   ]);
 
   if (isPublished) {
-    await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo);
+    await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo, language);
     if (outcome.written.length > 0 && product.handle) {
       await pingProducts(shopId, shop.domain, [product.handle]);
     }

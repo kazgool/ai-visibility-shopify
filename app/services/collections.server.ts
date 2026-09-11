@@ -9,7 +9,7 @@
 // comparison table must show exactly what the product pages show, including
 // any value the merchant corrected by hand.
 
-import { buildCollectionCapsule, cleanOutput, type Fact } from "../engine";
+import { buildCollectionCapsule, cleanOutput, type Fact, type Language } from "../engine";
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE, ENGINE_VERSION } from "./facts.server";
 import { DEFAULT_PREFS, eligibility, type PublishPrefs } from "./eligibility";
@@ -213,6 +213,8 @@ export function eligibleMembers(
 export function buildForCollection(
   collection: CollectionNode,
   prefs: PublishPrefs = DEFAULT_PREFS,
+  /** The shop's content language (engine/phrases.ts). Absent is English. */
+  language: Language = "en",
 ) {
   const products = eligibleMembers(collection, prefs).map((p) => ({
     id: p.id,
@@ -225,6 +227,7 @@ export function buildForCollection(
     title: cleanOutput(collection.title),
     descriptionHtml: collection.descriptionHtml,
     products,
+    language,
   });
 }
 
@@ -236,13 +239,14 @@ export async function writeCollections(
   graphql: GraphqlFn,
   collections: CollectionNode[],
   prefs: PublishPrefs = DEFAULT_PREFS,
+  language: Language = "en",
 ): Promise<CollectionOutcome[]> {
   const outcomes: CollectionOutcome[] = [];
   const metafields: Record<string, unknown>[] = [];
   const deletions: Record<string, unknown>[] = [];
 
   for (const collection of collections) {
-    const capsule = buildForCollection(collection, prefs);
+    const capsule = buildForCollection(collection, prefs, language);
     // The members the table was built from, not every member the API
     // returned: reporting a count the table does not match is a number
     // without its denominator.
