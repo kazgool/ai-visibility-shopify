@@ -16,6 +16,121 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+The fourth batch of 11 September 2026, built from
+`CC-PROMPT-AI-READABILITY-4.md` for one deploy - items 1 to 4, then 4b and
+4c, which Marius added to the brief during the work, then item 5 - in the
+order it was built, one commit per item. Final run, after the last code
+commit (d7d6e38): `check.bat` green - 100 test files, 1,888 tests,
+typecheck, both builds, Liquid syntax, and the JSON check at 8 nodes and
+8,472 combinations - the full suite also green with `.env` renamed away, and
+`shopify theme check` on the extension, 11 files, no offenses. Nothing in it
+has been observed on a store; item 6 of the brief is the live check after
+the deploy.
+
+### Facts back in the Product node, from the block that prints them (item 1)
+
+bdef342 took `additionalProperty` out of the head block on 11 September,
+because the head cannot see whether the body shows the facts; Google's Rich
+Results Test on Republica BIO's m31 collagen creamer showed the facts on our
+Product node that morning and none after that deploy. The rule was right and
+the fix was in the wrong place: the facts are now published by the block
+that prints them. Right after the visible facts list, and only when it is
+shown, the content snippet emits a Product fragment - `@context`, `@type`,
+the `@id` of our complete head node (`shop.url + product.url + "#product"`),
+our marker and `additionalProperty` for exactly the facts printed; a group
+switched off on the Dictionary screen is left out of both. Only when the
+last theme scan saw our complete Product node on the product page
+(`theme_scan.ourProductNode`, new): a rendered block cannot see the head
+embed's mode or whether it is on, and a fragment with no node to join is a
+second, incomplete Product. Never under the theme's `@id`: the scan stores
+the `@id` of the one page it read, which names another product everywhere
+else, so the fragment joins only our own node and nothing a theme publishes
+is written into (the WordPress rule, `IDEAS-FROM-WORDPRESS.md` section 7). A
+nameless Product node of ours is read as the fragment: B7 keys it apart from
+our complete node, B1 merged it by `@id` already, and the mirror flag ignores
+it. Extend mode on a theme whose Product node has an `@id` gets no fragment:
+the head adds nothing to that node, and nothing per product names it.
+
+### Delivery cost into structured data (item 2)
+
+The Business screen's delivery cost is read on save into `{ rate, currency,
+freeOverAmount }` (`delivery-parse.ts`) and stored next to the text in the
+settings row and the business metafield; the text stays as typed everywhere
+text is published. A rate only for one exact price: several, by weight, per
+item, a starting price or two currencies give none. A line under the field
+says, as the merchant types, what goes to Google and what does not and why.
+"Countries you deliver to", two-letter codes, default the shop's country,
+published as `shippingDestination`. The AggregateOffer gets no
+`shippingDetails`: the merchant listing documentation lists it on Offer only
+and says "merchant listings require an Offer". B6 reads `hasShippingDetails`.
+
+### The shop's delivery policy on the Organization node (item 3)
+
+`hasShippingService` on our Organization node: a ShippingService,
+`@id` `shop.url + "/#shipping"`, the merchant's cost text as its name, and
+the documentation example's ShippingConditions - the base rate (not with the
+starting price box, not without a rate read) and free delivery from the
+threshold (`orderValue minValue`, `shippingRate 0`); with both, the base
+condition ends a cent below the threshold, as the example's 29.99 and 30.
+The Offer refers to it with `hasShippingService { "@id" }` only: the
+documentation says to reference a global policy "use only the
+hasShippingService property ... using only the @id keyword", and ranks
+product-level markup above Organization-level, so fields kept beside the
+reference would override it. With no policy the Offer states destination and
+delivery time. The Organization node now goes out for profiles, a policy, or
+both, on every page.
+
+### Delivery time Google can read (item 4)
+
+`transitTimeLabel` (retired; its domain was OfferShippingDetails, never
+ShippingDeliveryTime where it sat) is gone. The delivery time is read on save
+into `{ minDays, maxDays }` - days, working days, hours rounded up, weeks,
+"next day", "a doua zi"; clock times are not durations; several durations
+give their span; an upper bound alone gives that figure at both ends, never
+faster than promised - and published as `transitTime`: a ServicePeriod in
+each policy condition, a QuantitativeValue in the Offer's own details. No
+`businessDays`: the merchant listing documentation has none.
+
+### Attributes protected per row, not per table (item 4b)
+
+Provenance was one state entry per metafield since 09847f3 ("facts writer
+with provenance"), right for one-text fields and wrong for the facts table:
+one corrected row froze every other row. `state.factsHuman` now holds one
+entry per row a person wrote or deleted, keyed by the normalised label; every
+automatic pass (catalogue, single product, variants) puts them on top of the
+fresh rows, and the merged list is the facts metafield, so its readers are
+unchanged. A save diffs against the rows shown and marks only what changed;
+a save with no change writes nothing. "Edited by hand" and "Reset this row"
+per row, "Put back" for a removed row; "Reset to automatic" now hands the
+field back - it used to delete the state entry, which left the value read as
+a person's, so a reset table was never refilled - and both resets queue the
+product. The old whole-table form is converted by the existing writers the
+first time they write the product: every row the person's, every row the
+engine finds that their table left out a deletion, so the page stays exactly
+what they saved; `scripts/read-facts-migration.ts` is the dry run.
+
+### Buyer questions on the live site from buildFaq (item 4c)
+
+The live path writes buildFaq's list with the shop's mappings, preset
+templates, options, a brand that is not the shop's, and the business record
+(`live-questions.ts`), into the questions metafield, the plain-text page and
+llms.txt alike. Section intents stay off behind `FAQ_SECTION_INTENTS_LIVE`
+(hold-out 9.76% and 9.86%). Merchant questions stay off too: judged on all
+291 on Republica BIO and all 29 on the hold-out stores, 7 of 320 wrong,
+2.19%. The catalogue pass now writes the questions of a product with no
+facts. Republica BIO: 567 questions to 612.
+
+### The Republica BIO structured data, rendered before and after (item 5)
+
+`scripts/render-structured-data.ts` renders the head block before this batch
+and both blocks after it for the m31 collagen creamer, from the corpus read
+and Republica BIO's business record, and prints the nodes as JSON.
+
+## Pushed and tagged 11 September 2026 (deploy-2026-09-11-2, at e357304)
+
+The version number the Developer Dashboard shows for this deploy goes in
+this heading once read there.
+
 The 11 September 2026 batch, built from `PRD-AI-READABILITY.md` for one
 deploy, in the order it was built. Test counts are the full suite with
 `.env` renamed away, at the commit named. Final run, after the last code

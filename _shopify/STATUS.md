@@ -14,7 +14,9 @@ products, Shella theme). Everything below section 0 was written on 3 August;
 `CHANGELOG.md` carries the month between in detail, and
 `HANDOFF-2026-09-11.md` carries the setup of that store.
 
-**Committed on 11 September, not pushed, not deployed.** One batch built from
+**Batches one to three below were pushed and tagged `deploy-2026-09-11-2`
+(e357304) on 11 September. The fourth batch, at the end of this list, is
+committed, not pushed, not deployed.** One batch built from
 `PRD-AI-READABILITY.md`, for one deploy:
 
 - Visible content. A new app embed, "AI Visibility content", prints the
@@ -98,6 +100,26 @@ products, Shella theme). Everything below section 0 was written on 3 August;
   `npx tsx scripts/read-dashboard-visibility.ts republicabio.myshopify.com`
   and `npx tsx scripts/read-written-since.ts republicabio.myshopify.com`
   (both read only).
+
+**A fourth batch, same day, its own deploy** (`CC-PROMPT-AI-READABILITY-4.md`):
+
+- The facts are structured data again, from the content block that prints
+  them: a Product fragment under our complete node's `@id`, only when the
+  last theme scan saw that node.
+- Delivery in structured data: the Business screen's cost and time are read
+  on save into numbers, next to the text; a line under the field says what
+  goes to Google. The shop-wide policy is `hasShippingService` on our
+  Organization node; each Offer refers to it by `@id`. "Countries you
+  deliver to" is new. `transitTimeLabel` is gone; `transitTime` in days.
+- Facts protected per row (`state.factsHuman`), with a reset per row; the
+  old whole-table protection is converted by the existing writers.
+- The live buyer questions come from buildFaq with the sources that met the
+  bar (mappings, presets, options, brand, business); section intents and
+  merchant questions off.
+- After the deploy, Republica BIO's business record is saved once so the
+  numbers exist, the theme scan is run once so the fragment turns on, and
+  Google's Rich Results Test is read on the m31 collagen creamer (the
+  handover of this batch has the steps).
 
 Last full run: see the handover of 11 September and the CHANGELOG entries.
 
