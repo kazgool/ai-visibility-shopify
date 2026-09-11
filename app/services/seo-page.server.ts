@@ -1823,6 +1823,13 @@ export type ScanDeps = {
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   log?: (message: string) => void;
+  /**
+   * Called after every storefront request with the product pages read so far
+   * and tonight's budget. The caller throttles it (job-heartbeat.ts); without
+   * it a scan wrote its JobRun only at the start and the end, and a scan past
+   * 30 minutes read "stuck" while it was running.
+   */
+  onProgress?: (done: number, total: number) => Promise<void>;
 };
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -1879,6 +1886,7 @@ export async function scanShopPages(input: {
   const sleep = input.deps?.sleep ?? realSleep;
   const now = input.deps?.now ?? (() => new Date());
   const log = input.deps?.log;
+  const onProgress = input.deps?.onProgress;
   const startedAt = now();
 
   const report: SourceBReport = {
@@ -2022,6 +2030,7 @@ export async function scanShopPages(input: {
     const page = await readProductPage(url, cookie, fetchImpl);
     collectionSpend += 1;
     await spendPages(shopId, 1, startedAt);
+    await onProgress?.(report.scanned, budget);
     if (page.status !== 200 || page.passwordProtected || page.error) continue;
     const links = productLinks(page.html, page.finalUrl);
     const counts = countLinkForms(links);
@@ -2143,6 +2152,7 @@ export async function scanShopPages(input: {
           left -= 1;
           linkCache.set(link, result.status);
           await spendPages(shopId, 1, startedAt);
+          await onProgress?.(report.scanned, budget);
           linkSpend.fetched += 1;
           results.push(result);
           checked += 1;
@@ -2205,6 +2215,7 @@ export async function scanShopPages(input: {
         findings: [...keptFromSourceA, ...reading.findings] as any,
       },
     });
+    await onProgress?.(report.scanned, budget);
   }
 
   // B30, last of everything, and last on purpose.
@@ -2227,6 +2238,7 @@ export async function scanShopPages(input: {
     const page = await readProductPage(url, cookie, fetchImpl);
     left -= 1;
     await spendPages(shopId, 1, startedAt);
+    await onProgress?.(report.scanned, budget);
     if (page.status !== 200 || page.passwordProtected || page.error) continue;
     postsRead += 1;
     if (checkBlogPostLinks(page.html, page.finalUrl)) postsWithoutLinks.push(url);

@@ -594,10 +594,14 @@ export async function computeSourceA(
   graphql: GraphqlFn,
   catalogue: { products: ProductInput[]; complete: boolean },
   log?: (message: string) => void,
+  /** A job's sign of life (job-heartbeat.ts), called after every row written:
+   * a first pass over a large catalogue inserts one row per product, one at a
+   * time, and writes no JobRun while it does. */
+  heartbeat?: () => Promise<void>,
 ): Promise<SourceAReport | null> {
   if (!(await isSeoUnlocked(shopId))) return null;
   try {
-    return await sourceAPass(shopId, graphql, catalogue, log);
+    return await sourceAPass(shopId, graphql, catalogue, log, heartbeat);
   } catch (error) {
     // The formatter: a source A failure is almost always the one Admin call
     // this module makes (A4's redirect lookup), and its GraphQL errors are
@@ -624,6 +628,7 @@ async function sourceAPass(
   graphql: GraphqlFn,
   catalogue: { products: ProductInput[]; complete: boolean },
   log?: (message: string) => void,
+  heartbeat?: () => Promise<void>,
 ): Promise<SourceAReport> {
   const products = catalogue.products;
   const existing: ExistingRow[] = await db.seoScan.findMany({
@@ -812,6 +817,7 @@ async function sourceAPass(
       },
     });
     report.created += 1;
+    await heartbeat?.();
   }
 
   for (const row of toUpdate) {
@@ -827,6 +833,7 @@ async function sourceAPass(
       },
     });
     report.updated += 1;
+    await heartbeat?.();
   }
 
   // Rule 1: one statement for every row whose content did not change.

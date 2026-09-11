@@ -65,6 +65,7 @@ import {
 import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
 import { crawlerHitCutoff } from "../app/services/retention";
 import { describeGraphqlError } from "../app/services/graphql-errors";
+import { beatingGraphql, createHeartbeat } from "../app/services/job-heartbeat";
 
 /**
  * A bulk pass updates most of the catalogue, which makes every product look
@@ -96,6 +97,7 @@ export const bulk_extract: Task = async (payload, helpers) => {
     where: { id: jobRunId },
     data: { status: "running", startedAt: new Date() },
   });
+  const beat = jobHeartbeat(jobRunId, helpers.logger);
 
   try {
     // ENTITLEMENT: re-checked here, not only where the job was enqueued. A job
@@ -140,8 +142,10 @@ export const bulk_extract: Task = async (payload, helpers) => {
           { shopId, productGid },
           { maxAttempts: 3, jobKey: `extract:${productGid}` },
         );
+        await beat.touch();
       },
       log: (message) => helpers.logger.info(message),
+      heartbeat: beat.touch,
     });
 
     if (!dryRun) await advancePollCursor(shopId);
@@ -248,7 +252,12 @@ export const crawler_check: Task = async (payload, helpers) => {
     const url =
       data?.products?.nodes?.[0]?.onlineStoreUrl ?? `https://${shop.domain}`;
 
-    const result = await runCrawlerCheck(shopId, url);
+    const beat = jobRunId ? jobHeartbeat(jobRunId, helpers.logger) : null;
+    const result = await runCrawlerCheck(
+      shopId,
+      url,
+      beat ? (done, total) => beat.progress(done, total) : undefined,
+    );
 
     if (jobRunId) {
       await db.jobRun.update({
@@ -344,6 +353,25 @@ async function markGoneIfSessionless(
 function describeError(error: unknown): string {
   if (error instanceof Response) return `Response ${error.status} ${error.statusText}`;
   return describeGraphqlError(error);
+}
+
+/**
+ * A throttled sign of life on one JobRun row (job-heartbeat.ts). Counts go to
+ * progress and total; a touch moves updatedAt alone, which is what
+ * job-stale.ts reads, and never overwrites a count the task wrote itself.
+ * Every task here whose longest gap between JobRun writes could pass ten
+ * minutes carries one; the gaps are in the handover of 11 September 2026.
+ */
+function jobHeartbeat(jobRunId: string, logger: { info: (message: string) => void }) {
+  return createHeartbeat(
+    async (write) => {
+      await db.jobRun.update({
+        where: { id: jobRunId },
+        data: write ? { progress: write.done, total: write.total } : { updatedAt: new Date() },
+      });
+    },
+    { onError: (error) => logger.info(`heartbeat ${jobRunId}: not written - ${describeError(error)}`) },
+  );
 }
 
 export const poll_changes: Task = async (_payload, helpers) => {
@@ -542,7 +570,7 @@ export const reconcile_mirrors: Task = async (payload, helpers) => {
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
   try {
-    const graphql = await adminGraphql(shop.domain);
+    const admin = await adminGraphql(shop.domain);
 
     if (jobRunId) {
       await db.jobRun.update({
@@ -550,6 +578,8 @@ export const reconcile_mirrors: Task = async (payload, helpers) => {
         data: { status: "running", startedAt: new Date() },
       });
     }
+    const beat = jobRunId ? jobHeartbeat(jobRunId, helpers.logger) : null;
+    const graphql = beatingGraphql(admin, beat?.touch);
 
     // ENTITLEMENT, same two halves as sweep_missing (PRD-PORT-1.7.8 I.2:
     // withdrawal is never gated; QA of 3 September 2026, blocking 2). The
@@ -574,14 +604,19 @@ export const reconcile_mirrors: Task = async (payload, helpers) => {
               { shopId: shop.id, productGid },
               { maxAttempts: 3, jobKey: `extract:${productGid}` },
             );
+            await beat?.touch();
           }
         : async () => false,
       (message) => helpers.logger.info(message),
     );
 
     // Same read, same rule as sweep_missing above.
-    await computeSourceA(shopId, graphql, catalogue, (message) =>
-      helpers.logger.info(message),
+    await computeSourceA(
+      shopId,
+      graphql,
+      catalogue,
+      (message) => helpers.logger.info(message),
+      beat?.touch,
     );
 
     if (!paid) {
@@ -640,7 +675,8 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
   });
 
   try {
-    const graphql = await adminGraphql(shop.domain);
+    const beat = jobHeartbeat(jobRunId, helpers.logger);
+    const graphql = beatingGraphql(await adminGraphql(shop.domain), beat.touch);
 
     // ENTITLEMENT: same reason as bulk_extract - alt text for the whole
     // catalogue is a paid pass, and the check belongs at execution as well as
@@ -678,8 +714,12 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
     // Source A of the per-product SEO scan, on the read already in hand.
     // Every pass that reads the whole catalogue refreshes it, so a row is
     // never older than the last full read whichever job did the reading.
-    await computeSourceA(shopId, graphql, catalogue, (message) =>
-      helpers.logger.info(message),
+    await computeSourceA(
+      shopId,
+      graphql,
+      catalogue,
+      (message) => helpers.logger.info(message),
+      beat.touch,
     );
 
     // Media shared between products is the trap: the same file inherits the
@@ -976,10 +1016,16 @@ export const seo_scan_products: Task = async (payload, helpers) => {
     });
   }
 
+  // The request row counts shops, not pages, so the pages of each shop's scan
+  // only keep it alive; the scan's own seo_scan row carries the page counts.
+  const beat = jobRunId ? jobHeartbeat(jobRunId, helpers.logger) : null;
+
   let failure: string | null = null;
   for (const shop of shops) {
     try {
-      await scanProductPagesForShop(shop, helpers.logger);
+      await scanProductPagesForShop(shop, helpers.logger, {
+        onProgress: beat ? () => beat.touch() : undefined,
+      });
     } catch (error) {
       if (await markGoneIfSessionless(shop, error, helpers.logger)) continue;
       failure = describeError(error);
@@ -1075,7 +1121,12 @@ async function readMarkets(
 export async function scanProductPagesForShop(
   shop: { id: string; domain: string },
   logger: { info: (message: string) => void },
-  options: { budgetCap?: number | null } = {},
+  options: {
+    budgetCap?: number | null;
+    /** Called after every storefront request, pages read and budget; for a
+     * caller that owns a JobRun of its own (the "Read my pages now" row). */
+    onProgress?: (done: number, total: number) => Promise<void>;
+  } = {},
 ): Promise<SeoScanShopOutcome> {
   if (!(await isSeoUnlocked(shop.id))) {
     // Not part of this shop's module - no log noise for the common case.
@@ -1116,6 +1167,11 @@ export async function scanProductPagesForShop(
     },
   });
 
+  // Item 3 of CC-PROMPT-AI-READABILITY-2: this row used to be written at the
+  // start and at the end only, so a scan past 30 minutes read "stuck" under
+  // job-stale.ts while it ran, and the guard let a second one start.
+  const beat = jobHeartbeat(jobRun.id, logger);
+
   try {
     const report = await scanShopPages({
       shopId: shop.id,
@@ -1123,7 +1179,13 @@ export async function scanProductPagesForShop(
       password: passwordSetting?.value,
       budget,
       markets: await readMarkets(graphql, logger, shop.domain),
-      deps: { log: (message) => logger.info(message) },
+      deps: {
+        log: (message) => logger.info(message),
+        onProgress: async (done, total) => {
+          await beat.progress(done, total);
+          await options.onProgress?.(done, total);
+        },
+      },
     });
 
     await db.jobRun.update({
@@ -1225,7 +1287,9 @@ export const seo_collection_queue: Task = async (payload, helpers) => {
   });
 
   try {
+    const beat = jobHeartbeat(jobRunId, helpers.logger);
     const queue = await runCollectionSeoQueueBuild(shopId, {
+      heartbeat: beat.touch,
       onProgress: async (done, total) => {
         await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
       },
@@ -1261,7 +1325,9 @@ export const seo_collection_apply: Task = async (payload, helpers) => {
   });
 
   try {
+    const beat = jobHeartbeat(jobRunId, helpers.logger);
     const report = await runCollectionSeoApply(shopId, items, {
+      heartbeat: beat.touch,
       onProgress: async (done, total) => {
         await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
       },
@@ -1482,7 +1548,10 @@ export const seo_snapshot: Task = async (payload, helpers) => {
 
   try {
     const graphql = await adminGraphql(shop.domain);
-    const result = await grantSeoUnlock(shopId, reason, graphql);
+    // The snapshot's bulk read polls for up to eight minutes and writes
+    // nothing of its own; each poll through this client is a sign of life.
+    const beat = jobHeartbeat(jobRunId, helpers.logger);
+    const result = await grantSeoUnlock(shopId, reason, beatingGraphql(graphql, beat.touch));
     // The metafield mirror, exactly as the action used to do it right after
     // the grant: the Liquid block reads the shop metafield, not this database
     // row, and a key stored without the resync leaves the storefront believing
@@ -1568,7 +1637,9 @@ export const seo_queue_build: Task = async (payload, helpers) => {
   });
 
   try {
+    const beat = jobHeartbeat(jobRunId, helpers.logger);
     const queue = await runSeoQueueBuild(shopId, {
+      heartbeat: beat.touch,
       onProgress: async (done, total) => {
         await db.jobRun.update({ where: { id: jobRunId }, data: { progress: done, total } });
       },

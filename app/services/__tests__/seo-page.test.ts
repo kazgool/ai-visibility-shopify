@@ -581,6 +581,25 @@ describe("the nightly pass", () => {
     expect(report.nightsToFinish).toBe(0);
   });
 
+  // CC-PROMPT-AI-READABILITY-2 item 3: the caller's heartbeat is fed from here.
+  it("reports progress after every page it reads, against tonight's budget", async () => {
+    mockFindMany.mockImplementation(answerFindMany(rows(3)));
+    counts({ rows: 3, waiting: 0 });
+    const { impl } = routedFetch(() => reply(CLEAN, { url: URL_A }));
+    const onProgress = vi.fn(async (_done: number, _total: number) => {});
+
+    await scanShopPages({
+      shopId: "shop1",
+      origin: ORIGIN,
+      budget: 500,
+      deps: { fetchImpl: impl as any, sleep: noSleep, onProgress },
+    });
+
+    expect(onProgress.mock.calls.map((call) => call[0])).toEqual(expect.arrayContaining([1, 2, 3]));
+    expect(onProgress.mock.calls.every((call) => call[1] === 500)).toBe(true);
+    expect(onProgress.mock.calls.at(-1)).toEqual([3, 500]);
+  });
+
   it("says no catalogue has been read when the shop has no rows at all", async () => {
     mockFindMany.mockImplementation(answerFindMany([]));
     counts({ rows: 0, waiting: 0 });

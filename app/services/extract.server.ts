@@ -16,6 +16,7 @@ import {
 import type { FieldValue } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
+import { beatingGraphql } from "./job-heartbeat";
 import { pingProducts } from "./indexnow.server";
 import {
   fetchAllProducts,
@@ -325,12 +326,17 @@ export async function runBulkExtract(
      * with the same job key; the default is the ordinary enqueue path. */
     addJob?: (productGid: string) => Promise<void>;
     log?: (message: string) => void;
+    /** The job's sign of life (job-heartbeat.ts), beaten on every Admin call
+     * and every source A row: the bulk read before the first progress write
+     * and the reconciliation and source A after the last one write nothing
+     * of their own. */
+    heartbeat?: () => Promise<void>;
   },
 ): Promise<DryRunReport> {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
-  const graphql = await adminGraphql(shop.domain);
+  const graphql = beatingGraphql(await adminGraphql(shop.domain), options.heartbeat);
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const business = await businessFor(shopId);
@@ -502,7 +508,7 @@ export async function runBulkExtract(
   // nothing, and a row in our own database is still a write. Returns null and
   // writes nothing at all for a shop without the SEO key.
   if (!options.dryRun) {
-    report.seoScan = await computeSourceA(shopId, graphql, catalogue, options.log);
+    report.seoScan = await computeSourceA(shopId, graphql, catalogue, options.log, options.heartbeat);
   }
 
   // Best effort, after the writes: indexing is a bonus, never a failure.

@@ -197,6 +197,47 @@ describe("seo_scan_products", () => {
     expect(data.status).toBe("done");
   });
 
+  // CC-PROMPT-AI-READABILITY-2 item 3: a scan past 30 minutes read "stuck"
+  // under job-stale.ts while it ran, because neither row was written between
+  // its start and its end.
+  it("beats on the scan's own row and on the request row while pages are read", async () => {
+    mockIsSeoUnlocked.mockResolvedValue(true);
+    mockMayProcessAutomatically.mockResolvedValue(true);
+    let t = 1_000_000;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => t);
+    mockScanShopPages.mockImplementation(async (input: any) => {
+      for (let page = 1; page <= 25; page++) {
+        // A slow minute in the middle of the night's read.
+        if (page === 15) t += 61_000;
+        await input.deps.onProgress(page, 500);
+      }
+      return REPORT;
+    });
+    try {
+      await seo_scan_products({ shopId: "shop1", jobRunId: "req1" }, helpers);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const writes = mockJobRunUpdate.mock.calls.map((call) => call[0]);
+    // The scan's own row: the page count every ten pages, or after a minute.
+    expect(
+      writes
+        .filter((w) => w.where.id === "job1" && w.data.status === undefined)
+        .map((w) => w.data),
+    ).toEqual([
+      { progress: 10, total: 500 },
+      { progress: 15, total: 500 },
+      { progress: 25, total: 500 },
+    ]);
+    // The request row counts shops, so it only gets a sign of life, once.
+    const touches = writes.filter((w) => w.where.id === "req1" && w.data.updatedAt);
+    expect(touches).toHaveLength(1);
+    expect(touches[0].data).toEqual({ updatedAt: expect.any(Date) });
+    // And the request row still ends done.
+    expect(writes.filter((w) => w.where.id === "req1").at(-1)?.data.status).toBe("done");
+  });
+
   it("marks the JobRun failed and does not take the other shops down with it", async () => {
     mockIsSeoUnlocked.mockResolvedValue(true);
     mockMayProcessAutomatically.mockResolvedValue(true);

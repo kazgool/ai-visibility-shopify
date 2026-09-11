@@ -174,7 +174,13 @@ export async function robotsDisallows(origin: string): Promise<string[]> {
   }
 }
 
-export async function runCrawlerCheck(shopId: string, targetUrl: string) {
+export async function runCrawlerCheck(
+  shopId: string,
+  targetUrl: string,
+  /** Agents checked so far, of all. The worker throttles it into the JobRun
+   * (job-heartbeat.ts); each agent can take two 12-second attempts. */
+  onProgress?: (done: number, total: number) => Promise<void>,
+) {
   const origin = new URL(targetUrl).origin;
   const disallowed = await robotsDisallows(origin);
 
@@ -202,6 +208,7 @@ export async function runCrawlerCheck(shopId: string, targetUrl: string) {
         cause: result.cause,
       },
     });
+    await onProgress?.(results.length, Object.keys(AGENTS).length);
   }
 
   // By family (PRD-AI-READABILITY P0.9): robots.txt, the page's answer and the

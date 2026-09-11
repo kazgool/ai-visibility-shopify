@@ -30,15 +30,21 @@ import {
   type SeoQueue,
   type SeoQueueProduct,
 } from "./seo.server";
+import { beatingGraphql } from "./job-heartbeat";
 
 export async function runSeoQueueBuild(
   shopId: string,
-  options: { onProgress?: (done: number, total: number) => Promise<void> } = {},
+  options: {
+    onProgress?: (done: number, total: number) => Promise<void>;
+    /** The job's sign of life (job-heartbeat.ts): the bulk read and source A
+     * run before the first progress write. */
+    heartbeat?: () => Promise<void>;
+  } = {},
 ): Promise<SeoQueue> {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
-  const graphql = await adminGraphql(shop.domain);
+  const graphql = beatingGraphql(await adminGraphql(shop.domain), options.heartbeat);
   const dictionary = await dictionaryFor(shopId);
   const extraStopwords = await extraStopwordsFor(shopId);
   const shopInfo = await fetchShopInfo(graphql);
@@ -52,7 +58,7 @@ export async function runSeoQueueBuild(
   // (PRD-SEO-PER-PRODUCT build step 2). This pass only ever runs behind the
   // SEO key, so it always computes; every other catalogue pass does the same
   // where the key is present.
-  await computeSourceA(shopId, graphql, catalogue);
+  await computeSourceA(shopId, graphql, catalogue, undefined, options.heartbeat);
 
   if (options.onProgress) await options.onProgress(0, products.length);
 
@@ -227,12 +233,17 @@ export async function runSeoApply(
  */
 export async function runCollectionSeoQueueBuild(
   shopId: string,
-  options: { onProgress?: (done: number, total: number) => Promise<void> } = {},
+  options: {
+    onProgress?: (done: number, total: number) => Promise<void>;
+    /** The job's sign of life (job-heartbeat.ts), beaten on every page of
+     * collections: ten per call, and nothing written until the last. */
+    heartbeat?: () => Promise<void>;
+  } = {},
 ): Promise<CollectionSeoQueue> {
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
 
-  const graphql = await adminGraphql(shop.domain);
+  const graphql = beatingGraphql(await adminGraphql(shop.domain), options.heartbeat);
   // Members are not needed to read a collection's own meta fields, and asking
   // for 60 of them per collection would be a much larger read for nothing.
   const collections = await fetchCollections(graphql, 1);
@@ -264,7 +275,12 @@ export type CollectionSeoApplyReport = {
 export async function runCollectionSeoApply(
   shopId: string,
   items: CollectionSeoApplyItem[],
-  options: { onProgress?: (done: number, total: number) => Promise<void> } = {},
+  options: {
+    onProgress?: (done: number, total: number) => Promise<void>;
+    /** The job's sign of life (job-heartbeat.ts): every collection is re-read
+     * before the first progress write. */
+    heartbeat?: () => Promise<void>;
+  } = {},
 ): Promise<CollectionSeoApplyReport> {
   const report: CollectionSeoApplyReport = {
     requested: items.length,
@@ -285,7 +301,7 @@ export async function runCollectionSeoApply(
 
   const shop = await db.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error(`Unknown shop ${shopId}`);
-  const graphql = await adminGraphql(shop.domain);
+  const graphql = beatingGraphql(await adminGraphql(shop.domain), options.heartbeat);
 
   if (!(await mayProcessAutomatically(shop, graphql))) {
     report.refused = true;
