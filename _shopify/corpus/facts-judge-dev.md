@@ -1,15 +1,16 @@
-# Visible facts, judged, run dev11
+# Visible facts, judged, run dev13
 
 ## By set
 
 | Set | Pairs shown | judged | errors | error rate |
 |---|---|---|---|---|
-| dev | 6355 | 6355 | 2155 | 33.9% (2155/6355) |
+| dev | 8132 | 8132 | 3044 | 37.4% (3044/8132) |
 
 ## By store
 
 | Store | Set | Pairs shown | judged | errors | error rate |
 |---|---|---|---|---|---|
+| animax.ro | dev | 343 | 343 | 138 | 40.2% (138/343) |
 | aquaframe.ro | dev | 10 | 10 | 3 | 30.0% (3/10) |
 | beardbrand.com | dev | 130 | 130 | 70 | 53.8% (70/130) |
 | brightland.co | dev | 2 | 2 | 2 | 100.0% (2/2) |
@@ -20,6 +21,8 @@
 | globalmobila-fixture.csv | dev | 649 | 649 | 255 | 39.3% (255/649) |
 | graza.co | dev | 30 | 30 | 1 | 3.3% (1/30) |
 | greatjonesgoods.com | dev | 70 | 70 | 30 | 42.9% (30/70) |
+| istyle.ro | dev | 197 | 197 | 74 | 37.6% (74/197) |
+| jlab.com | dev | 499 | 499 | 312 | 62.5% (312/499) |
 | marialuciahohan.com | dev | 262 | 262 | 94 | 35.9% (94/262) |
 | meowmeowtweet.com | dev | 93 | 93 | 45 | 48.4% (45/93) |
 | mobexpert.ro | dev | 100 | 100 | 42 | 42.0% (42/100) |
@@ -29,15 +32,25 @@
 | secom.ro | dev | 187 | 187 | 181 | 96.8% (181/187) |
 | shokz.com | dev | 34 | 34 | 2 | 5.9% (2/34) |
 | taylorstitch.com | dev | 601 | 601 | 19 | 3.2% (19/601) |
+| terraissa.com | dev | 207 | 207 | 124 | 59.9% (124/207) |
+| thesill.com | dev | 427 | 427 | 203 | 47.5% (203/427) |
 | toskovat.com | dev | 21 | 21 | 18 | 85.7% (18/21) |
 | truff.com | dev | 4 | 4 | 4 | 100.0% (4/4) |
 | twelvesouth.com | dev | 21 | 21 | 4 | 19.0% (4/21) |
+| wildone.com | dev | 104 | 104 | 38 | 36.5% (38/104) |
 | zeedog.com | dev | 514 | 514 | 146 | 28.4% (146/514) |
 
 ## By store and group
 
 | Store / group | Pairs shown | judged | errors | error rate |
 |---|---|---|---|---|
+| animax.ro / Animal | 18 | 18 | 1 | 5.6% (1/18) |
+| animax.ro / Diet | 3 | 3 | 0 | 0.0% (0/3) |
+| animax.ro / Format | 1 | 1 | 0 | 0.0% (0/1) |
+| animax.ro / Ingredients | 24 | 24 | 0 | 0.0% (0/24) |
+| animax.ro / Life stage | 19 | 19 | 0 | 0.0% (0/19) |
+| animax.ro / Size | 231 | 231 | 102 | 44.2% (102/231) |
+| animax.ro / Weight | 47 | 47 | 35 | 74.5% (35/47) |
 | aquaframe.ro / Colour | 7 | 7 | 0 | 0.0% (0/7) |
 | aquaframe.ro / Size | 3 | 3 | 3 | 100.0% (3/3) |
 | beardbrand.com / Concern | 9 | 9 | 0 | 0.0% (0/9) |
@@ -76,6 +89,17 @@
 | greatjonesgoods.com / Colour | 1 | 1 | 1 | 100.0% (1/1) |
 | greatjonesgoods.com / Compatibility | 45 | 45 | 27 | 60.0% (27/45) |
 | greatjonesgoods.com / Material | 24 | 24 | 2 | 8.3% (2/24) |
+| istyle.ro / Camera | 38 | 38 | 0 | 0.0% (0/38) |
+| istyle.ro / Connectivity | 73 | 73 | 0 | 0.0% (0/73) |
+| istyle.ro / Durability | 1 | 1 | 0 | 0.0% (0/1) |
+| istyle.ro / Memory | 74 | 74 | 74 | 100.0% (74/74) |
+| istyle.ro / Screen | 11 | 11 | 0 | 0.0% (0/11) |
+| jlab.com / Battery | 151 | 151 | 149 | 98.7% (149/151) |
+| jlab.com / Camera | 1 | 1 | 0 | 0.0% (0/1) |
+| jlab.com / Connectivity | 179 | 179 | 16 | 8.9% (16/179) |
+| jlab.com / Durability | 1 | 1 | 0 | 0.0% (0/1) |
+| jlab.com / Screen | 108 | 108 | 108 | 100.0% (108/108) |
+| jlab.com / Warranty | 59 | 59 | 39 | 66.1% (39/59) |
 | marialuciahohan.com / Care | 49 | 49 | 0 | 0.0% (0/49) |
 | marialuciahohan.com / Closure | 24 | 24 | 0 | 0.0% (0/24) |
 | marialuciahohan.com / Colour | 2 | 2 | 0 | 0.0% (0/2) |
@@ -150,6 +174,17 @@
 | taylorstitch.com / Pattern | 9 | 9 | 1 | 11.1% (1/9) |
 | taylorstitch.com / Size range | 4 | 4 | 4 | 100.0% (4/4) |
 | taylorstitch.com / Sleeve | 29 | 29 | 0 | 0.0% (0/29) |
+| terraissa.com / Finish | 75 | 75 | 68 | 90.7% (68/75) |
+| terraissa.com / Format | 46 | 46 | 30 | 65.2% (30/46) |
+| terraissa.com / Key ingredients | 2 | 2 | 2 | 100.0% (2/2) |
+| terraissa.com / Skin type | 5 | 5 | 4 | 80.0% (4/5) |
+| terraissa.com / Volume | 79 | 79 | 20 | 25.3% (20/79) |
+| thesill.com / Care | 2 | 2 | 0 | 0.0% (0/2) |
+| thesill.com / Colour | 171 | 171 | 34 | 19.9% (34/171) |
+| thesill.com / Compatibility | 208 | 208 | 136 | 65.4% (136/208) |
+| thesill.com / Material | 23 | 23 | 17 | 73.9% (17/23) |
+| thesill.com / Size | 18 | 18 | 11 | 61.1% (11/18) |
+| thesill.com / Warranty | 5 | 5 | 5 | 100.0% (5/5) |
 | toskovat.com / Finish | 5 | 5 | 5 | 100.0% (5/5) |
 | toskovat.com / Format | 6 | 6 | 6 | 100.0% (6/6) |
 | toskovat.com / Key ingredients | 6 | 6 | 6 | 100.0% (6/6) |
@@ -161,13 +196,158 @@
 | twelvesouth.com / Battery | 7 | 7 | 0 | 0.0% (0/7) |
 | twelvesouth.com / Connectivity | 12 | 12 | 2 | 16.7% (2/12) |
 | twelvesouth.com / Screen | 2 | 2 | 2 | 100.0% (2/2) |
+| wildone.com / Animal | 36 | 36 | 0 | 0.0% (0/36) |
+| wildone.com / Diet | 2 | 2 | 1 | 50.0% (1/2) |
+| wildone.com / Format | 34 | 34 | 7 | 20.6% (7/34) |
+| wildone.com / Ingredients | 29 | 29 | 28 | 96.6% (28/29) |
+| wildone.com / Life stage | 1 | 1 | 0 | 0.0% (0/1) |
+| wildone.com / Size | 1 | 1 | 1 | 100.0% (1/1) |
+| wildone.com / Weight | 1 | 1 | 1 | 100.0% (1/1) |
 | zeedog.com / Animal | 207 | 207 | 20 | 9.7% (20/207) |
 | zeedog.com / Format | 160 | 160 | 24 | 15.0% (24/160) |
 | zeedog.com / Ingredients | 92 | 92 | 81 | 88.0% (81/92) |
 | zeedog.com / Size | 55 | 55 | 21 | 38.2% (21/55) |
 
-## Every error (2155)
+## Every error (3044)
 
+- **animax.ro** (dev), Hrana umeda pentru caini Brit Pate & Meat Vita 400g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana umeda pentru caini Rinti cu cal 400 g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Grain Free Adult Activity Support 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru caini Carnilove Dog Large Somon si Curcan 12kg: "Size: D 3, 25 kg, 30 kg, 40 kg" [rule 2] - 'D 3' is vitamin D3 and 25/30/40 kg are dog body weights from the feeding table; the bag is 12kg.
+- **animax.ro** (dev), Hrana uscata pentru caini Carnilove Dog Large Somon si Curcan 12kg: "Weight: 25 kg, 30 kg, 40 kg, 50 kg" [rule 2] - 25-50 kg are dog body weights from the feeding table, not the product weight (12kg).
+- **animax.ro** (dev), Hrana umeda pentru caini Brit Pate & Meat Somon 400g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Senior Weight Control 7kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana umeda pentru pisici Half&Half Bucati Rata in sos 100g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Grain Free VD Veg High Fibre 2kg: "Size: 2kg, 15 g, 10 kg, 25 g" [rule 2] - Only 2kg is the pack size; 15 g, 10 kg and 25 g are from the feeding table (dog weights and daily grams).
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Grain Free VD Veg High Fibre 2kg: "Weight: 2 kg, 10 kg, 15 kg, 20 kg" [rule 2] - 10, 15 and 20 kg are dog body weights from the feeding table, not the product weight (2kg).
+- **animax.ro** (dev), Hrana umeda pentru caini Hill's PD Digestive Care I/D Low Fat: "Size: 360 g, 10 g, 30 g, 45 g" [rule 2] - 10, 30, 45 g are daily feeding amounts from the ration table, not the product size.
+- **animax.ro** (dev), Hrana umeda pentru caini Hill's PD Digestive Care I/D Low Fat: "Weight: 360 g, 10 g, 30 g, 45 g" [rule 2] - 10, 30, 45 g are daily feeding amounts from the ration table, not the product weight.
+- **animax.ro** (dev), Umidificator pentru terariu ReptiPlanet Fogger Maxi 2.2L: "Size: 2.2L, 250 ml, 150 cm" [rule 3] - 2.2L capacity is right but 250 ml is the hourly mist output (unit /h lost) and 150 cm is the maximum hose length, unnamed under Size.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Grain Free VD Gastrointestinal 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Jucarie pentru caini Flamingo Gantera din lemn 15.5cm: "Size: 15.5cm, 200 g" [rule 3] - 15.5 cm is right but 200 g is a weight, and it is torn from 'Greutate 150/200 g', dropping the 150 g alternative.
+- **animax.ro** (dev), Jucarie pentru caini Flamingo Gantera din lemn 15.5cm: "Weight: 200 g" [rule 3] - Text says 'Greutate 150/200 g'; showing only 200 g loses the 150 g value and its meaning is unclear (doubtful).
+- **animax.ro** (dev), Cultura de bacterii Prodac Nitridac 100ml: "Size: 100ml, 5 ml, 50 l" [rule 2] - 100ml is the bottle; 5 ml and 50 l are the dosage (5 ml per 50 l of water), not the product size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Almo Nature HFC Somon si dovleac 55g: "Size: 55g, 4kg, 110g, 35g" [rule 2] - Only 55g is the product; 4kg is the cat weight and 110g/35g are daily feeding amounts.
+- **animax.ro** (dev), Hrana umeda pentru caini Brit Care Mono Protein Ton&Cartof Dulce 400g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Ham rosu reglabil pentru caini Macleather 20mm Z 522060RO: "Size: 20mm, 68 cm" [rule 3] - 68 cm is torn from the circumference range 46 - 68 cm and shown unnamed, losing its meaning.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Indoor Anti-stress 400g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Sensitive Healty Digestion&Delicate Taste 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Rucsac pentru transportul animalelor Enjoy Blue 36X26X41cm: "Size: 36X26X41cm, 5 kg" [rule 2] - 36X26X41cm is right but 5 kg is the maximum weight of the animal carried, not a size.
+- **animax.ro** (dev), Rucsac pentru transportul animalelor Enjoy Blue 36X26X41cm: "Weight: 5 kg" [rule 3] - 5 kg is the maximum pet weight the backpack carries; as 'Weight' it reads as the backpack's own weight.
+- **animax.ro** (dev), Recompense pentru pisici Sanabelle Snack Pui&Spanac 55g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Recompensa pentru caini Lily's Kitchen Dog Sticks Pui 120g: "Size: 120g, 100g" [rule 2] - 120g is the pack; 100g comes from the calorie figure '299 kcal/100g'.
+- **animax.ro** (dev), Lesa pentru caini Flexi New Classic Snur M 8M Negru: "Size: 20 kg" [rule 2] - 20 kg is the maximum dog weight, not a size of the leash.
+- **animax.ro** (dev), Lesa pentru caini Flexi New Classic Snur M 8M Negru: "Weight: 20 kg" [rule 2] - The leash weighs 499 gr; 20 kg is the maximum dog weight.
+- **animax.ro** (dev), Hrana uscata pentru pisici Royal Canin Persian 10 kg: "Size: D 3, 10 kg, 3 kg, 4 kg" [rule 2] - 'D 3' is vitamin D3 and 3/4 kg are cat body weights from the feeding table; only 10 kg is the bag.
+- **animax.ro** (dev), Hrana uscata pentru pisici Royal Canin Persian 10 kg: "Weight: 10 kg, 3 kg, 4 kg, 5 kg" [rule 2] - 3, 4, 5 kg are cat body weights from the feeding table; only 10 kg is the product.
+- **animax.ro** (dev), Cusca de transport + pernita Atlas 10: "Size: h 48" [rule 2] - Text gives L x l x h = 48 x 32.5 x 29, so 48 is the length and the height is 29.
+- **animax.ro** (dev), Hrana umeda pentru pisici Schesir After Dark Pui si ou de prepelita 80g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Grain Free VD Hypoallergenic 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana umeda pentru caini Carnilove Dog Rata&Fazan 400g: "Size: D 3, 25 kg" [rule 2] - 'D 3' is vitamin D3 and 25 kg is a dog body weight from the feeding table; the can is 400g.
+- **animax.ro** (dev), Hrana umeda pentru caini Carnilove Dog Rata&Fazan 400g: "Weight: 25 kg" [rule 2] - 25 kg is a dog body weight threshold from the feeding table, not the product weight (400g).
+- **animax.ro** (dev), Hrana umeda pentru pisici Carnilove Cat Pastrav&Echinaceea 85g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Recompense pentru caini Churu Dog Piure Pui cu ton 4x14g: "Size: 9,6g" [rule 2] - 9,6g is the guar gum additive amount per kg, not the product size (4x14g).
+- **animax.ro** (dev), Hrana umeda pentru caini Brit Care Dog Monoprotein Christmas 400g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Ham rosu reglabil pentru caini Macleather 25mm Z 522065RO: "Size: 25mm, 92 cm" [rule 3] - 92 cm is torn from the circumference range 60 - 92 cm and shown unnamed, losing its meaning.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Sterilized Urinary Health 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Sterilized Pack Bucati de pui&curcan in sos 12x85g: "Size: D 3, 3 kg, 4 kg, 5 kg" [rule 2] - 'D 3' is vitamin D3 and 3/4/5 kg are cat body weights from the daily dose table; the pack is 12x85g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Sterilized Pack Bucati de pui&curcan in sos 12x85g: "Weight: 3 kg, 4 kg, 5 kg, 240 g" [rule 2] - 3/4/5 kg are cat body weights and 240 g a daily dose, not the product weight (12x85g).
+- **animax.ro** (dev), Hrana umeda pentru caini Dolina Noteci Superfood Vitel-Miel 800g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the supplements list, not a size of the product.
+- **animax.ro** (dev), Bol din ceramica Beeztees pentru pisici 325 ml: "Size: 325 ml, 11 cm" [rule 3] - 325 ml is right, but 11 cm is the circumference and nothing under Size says what it measures (doubtful).
+- **animax.ro** (dev), Hrana uscata pentru pisici Royal Canin Urinary Care 10 kg: "Size: D 3, 10 kg, 3 kg, 4 kg" [rule 2] - 'D 3' is vitamin D3 and 3/4 kg are cat body weights from the feeding table; only 10 kg is the bag.
+- **animax.ro** (dev), Hrana uscata pentru pisici Royal Canin Urinary Care 10 kg: "Weight: 10 kg, 3 kg, 4 kg, 5 kg" [rule 2] - 3, 4, 5 kg are cat body weights from the feeding table; only 10 kg is the product.
+- **animax.ro** (dev), Hrana umeda pentru pisici PURINA® FRISKIES® ADULT Pui în sos 85g: "Size: 85g, 4kg" [rule 2] - 85g is the pouch; 4kg is the weight of an average adult cat from the feeding advice.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Grain Free VD Gastrointestinal Low Fat 2kg: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Adult Talie Mica Peste 3kg: "Size: 3kg, 10 kg, 5 kg, 95g" [rule 2] - Only 3kg is the bag; 10 kg and 5 kg are dog body weights and 95g a daily amount from the feeding table.
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Adult Talie Mica Peste 3kg: "Weight: 10 kg, 5 kg" [rule 2] - 10 kg and 5 kg are dog body weights (feeding table and max body weight), not the product weight (3kg).
+- **animax.ro** (dev), Hrana umeda pentru caini Brit Premium Vita 800g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the nutritional list, not a size of the product.
+- **animax.ro** (dev), Recompense pentru caini Churu Dog Piure Pui cu legume 4x14g: "Size: 9,6g" [rule 2] - 9,6g is the guar gum additive amount per kg, not the product size (4x14g).
+- **animax.ro** (dev), Hrana umeda pentru pisici Vitakraft Poesie Cod in sos 85g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the additives list, not a size of the product.
+- **animax.ro** (dev), Hrana umeda pentru caini Dolina Noteci Superfood Vita-Inimi gasca 800g: "Size: D 3" [rule 2] - 'D 3' is the vitamin D3 from the supplements list, not a size of the product.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Premium by Nature Junior M 15 Kg: "Size: D 3, 15 kg, 25 kg" [rule 2] - 'D 3' is vitamin D3 and 25 kg is the upper dog body weight; only 15 kg is the bag.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Premium by Nature Junior M 15 Kg: "Weight: 15 kg, 25 kg" [rule 2] - 15 kg is the bag but 25 kg is the upper end of the target dog weight range 10-25 kg, not a product weight.
+- **animax.ro** (dev), Zgarda rosie pentru caini Ferplast Club 2.5x70cm: "Size: 2.5x70cm, lungime 40, latime 25 mm" [rule 3] - 'lungime 40' is torn from the range 'Lungime: 40-70 cm' and loses its unit and meaning.
+- **animax.ro** (dev), Ham rosu pentru caini Ferplast Daytona L: "Size: 73 cm, 70 cm" [rule 3] - 73 cm and 70 cm are the upper ends of the waist (66-73) and neck (65-70) ranges, with nothing saying which is which.
+- **animax.ro** (dev), Hrana uscata pentru caini Dog Chow Adult cu miel si orez 14 kg: "Size: D 3, 14 kg" [rule 2] - 'D 3' is Vitamin D3 from the ingredients text, not a size of the product.
+- **animax.ro** (dev), Decor pentru acvariu Lemn 15-20 cm: "Size: 20 cm" [rule 3] - Size is stated as a range 15-20 cm; showing only 20 cm drops the lower bound and misstates the size.
+- **animax.ro** (dev), Decor pentru acvariu Lemn sablat 30-45 cm: "Size: 45 cm" [rule 3] - Size is stated as a range 30-45 cm; showing only 45 cm misstates the size.
+- **animax.ro** (dev), Decor pentru acvariu Piatra Naturala Black 1-2 kg: "Size: 2 kg" [rule 3] - Weight is a range 1-2 kg; '2 kg' alone cuts the range and changes its meaning.
+- **animax.ro** (dev), Decor pentru acvariu Piatra Naturala Black 1-2 kg: "Weight: 2 kg" [rule 3] - Weight is a range 1-2 kg; '2 kg' alone cuts the range and changes its meaning.
+- **animax.ro** (dev), Hrana umeda pentru pisici Felix Fantastic Pui 85g: "Size: D 3, 4 kg" [rule 2] - 'D 3' is Vit. D3 from the additives and 4 kg is the cat's body weight in the feeding guide, not the product size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Felix Fantastic Pui 85g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat in the feeding instructions; the product is 85 g.
+- **animax.ro** (dev), Lesa retractabila Flexi Giant Prof. Band L 10M Negru: "Size: L 10 M, 50 kg" [rule 2] - 50 kg is the maximum dog weight, not a size of the leash.
+- **animax.ro** (dev), Lesa retractabila Flexi Giant Prof. Band L 10M Negru: "Weight: 50 kg" [rule 2] - 50 kg is the maximum weight of the dog, not the weight of the leash.
+- **animax.ro** (dev), Lesa retractabila Flexi New Classic Snur S 8M Rosu: "Size: 12kg" [rule 2] - 12 kg is the maximum dog weight, not the size of the leash.
+- **animax.ro** (dev), Zgarda pentru caini Daytona C Red 20-43cm: "Size: 43cm" [rule 3] - Collar size is the range 20-43 cm; '43cm' alone drops the lower bound.
+- **animax.ro** (dev), Solutie lichida Tetra Algumin Plus 100 ml: "Size: 100 ml, 5 ml, 250ml, 500ml" [rule 2] - 5 ml is the dose per 10 litres and 250/500 ml are other pack sizes, not this 100 ml product.
+- **animax.ro** (dev), Hrana uscata pentru pisici Petkult Cat Probiotics Hair&Skin Fresh Somon 7kg: "Size: D 3" [rule 2] - 'D 3' is Vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy Caprice Mousse Vitel 85g: "Size: D 3, 4 kg" [rule 2] - 'D 3' is vitamin D3 and 4 kg is the cat's weight in the feeding guide, not the product size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy Caprice Mousse Vitel 85g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat being fed; the product is 85 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy Caprice Mousse Curcan 85g: "Size: 85g, 4 kg" [rule 2] - 85g is right but 4 kg is the cat's body weight from the feeding guide.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy Caprice Mousse Curcan 85g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat being fed; the product is 85 g.
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Low Calories Adult&Senior Talie Medium&Large Miel si orez 12kg: "Size: D 3, 10 kg" [rule 2] - 'D 3' is vitamin D3 and 10 kg is a dog body weight, not the product size (12 kg).
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Low Calories Adult&Senior Talie Medium&Large Miel si orez 12kg: "Weight: 10 kg" [rule 2] - 10 kg is the dog's body weight threshold; the product is 12 kg.
+- **animax.ro** (dev), Hrana umeda pentru pisici Carnilove Cat Mistret&Musetel 85g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Ham rosu reglabil pentru caini Macleather 15mm Z 522055RO: "Size: 15mm, 57 cm" [rule 3] - Circumference is the range 40-57 cm; '57 cm' alone drops the lower bound and says nothing of what it measures.
+- **animax.ro** (dev), Zgarda reglabila rosie pentru caini Macleather 15mm Z 522035RO: "Size: 15mm, 38 cm" [rule 3] - Neck circumference is the range 28-38 cm; '38 cm' alone cuts the range and loses what it measures.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Sterilized Sensitive 2kg: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Kitten Healty Growth&Develop 2kg: "Size: D 3" [rule 2] - 'D 3' is vitamin D3 from the additives, not a size.
+- **animax.ro** (dev), Deodorant pentru litiera Versele-Laga Flower 750g: "Size: 750g, 20 kg" [rule 2] - 20 kg is the amount of litter it can deodorize, not the product size (750 g).
+- **animax.ro** (dev), Deodorant pentru litiera Versele-Laga Flower 750g: "Weight: 20 kg" [rule 2] - 20 kg is the amount of litter treated; the product weighs 750 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Pack Bucati de cod&somon in gelatina 4x85g: "Size: D 3, 4 kg" [rule 2] - 'D 3' is vit. D3 and 4 kg is the cat's weight in the daily dose, not the product size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Pack Bucati de cod&somon in gelatina 4x85g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat; the product is 4x85 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Sterilized Bucati de pui si curcan in sos 4x85g: "Size: D 3" [rule 2] - 'D 3' is vit. D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Kattovit Sensitive Pui 185g: "Size: D 3, 3 kg, 5 kg" [rule 2] - 'D 3' is vitamin D3 and 3 kg / 5 kg are cat body weights in the feeding table, not the product size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Kattovit Sensitive Pui 185g: "Weight: 3 kg, 5 kg" [rule 2] - 3 kg and 5 kg are the cat's weights in the feeding table; the product is 185 g.
+- **animax.ro** (dev), Hrana umeda pentru caini Dolina Noteci Superfood Caprioara-Vita 800g: "Size: D 3" [rule 2] - 'D 3' is Vitamina D3 from the supplements list, not a size.
+- **animax.ro** (dev), Decor pentru acvariu Roca Bamboo 300-600 gr: "Animal: reptile" [rule 2] - 'reptile' comes from the Croci brand blurb listing its other articles; this is an aquarium decoration for fish.
+- **animax.ro** (dev), Decor pentru acvariu Roca Bamboo 300-600 gr: "Size: 600 g" [rule 3] - Weight is the range 300-600 g; '600 g' alone cuts the range.
+- **animax.ro** (dev), Decor pentru acvariu Roca Bamboo 300-600 gr: "Weight: 600 g" [rule 3] - Weight is the range 300-600 g; '600 g' alone cuts the range.
+- **animax.ro** (dev), Asternut igienic din hartie Enjoy 800 g: "Size: 800 g, 3 cm" [rule 2] - 800 g is right but 3 cm is the recommended bedding layer depth, not a size of the product.
+- **animax.ro** (dev), Solutie lichida Tetra Algumin 250 ml: "Size: 250 ml, 5 ml, 100ml, 500ml" [rule 2] - 5 ml is the dose and 100/500 ml are other pack sizes; this product is 250 ml.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Ton si Somon 70g: "Size: 70g, 4 kg" [rule 2] - 70g is right but 4 kg is the cat's weight in the daily recommendation.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Ton si Somon 70g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat; the product is 70 g.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Pui, Vita si spanac 70g: "Size: 70g, 4 kg" [rule 2] - 70g is right but 4 kg is the cat's weight in the daily recommendation.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Pui, Vita si spanac 70g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat; the product is 70 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy More Love Ton si sardine 70g: "Size: 70g, 4 kg" [rule 2] - 70g is right but 4 kg is the cat's weight in the daily recommendation.
+- **animax.ro** (dev), Hrana umeda pentru pisici Oasy More Love Ton si sardine 70g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat; the product is 70 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Schesir Ton&Dorada Jelly 85g: "Size: 85g, 4 kg, 6 kg, 8 kg" [rule 2] - 85g is right but 4, 6 and 8 kg are cat body weights from the feeding table.
+- **animax.ro** (dev), Hrana umeda pentru pisici Schesir Ton&Dorada Jelly 85g: "Weight: 4 kg, 6 kg, 8 kg" [rule 2] - 4, 6 and 8 kg are cat body weights; the product is 85 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Schesir After Dark Velvet Mousse Pui si Rata 80g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Brit Care Grain Free Sterilized Fileuri in sos cu rata 85g: "Size: D 3, 3 kg, 6 kg, 8 kg" [rule 2] - 'D 3' is vitamin D3 and 3/6/8 kg are cat body weights, not the product size (85 g).
+- **animax.ro** (dev), Hrana umeda pentru pisici Brit Care Grain Free Sterilized Fileuri in sos cu rata 85g: "Weight: 3 kg, 6 kg, 8 kg" [rule 2] - 3, 6 and 8 kg are cat body weights from the feeding table; the product is 85 g.
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Adult Talie Mare Peste 3kg: "Size: 3kg, 25 kg, 30 kg, 384g" [rule 2] - 3kg is right but 25 kg, 30 kg and 384g are dog weights and daily portions from the feeding table.
+- **animax.ro** (dev), Hrana uscata pentru caini Petkult Sensitive Adult Talie Mare Peste 3kg: "Weight: 25 kg, 30 kg, 40 kg, 50 kg" [rule 2] - 25-50 kg are dog body weights; the product is 3 kg.
+- **animax.ro** (dev), Recompense pentru caini Churu Rolls Dog Pui 8x12g: "Size: 6,3g, 0,1g" [rule 2] - 6,3g and 0,1g are additive quantities per kg (guar gum, paprika oleoresin), not the product size (8x12 g).
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Grain Free Haircare Healthy and Shiny Coat 400g: "Size: D 3" [rule 2] - 'D 3' is vitamin D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Grain Free Haircare Healthy and Shiny Coat 2kg: "Size: D 3" [rule 2] - 'D 3' is vitamin D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana uscata pentru pisici Brit Care Cat Grain Free Sterilized Weight Control 400g: "Size: D 3" [rule 2] - 'D 3' is vitamin D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru caini Wolfpack LTD Adult Rata 85g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Stuzzy Bucati cu sunca si vitel in sos 85g: "Size: D 3" [rule 2] - 'D 3' is vit. D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Vitakraft Poesie Junior Pui in sos 85g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru pisici Kattovit Urinary Pui 185g: "Size: D 3, 3 kg, 5 kg" [rule 2] - 'D 3' is vitamin D3 and 3/5 kg are cat body weights, not the product size (185 g).
+- **animax.ro** (dev), Hrana umeda pentru pisici Kattovit Urinary Pui 185g: "Weight: 3 kg, 5 kg" [rule 2] - 3 kg and 5 kg are cat body weights; the product is 185 g.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Premium by Nature Sensitive Lamb 3Kg: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Premium by Nature Light 15 Kg: "Size: D 3, 15 kg" [rule 2] - 15 kg is right but 'D 3' is vitamin D3 from the additives.
+- **animax.ro** (dev), Hrana uscata pentru caini Bosch Mini Adult cu miel si orez 3 kg: "Size: D 3, 3 kg, 2 kg, 4 kg" [rule 2] - 3 kg is right but 'D 3' is vitamin D3 and 2 kg / 4 kg are dog weights from the feeding guide.
+- **animax.ro** (dev), Hrana uscata pentru caini Bosch Mini Adult cu miel si orez 3 kg: "Weight: 3 kg, 2 kg, 4 kg, 6 kg" [rule 2] - 2, 4 and 6 kg are dog body weights from the feeding guide; only 3 kg is the product.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Pui si dovleac 70g: "Size: 70g, 4 kg" [rule 2] - 70g is right but 4 kg is the cat's weight in the daily recommendation.
+- **animax.ro** (dev), OASY More Love Bol pentru pisici, cu Pui si dovleac 70g: "Weight: 4 kg" [rule 2] - 4 kg is the weight of the cat; the product is 70 g.
+- **animax.ro** (dev), Recompensa pentru pisici Lili's Kitchen Festive Cat Pillow Treats Curcan 60g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Care Suistainable Adult Small Breed Pui&Insecte 1kg: "Size: D 3, small breed, medium breed, 1 kg" [rule 2] - 'D 3' is vitamin D3, 'medium breed' refers to a different product for dogs over 10 kg, and 1 kg mixes pack size with breed values.
+- **animax.ro** (dev), Hrana uscata pentru caini Brit Care Suistainable Adult Small Breed Pui&Insecte 1kg: "Weight: 1 kg, 2 kg, 4 kg, 6 kg" [rule 2] - 2, 4 and 6 kg are dog body weights from the feeding table; only 1 kg is the product.
+- **animax.ro** (dev), Hrana umeda pentru pisici Rasco Premium Rata&Catina 85g: "Size: D 3, 3 kg, 4 kg, 5 kg" [rule 2] - 'D 3' is vitamina D3 and 3/4/5 kg are cat body weights, not the product size (85 g).
+- **animax.ro** (dev), Hrana umeda pentru pisici Rasco Premium Rata&Catina 85g: "Weight: 3 kg, 4 kg, 5 kg, 6 kg" [rule 2] - 3-6 kg are cat body weights from the feeding table; the product is 85 g.
+- **animax.ro** (dev), Recompense pentru caini Lily's Kitchen Festive Dog Turkey Jerky 70g: "Size: 70g, 100g" [rule 2] - 70g is right but 100g comes from '375 kcal/100g', not a product size.
+- **animax.ro** (dev), Hrana umeda pentru caini Lily's Kitchen Puppy Turkey-Duck-Kale 400g: "Size: D 3" [rule 2] - 'D 3' is Vitamina D3 from the vitamins list, not a size.
+- **animax.ro** (dev), Hrana umeda pentru caini Lily's Kitchen Puppy Turkey-Duck-Kale 400g: "Weight: 100 g, 1 g" [rule 2] - 100 g is from '95 calorii/100 g' and 1 g is the locust bean gum per kg; the product is 400 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Disugual D-day Cat Peste 400g: "Size: D 3" [rule 2] - 'D 3' is Vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Hrana umeda pentru caini Lily's Kitchen Dog Recovery 400g: "Size: D 3" [rule 2] - 'D 3' is Vitamina D3 from the vitamins list, not a size.
+- **animax.ro** (dev), Hrana umeda pentru caini Lily's Kitchen Dog Recovery 400g: "Weight: 1 g" [rule 2] - 1 g is the locust bean gum per kg; the product is 400 g.
+- **animax.ro** (dev), Hrana umeda pentru pisici Hobby Cat Vita 415g: "Size: D 3" [rule 2] - 'D 3' is vitamina D3 from the additives, not a size.
+- **animax.ro** (dev), Recompensa pentru caini Canvit Snack Immunity 200g: "Size: 200g, 20g, 1KG, 5Kg" [rule 2] - 200g is right but 20g is spirulina per kg and 1Kg / 5Kg are dog weights from the dosage table.
+- **animax.ro** (dev), Hrana semi-umeda pentru caini Devora cu miel si orez 5 kg: "Size: D 3, 5 kg" [rule 3] - 'D 3, 5 kg' is a garbled fragment; the stray 'D 3' has no meaning and the size is unclear.
+- **animax.ro** (dev), Hrana uscata pentru caini Enjoy Rasfatul Gustului cu pui 10 kg: "Size: D 3, 10 kg" [rule 3] - 'D 3, 10 kg' is a garbled fragment; the stray 'D 3' has no meaning and the size is unclear.
 - **aquaframe.ro** (dev), Jacuzzi cu încălzire All Season: "Size: 198 cm, 74 cm" [rule 3] - Dimensions are 198 x 198 x 74 cm; '198 cm, 74 cm' drops one dimension and says nothing about which is which.
 - **aquaframe.ro** (dev), Resilience G: "Size: 2kg" [rule 3] - Text says the unit weighs under 2 kg; 'Size: 2kg' drops 'under' and presents a weight as a size.
 - **aquaframe.ro** (dev), Resilience E: "Size: H 2, D 2" [rule 2] - 'H 2, D 2' comes from the adaptor model names H2E and D2E, not from any size of the product.
@@ -806,6 +986,392 @@
 - **greatjonesgoods.com** (dev), Hot Dish: "Compatibility: for easy transport" [rule 3] - 'for easy transport' is the benefit of the lid, not something the dish is compatible with; doubt: it could be read as suited to transport.
 - **greatjonesgoods.com** (dev), Large Fry: "Material: ceramic" [rule 2] - Ceramic is only the pan's nonstick coating, yet it is shown as the pan's sole material; doubt: ceramic nonstick pans are often called ceramic pans.
 - **greatjonesgoods.com** (dev), Large Fry: "Compatibility: for both, for all stovetops" [rule 3] - 'for both' is torn from 'healthier for both you and planet Earth' and means nothing.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 512GB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 512GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 512GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 256GB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 256GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 32GB, 256GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 32GB memory and 256GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 512GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 256GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 256GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 256GB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 256GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 24GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 24GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 512GB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 2TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 1TB SSD.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M6, 12 nuclee CPU si 12 nuclee GPU, 16GB, 256GB SSD, 10 Gigabit Ethernet: "Memory: 2,5 GB, SSD" [rule 2] - 2,5 Gb is the Ethernet speed, not memory; the product has 16GB memory and 256GB SSD.
+- **istyle.ro** (dev), Resigilat: MacBook Pro 16", procesor Apple M4 Max, 16 nuclee CPU si 40 nuclee GPU, 48GB, 1TB SSD, Space Black: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 48GB; the capacity and meaning are lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: MacBook Pro 14", procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 24GB, 1TB SSD, Silver, INT KB: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 24GB; the capacity and meaning are lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: MacBook Pro 16", procesor Apple M3 Max, 14 nuclee CPU si 30 nuclee GPU, 1TB SSD, Silver: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory with no capacity; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: MacBook Pro 14", procesor Apple M5, 10 nuclee CPU si 10 nuclee GPU, 16GB, 512GB SSD, Silver, INT KB: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Resigilat: Mac Mini, procesor Apple M4, 10 nuclee CPU si 10 nuclee GPU, 16GB, 256GB SSD: "Memory: SSD" [rule 3] - 'SSD' is cut from '256GB SSD' storage and shown as memory, while the memory is 16GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 8TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 8TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 512GB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 4TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 4TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '2TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '2TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 8TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 64GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 64GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 8TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 4TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 512GB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 4TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '2TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '2TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 48GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '1TB SSD' storage and shown as memory, while the memory is 48GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 8TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 8TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '8TB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '2TB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 512GB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 4TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 4TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '4TB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - 'SSD' is cut from '512GB SSD' storage and shown as memory, while the memory is 24GB; meaning is lost (doubt: storage may be what is meant).
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '2TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 24GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '1TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 24GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 18 nuclee CPU si 20 nuclee GPU, 24GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '1TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 24GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 8TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '8TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 8TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '8TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 512GB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '512GB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 512GB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '512GB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 4TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '4TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 4TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '4TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 2TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '2TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 2TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '2TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 1TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '1TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 64GB, 1TB SSD, 10 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '1TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 64GB.
+- **istyle.ro** (dev), Produs configurabil: Mac Mini, procesor Apple M5 Pro, 15 nuclee CPU si 16 nuclee GPU, 48GB, 8TB SSD, 2.5 Gigabit Ethernet: "Memory: SSD" [rule 3] - SSD is torn from '8TB SSD' (storage) and shown as Memory with no capacity, while the title's memory is 48GB.
+- **jlab.com** (dev), GO Sport ANC True Wireless Earbuds Dark Grey: "Battery: 2 hours" [rule 3] - 2 hours is the earbud/case charge time, but under Battery it reads as battery life (8.5+ h per earbud, 35+ h total).
+- **jlab.com** (dev), GO Sport ANC True Wireless Earbuds Ocean Blue: "Battery: 2 hours" [rule 3] - 2 hours is the earbud/case charge time, but under Battery it reads as battery life (8.5+ h per earbud, 35+ h total).
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Royal Caviar: "Screen: 1 inch" [rule 2] - The headphones have no screen; 1 inch is the thickness of the Cloud Foam ear cushions.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Royal Caviar: "Battery: 70 hours, 40 hours, 7.5 hours, 2.5 hours" [rule 3] - Mixes playtime (70 h ANC off, 40 h ANC on or talk), quick-charge gain (7.5 h) and charge time (2.5 h) with nothing saying which is which.
+- **jlab.com** (dev), GO Sport ANC True Wireless Earbuds Pastel Purple: "Battery: 2 hours" [rule 3] - 2 hours is the earbud/case charge time, but under Battery it reads as battery life (8.5+ h per earbud, 35+ h total).
+- **jlab.com** (dev), GO Sport ANC True Wireless Earbuds Hibiscus Pink: "Battery: 2 hours" [rule 3] - 2 hours is the earbud/case charge time, but under Battery it reads as battery life (8.5+ h per earbud, 35+ h total).
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Gold Digger: "Screen: 1 inch" [rule 2] - The headphones have no screen; 1 inch is the thickness of the Cloud Foam ear cushions.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Gold Digger: "Battery: 70 hours, 40 hours, 7.5 hours, 2.5 hours" [rule 3] - Mixes playtime (70 h ANC off, 40 h ANC on or talk), quick-charge gain (7.5 h) and charge time (2.5 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Pearl Next Door: "Screen: 1 inch" [rule 2] - The headphones have no screen; 1 inch is the thickness of the Cloud Foam ear cushions.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Pearl Next Door: "Battery: 70 hours, 40 hours, 7.5 hours, 2.5 hours" [rule 3] - Mixes playtime (70 h ANC off, 40 h ANC on or talk), quick-charge gain (7.5 h) and charge time (2.5 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Fir Sure: "Screen: 1 inch" [rule 2] - The headphones have no screen; 1 inch is the thickness of the Cloud Foam ear cushions.
+- **jlab.com** (dev), JBuds Lux ANC Jelle Headphones Fir Sure: "Battery: 70 hours, 40 hours, 7.5 hours, 2.5 hours" [rule 3] - Mixes playtime (70 h ANC off, 40 h ANC on or talk), quick-charge gain (7.5 h) and charge time (2.5 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Mini ANC True Wireless Earbuds Blue: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC True Wireless Earbuds Graphite: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC True Wireless Earbuds Pastel Pink: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC True Wireless Earbuds Vivid Pink: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC Jelle True Wireless Earbuds Blush Fund: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC Jelle True Wireless Earbuds Fir Sure: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC Jelle True Wireless Earbuds Gold Digger: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC Jelle True Wireless Earbuds Royal Caviar: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), JBuds Mini ANC Jelle True Wireless Earbuds Pearl Next Door: "Battery: 35 mAh, 250 mAh, 1.5 hours, 2 hours" [rule 3] - Two capacities (earbud vs case) and two charge times (1.5 h earbud, 2 h case) with nothing saying which is which; the hours read as battery life, which is 7+/25+ h.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Cyan: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Cyan: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Mixes capacity, playtime without/with RGB (8 h, 5 h) and charge time (3 h) with nothing saying which is which.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Pink: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Pink: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Mixes capacity, playtime without/with RGB (8 h, 5 h) and charge time (3 h) with nothing saying which is which.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Lime: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Lime: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Mixes capacity, playtime without/with RGB (8 h, 5 h) and charge time (3 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & JBuds Mini Sage Bundle: "Battery: 40 hours, 7.5 hours, 5.5 hours, 70 hours" [rule 3] - Mixes headphone playtimes (70 h, 40 h), quick-charge gain (7.5 h) and the earbuds' per-bud playtime (5.5 h) across two products with nothing saying which is which.
+- **jlab.com** (dev), JBuds Party Black + JBuds Black Mini Gift Set: "Screen: 20,000 Hz" [rule 2] - Neither product has a screen; 20,000 Hz is the speaker's upper frequency response.
+- **jlab.com** (dev), JBuds Party Black + JBuds Black Mini Gift Set: "Battery: 5000 mAh, 5.5 hours, 12 hours, 3 hours" [rule 3] - Mixes the speaker's capacity, playtime (12 h) and charge time (3 h) with the earbuds' per-bud playtime (5.5 h), nothing saying which is which.
+- **jlab.com** (dev), Mystery GO POP+ True Wireless Earbuds 2 Pack: "Screen: 20,000 Hz" [rule 2] - The earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Mystery GO POP+ True Wireless Earbuds 2 Pack: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Two capacities (earbud vs case) and two playtimes (per earbud vs total) with nothing saying which is which.
+- **jlab.com** (dev), Mystery GO POP+ True Wireless Earbuds 2 Pack: "Warranty: warranty x2" [rule 3] - 'warranty x2' is torn from the in-box line and loses the duration (2-year limited warranty, two of them).
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Grey/Black: "Screen: 20,000 Hz" [rule 2] - The headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Grey/Black: "Battery: 380 mAh, 25 hours, 600 hours, 3 hours" [rule 3] - Mixes capacity, talk time (25 h), standby (600 h) and charge time (3 h) with nothing saying which is which; the 50 h playtime is absent.
+- **jlab.com** (dev), Go Work 3 & GO Pop Cam Work Bundle: "Battery: 7 hours, 2.5 hours" [rule 3] - 7 hours is the quick-charge gain and 2.5 hours the charge time; under Battery they read as battery life, which is 55+ h.
+- **jlab.com** (dev), Go Work 3 & GO Pop Cam Work Bundle: "Warranty: 2 year, warranty specifications go work" [rule 3] - The second value 'warranty specifications go work' is a fragment torn across a heading and means nothing.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Black Gift Set: "Battery: 7.5 hours, 2.5 hours, 2.2 hours" [rule 3] - 7.5 h is a quick-charge gain and 2.5 h / 2.2 h are charge times of two products; under Battery they read as battery life, which is 70+/35+ h.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Black Gift Set: "Connectivity: Bluetooth, USB-C, 5G" [rule 2] - Nothing in the text says 5G; the products connect over Bluetooth and USB-C only.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Black Gift Set: "Warranty: 2 year, warranty specifications jbuds lux" [rule 3] - The second value 'warranty specifications jbuds lux' is a fragment torn across a heading and means nothing.
+- **jlab.com** (dev), Epic Speaker & Epic Lux Lab Edition Gift Set: "Battery: 5 hours, 3 hours, wireless charging" [rule 3] - 5 hours and 3 hours are charge times (or the 5-min fast-charge gain) of two products; under Battery they read as battery life, which is 16+/90+ h.
+- **jlab.com** (dev), Epic Speaker & Epic Lux Lab Edition Gift Set: "Warranty: 2 year, warranty specifications epic party" [rule 3] - The second value 'warranty specifications epic party' is a fragment torn across a heading and means nothing.
+- **jlab.com** (dev), Epic Lux Lab ANC & JBuds Lux ANC Headphones Gift Set: "Battery: 7.5 hours, 3 hours, 2.5 hours, wireless charging" [rule 3] - 7.5 h is a quick-charge gain and 3 h / 2.5 h are charge times of two headphones; under Battery they read as battery life, which is 90+/70+ h.
+- **jlab.com** (dev), Epic Lux Lab ANC & JBuds Lux ANC Headphones Gift Set: "Warranty: 2 year, warranty specifications epic lux" [rule 3] - The second value 'warranty specifications epic lux' is a fragment torn across a heading and means nothing.
+- **jlab.com** (dev), JBuds Party Speaker + JBuds Lux ANC Headphones Bundle: "Battery: 3 hours, 2.5 hours, 7.5 hours, 250 hours" [rule 3] - Mixes charge times (3 h, 2.5 h), quick-charge gain (7.5 h) and standby (250 h) of two products with nothing saying which is which; no playtime is given.
+- **jlab.com** (dev), JBuds Party Speaker + JBuds Lux ANC Headphones Bundle: "Warranty: warranty jbuds party speaker, warranty jbuds lux anc" [rule 3] - Values are fragments torn from 'JLab Two Year Warranty' plus the next heading; the duration is lost and the text is meaningless.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Pink: "Screen: 18,000 Hz" [rule 2] - The speaker has no screen; 18,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Pink: "Battery: 4000 mAh, 16 hours, 8 hours, 3 hours" [rule 3] - Mixes capacity, playtime without/with RGB (16 h, 8 h) and charge time (3 h) with nothing saying which is which.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Cyan: "Screen: 18,000 Hz" [rule 2] - The speaker has no screen; 18,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Cyan: "Battery: 4000 mAh, 16 hours, 8 hours, 3 hours" [rule 3] - Mixes capacity, playtime without/with RGB (16 h, 8 h) and charge time (3 h) with nothing saying which is which.
+- **jlab.com** (dev), Epic & Go Pods ANC Earbuds Black Gift Set: "Battery: 2 hours, 33 hours, wireless charging" [rule 3] - 2 hours is a charge time and 33 hours the GO Pods standby; under Battery they read as battery life, which is 60/26 h.
+- **jlab.com** (dev), Epic & Go Pods ANC Earbuds Black Gift Set: "Connectivity: Bluetooth, USB-C, 4G" [rule 2] - Nothing in the text says 4G; the earbuds connect over Bluetooth and USB-C only.
+- **jlab.com** (dev), Epic & Go Pods ANC Earbuds Black Gift Set: "Warranty: warranty epic pods anc, warranty go pods anc" [rule 3] - Values are fragments torn from 'JLab Two Year Warranty' plus the next heading; the duration is lost and the text is meaningless.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Pink: "Screen: 20,000 Hz" [rule 2] - The headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Black: "Screen: 20,000 Hz" [rule 2] - The earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Black: "Battery: 50 mAh, 500 mAh, 10 hours, 7 hours" [rule 3] - Two capacities (earbud vs case) and per-earbud playtimes ANC off/on (10 h, 7 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Mauve: "Screen: 20,000 Hz" [rule 2] - The earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Mauve: "Battery: 50 mAh, 500 mAh, 10 hours, 7 hours" [rule 3] - Two capacities (earbud vs case) and per-earbud playtimes ANC off/on (10 h, 7 h) with nothing saying which is which.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Blue: "Screen: 20,000 Hz" [rule 2] - The earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Pods ANC True Wireless Earbuds Blue: "Battery: 50 mAh, 500 mAh, 10 hours, 7 hours" [rule 3] - Two capacities (earbud vs case) and per-earbud playtimes ANC off/on (10 h, 7 h) with nothing saying which is which.
+- **jlab.com** (dev), GO Work Wireless On-Ear Headset Gen 3 Black: "Screen: 20,000 Hz" [rule 2] - The headset has no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), GO Work Wireless On-Ear Headset Gen 3 Black: "Battery: 500 mAh, 40 hours, 400 hours, 2 hours" [rule 3] - Mixes capacity, talk time (40 h), standby (400 h) and charge time (2 h) with nothing saying which is which; the 70 h playtime is absent.
+- **jlab.com** (dev), Midnight Gaming Family Black: "Screen: IPS" [rule 2] - IPS here is the mouse max speed in inches per second, not a screen; the bundle has no screen.
+- **jlab.com** (dev), Midnight Gaming Family Black: "Battery: 70 hours, 3 hours" [rule 3] - 3 hours is the headset charge time, not battery life, and nothing says which figure is playtime and which is charging.
+- **jlab.com** (dev), Midnight Gaming Family Black: "Warranty: 2 year, warranty specifications headset driver" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty specifications headset driver', text from the next headings.
+- **jlab.com** (dev), Midnight Wireless Gaming Headset Black: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headset has no screen.
+- **jlab.com** (dev), Midnight Wireless Gaming Headset Black: "Battery: 950 mAh, 100 hours, 3 hours" [rule 3] - 3 hours is the charge time, listed unlabeled among battery figures so it reads as battery life.
+- **jlab.com** (dev), Midnight Wireless Gaming Mouse Black: "Screen: IPS" [rule 2] - IPS is the max tracking speed in inches per second, not a screen; the mouse has no screen.
+- **jlab.com** (dev), Nightfall Wireless Gaming Headset White: "Battery: 70 hours, 10 hours" [rule 3] - 10 hours is the playtime gained from a 10-minute quick charge; unlabeled it reads as a second battery life figure.
+- **jlab.com** (dev), Nightfall Wireless Gaming Headset Pink: "Battery: 70 hours, 10 hours" [rule 3] - 10 hours is the playtime gained from a 10-minute quick charge; unlabeled it reads as a second battery life figure.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse White: "Screen: IPS" [rule 2] - IPS is the max tracking speed in inches per second, not a screen; the mouse has no screen.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse White: "Battery: 3 hours" [rule 3] - 3 hours is the charge time, shown under Battery so it reads as battery life.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse Pink: "Screen: IPS" [rule 2] - IPS is the max tracking speed in inches per second, not a screen; the mouse has no screen.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse Pink: "Battery: 3 hours" [rule 3] - 3 hours is the charge time, shown under Battery so it reads as battery life.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse Black: "Screen: IPS" [rule 2] - IPS is the max tracking speed in inches per second, not a screen; the mouse has no screen.
+- **jlab.com** (dev), Nightfall Wireless Gaming Mouse Black: "Battery: 3 hours" [rule 3] - 3 hours is the charge time, shown under Battery so it reads as battery life.
+- **jlab.com** (dev), Nightfall Gaming Family White: "Screen: IPS" [rule 2] - IPS is the mouse max speed in inches per second, not a screen; the bundle has no screen.
+- **jlab.com** (dev), Nightfall Gaming Family White: "Battery: 70 hours, 10 hours" [rule 3] - 10 hours is the quick-charge gain from 10 minutes; unlabeled it reads as a second battery life figure.
+- **jlab.com** (dev), Nightfall Gaming Family White: "Warranty: 2 year, warranty specifications headset driver" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty specifications headset driver'.
+- **jlab.com** (dev), Nightfall Gaming Family Pink: "Screen: IPS" [rule 2] - IPS is the mouse max speed in inches per second, not a screen; the bundle has no screen.
+- **jlab.com** (dev), Nightfall Gaming Family Pink: "Battery: 70 hours, 10 hours" [rule 3] - 10 hours is the quick-charge gain from 10 minutes; unlabeled it reads as a second battery life figure.
+- **jlab.com** (dev), Nightfall Gaming Family Pink: "Warranty: 2 year, warranty specifications headset driver" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty specifications headset driver'.
+- **jlab.com** (dev), Daybreak Gaming Family Black: "Screen: IPS" [rule 2] - IPS is the mouse max speed in inches per second, not a screen; the bundle has no screen.
+- **jlab.com** (dev), Daybreak Gaming Family Black: "Battery: 950 mAh, 80 hours, 100 hours" [rule 3] - Mixes headset (950 mAh, 100 hours) and mouse (80 hours) figures in a bundle with nothing saying which item each belongs to.
+- **jlab.com** (dev), Nightfall Gaming Family Black: "Screen: IPS" [rule 2] - IPS is the mouse max speed in inches per second, not a screen; the bundle has no screen.
+- **jlab.com** (dev), Nightfall Gaming Family Black: "Battery: 70 hours, 10 hours" [rule 3] - 10 hours is the quick-charge gain from 10 minutes; unlabeled it reads as a second battery life figure.
+- **jlab.com** (dev), Nightfall Gaming Family Black: "Warranty: 2 year, warranty specifications headset driver" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty specifications headset driver'.
+- **jlab.com** (dev), Daybreak Wireless Gaming Headset Black: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headset has no screen.
+- **jlab.com** (dev), Daybreak Wireless Gaming Headset Black: "Battery: 950 mAh, 100 hours, 3 hours" [rule 3] - 3 hours is the charge time, listed unlabeled among battery figures so it reads as battery life.
+- **jlab.com** (dev), Daybreak Wireless Gaming Mouse Black: "Screen: IPS" [rule 2] - IPS is the max tracking speed in inches per second, not a screen; the mouse has no screen.
+- **jlab.com** (dev), MrBeast Wired Gaming Headset Black: "Warranty: warranty specifications audio" [rule 3] - Value is the torn fragment 'warranty specifications audio'; the actual lifetime warranty is lost.
+- **jlab.com** (dev), JBuds Open Headphone Open-Ear Wireless Headphones Cloud: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuds Open Headphone Open-Ear Wireless Headphones Cloud: "Battery: 380 mAh, 15 hours, 200 hours, 2.5 hours" [rule 3] - 15 hours is talk time, 200 hours standby and 2.5 hours charge time, all unlabeled so they read as battery life; the 24-hour playtime is missing.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Peach: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Blue/Gray: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Graphite/Violet: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Dark Pink: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Blue/Pink: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Type-C Headphones Blue/Green: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), Star Spangled JBuds Lux ANC Headphones: "Battery: 2.5 hours, 10 hours" [rule 3] - 2.5 hours is the charge time and 10 hours the fast-charge gain; the 70+ hour battery life is missing and the figures read as battery life.
+- **jlab.com** (dev), Star Spangled JBuds Lux ANC Headphones: "Warranty: 2 year, warranty download user manual" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty download user manual'.
+- **jlab.com** (dev), JBuds Lux ANC Headphones Navy: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuds Lux ANC Headphones Navy: "Battery: 70 hours, 40 hours, 7.5 hours" [rule 3] - 70 and 40 hours (ANC off/on or talk time) and 7.5 hours (quick-charge gain) are unlabeled, so the 7.5 reads as battery life.
+- **jlab.com** (dev), JLab Blue XL Speaker Headphones: "Battery: 3000 mAh, 6000 mAh" [rule 3] - The text says 2 x 3000 mAh = 6000 mAh total; listing 3000 and 6000 side by side loses that relation and reads as two different capacities.
+- **jlab.com** (dev), Epic Lux Lab Edition ANC Over-Ear Headphones Cloud: "Screen: 40,000 Hz" [rule 2] - 40,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), Epic Lux Lab Edition ANC Over-Ear Headphones Cloud: "Battery: 750 mAh, 60 hours, 45 hours, 600 hours" [rule 3] - 60 hours is ANC-on playtime, 45 hours talk time and 600 hours standby, all unlabeled, so 600 hours reads as battery life; 90-hour playtime missing.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Cloud: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the earbuds have no screen.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Cloud: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - 45 mAh is the earbud and 320 mAh the case battery, 7.5 and 6 hours are per-earbud ANC off/on, and nothing says which is which.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Cloud: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the earbuds have no screen.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Cloud: "Battery: 350 mAh, 7.5 hours, 26 hours, 18 hours" [rule 3] - 350 mAh is the case battery, 7.5 hours per earbud, 26 and 18 hours total ANC off/on, with nothing saying which is which.
+- **jlab.com** (dev), Studio 2 Wireless On-Ear Headphones Mint: "Battery: 45 hours, 24 hours, 190 hours, 2 hours" [rule 3] - 24 hours is talk time, 190 hours standby and 2 hours charge time, unlabeled so they read as battery life.
+- **jlab.com** (dev), Studio 2 Wireless On-Ear Headphones Lilac: "Battery: 45 hours, 24 hours, 190 hours, 2 hours" [rule 3] - 24 hours is talk time, 190 hours standby and 2 hours charge time, unlabeled so they read as battery life.
+- **jlab.com** (dev), Studio 2 Wireless On-Ear Headphones Deep Blue: "Battery: 45 hours, 24 hours, 190 hours, 2 hours" [rule 3] - 24 hours is talk time, 190 hours standby and 2 hours charge time, unlabeled so they read as battery life.
+- **jlab.com** (dev), Studio 2 Wireless On-Ear Headphones Coral: "Battery: 45 hours, 24 hours, 190 hours, 2 hours" [rule 3] - 24 hours is talk time, 190 hours standby and 2 hours charge time, unlabeled so they read as battery life.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Confetti: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the earbuds have no screen.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Confetti: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - 45 mAh is the earbud and 380 mAh the case battery, 9 hours per earbud and 35 hours total, with nothing saying which is which.
+- **jlab.com** (dev), JBuds Open Headphone Open-Ear Wireless Headphones Black: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the headphones have no screen.
+- **jlab.com** (dev), JBuds Open Headphone Open-Ear Wireless Headphones Black: "Battery: 380 mAh, 15 hours, 200 hours, 2.5 hours" [rule 3] - 15 hours is talk time, 200 hours standby and 2.5 hours charge time, all unlabeled so they read as battery life; the 24-hour playtime is missing.
+- **jlab.com** (dev), Epic Lab Edition Headphones & Earbuds Set: "Screen: 20,000 Hz, 40,000 Hz" [rule 2] - 20,000 Hz and 40,000 Hz are frequency response limits of the two audio products, not a screen; the set has no screen.
+- **jlab.com** (dev), Epic Lab Edition Headphones & Earbuds Set: "Battery: 60 hours, 5 hours, 2 hours, 90 hours" [rule 3] - Mixes headphone playtime (90/60 hours) with quick-charge gains (5 and 2 hours) of two different items, unlabeled, so 5 and 2 hours read as battery life.
+- **jlab.com** (dev), Epic Lab Edition Headphones & Earbuds Set: "Warranty: warranty epic lab edition, warranty full bundle includes" [rule 3] - Value is torn fragments 'warranty epic lab edition, warranty full bundle includes'; the 2-year warranty is lost.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Black 2 Pack: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the speaker has no screen.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Black 2 Pack: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - 5 hours is playtime with RGB on and 3 hours is charge time, unlabeled so 3 hours reads as battery life.
+- **jlab.com** (dev), Studio 2 Wireless On-Ear Headphones Black: "Battery: 45 hours, 24 hours, 190 hours, 2 hours" [rule 3] - 24 hours is talk time, 190 hours standby and 2 hours charge time, unlabeled so they read as battery life.
+- **jlab.com** (dev), JBuds Lux ANC Birmingham Bowl Limited Edition Headphones: "Battery: 2.5 hours, 4 hours, 250 hours" [rule 3] - 2.5 hours is charge time, 4 hours the fast-charge gain and 250 hours standby; the 70+ hour battery life is missing and the figures read as battery life.
+- **jlab.com** (dev), JBuds Lux ANC Birmingham Bowl Limited Edition Headphones: "Warranty: 2 year, warranty download user manual" [rule 3] - The 2-year warranty is followed by the torn fragment 'warranty download user manual'.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Navy: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the speaker has no screen.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Navy: "Battery: 5000 mAh, 10 hours, 3 hours, 12 hours" [rule 3] - 10 hours is playtime with RGB on and 3 hours is charge time, unlabeled so 3 hours reads as battery life.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Mulberry: "Screen: 20,000 Hz" [rule 2] - 20,000 Hz is the frequency response upper limit, not a screen; the speaker has no screen.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Mulberry: "Battery: 5000 mAh, 10 hours, 3 hours, 12 hours" [rule 3] - 10 hours is playtime with RGB on and 3 hours is charge time, unlabeled so 3 hours reads as battery life.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Navy: "Screen: 18,000 Hz" [rule 2] - 18,000 Hz is the frequency response upper limit, not a screen; the speaker has no screen.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Navy: "Battery: 4000 mAh, 16 hours, 8 hours, 3 hours" [rule 3] - 8 hours is playtime with RGB on and 3 hours is charge time, unlabeled so 3 hours reads as battery life.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Mulberry: "Screen: 18,000 Hz" [rule 2] - The speaker has no screen; 18,000 Hz is the upper end of its frequency response, not a screen property.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Mulberry: "Battery: 4000 mAh, 16 hours, 8 hours, 3 hours" [rule 3] - Three hour values (16h playtime, 8h with RGB, 3h charge time) listed with nothing saying which is which, so the 3 hours reads as runtime.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Mulberry: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Mulberry: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Hour values (8h playtime, 5h with RGB, 3h charge time) listed without saying which is which.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Navy: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Navy: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Hour values (8h playtime, 5h with RGB, 3h charge time) listed without saying which is which.
+- **jlab.com** (dev), Epic Pods ANC True Wireless Earbuds Black: "Screen: 40,000 Hz" [rule 2] - Earbuds have no screen; 40,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Epic Pods ANC True Wireless Earbuds Black: "Battery: 76 mAh, 570 mAh, 16 hours, 13 hours" [rule 3] - Two capacities (earbud 76 mAh, case 570 mAh) and two runtimes (ANC off/on) with nothing saying which is which.
+- **jlab.com** (dev), Flex Open Earbuds White: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Flex Open Earbuds White: "Battery: 70 mAh, 400 mAh, 7 hours, 2 hours" [rule 3] - Earbud and case capacities unlabelled, and 2 hours is a charge time listed alongside 7h runtime with nothing distinguishing them.
+- **jlab.com** (dev), GO Work Wireless On-Ear Headset Black: "Battery: 2 hours, 470 hours" [rule 3] - 2 hours is charge time and 470 hours is standby; listed bare they read as battery life.
+- **jlab.com** (dev), GO Work Wireless On-Ear Headset Black: "Warranty: 2 year, warranty download user manual" [rule 3] - Second value 'warranty download user manual' is a fragment spliced from the next line and means nothing.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Light Blue: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Light Blue: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Light Blue: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Violet: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Violet: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Violet: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), Epic Air ANC True Wireless Earbuds 2nd Generation Black: "Battery: 3 hours, 100 hours, wireless charging" [rule 3] - 3 hours is charge time and 100 hours standby, listed bare so they read as battery life.
+- **jlab.com** (dev), Epic Air ANC True Wireless Earbuds 2nd Generation Black: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Cyan: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Cyan: "Battery: 5000 mAh, 10 hours, 3 hours, 12 hours" [rule 3] - Hour values (10h with RGB, 3h charge time, 12h playtime) listed without saying which is which.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Pink: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Pink: "Battery: 5000 mAh, 10 hours, 3 hours, 12 hours" [rule 3] - Hour values (10h with RGB, 3h charge time, 12h playtime) listed without saying which is which.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Black: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Pop Party Ultra-Portable Bluetooth Speaker Black: "Battery: 2000 mAh, 8 hours, 5 hours, 3 hours" [rule 3] - Hour values (8h playtime, 5h with RGB, 3h charge time) listed without saying which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Yellow: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Yellow: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Yellow: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Teal: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Teal: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Teal: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Graphite: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Graphite: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Graphite: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Sand: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Sand: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Sand: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Green: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Green: "Connectivity: Bluetooth, 5G" [rule 2] - Nothing in the text mentions 5G; it appears derived from 'Bluetooth 5.1'.
+- **jlab.com** (dev), GO Air Sport True Wireless Earbuds Green: "Warranty: 2 year, warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment, not a warranty term.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Navy: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Navy: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Navy: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), Epic Party Portable Bluetooth Speaker Black: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Epic Party Portable Bluetooth Speaker Black: "Battery: 9000 mAh, 16 hours, 5 hours, 14 hours" [rule 3] - Hour values (16h playtime, 5h charge time, 14h with RGB) listed without saying which is which.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Black: "Screen: 20,000 Hz" [rule 2] - The speaker has no screen; 20,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), JBuds Party Portable Bluetooth Speaker Black: "Battery: 5000 mAh, 10 hours, 3 hours, 12 hours" [rule 3] - Hour values (10h with RGB, 3h charge time, 12h playtime) listed without saying which is which.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Black: "Screen: 18,000 Hz" [rule 2] - The speaker has no screen; 18,000 Hz is the upper end of its frequency response.
+- **jlab.com** (dev), Go Party Portable Bluetooth Speaker Black: "Battery: 4000 mAh, 16 hours, 8 hours, 3 hours" [rule 3] - Hour values (16h playtime, 8h with RGB, 3h charge time) listed without saying which is which.
+- **jlab.com** (dev), NBA Ignite Studio Pro Wireless Over-Ear Headphones: "Battery: 3 hours, 400 hours" [rule 3] - 3 hours is charge time and 400 hours standby; listed bare they read as battery life, and the 50+ hour playtime is absent.
+- **jlab.com** (dev), NBA Ignite Studio Pro Wireless Over-Ear Headphones: "Warranty: 2 year, warranty download user manual" [rule 3] - Second value 'warranty download user manual' is a spliced fragment and means nothing.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Sage: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Sage: "Battery: 350 mAh, 7.5 hours, 26 hours, 18 hours" [rule 3] - 350 mAh is the case battery and the hours mix per-earbud and total (ANC on) runtimes with nothing saying which is which.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Lilac: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Lilac: "Battery: 350 mAh, 7.5 hours, 26 hours, 18 hours" [rule 3] - 350 mAh is the case battery and the hours mix per-earbud and total (ANC on) runtimes with nothing saying which is which.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Black: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pods ANC True Wireless Earbuds Black: "Battery: 350 mAh, 7.5 hours, 26 hours, 18 hours" [rule 3] - 350 mAh is the case battery and the hours mix per-earbud and total (ANC on) runtimes with nothing saying which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Pink: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Pink: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Pink: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Mauve Gift Set: "Battery: 7.5 hours, 2.5 hours, 2.2 hours" [rule 3] - 7.5 hours is the quick-charge result and 2.5/2.2 hours are charge times of two different products in the set; nothing says which is which.
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Mauve Gift Set: "Connectivity: Bluetooth, USB-C, 5G" [rule 2] - Bluetooth and USB-C are stated, but 5G is not mentioned anywhere (derived from 'Bluetooth 5.4'/'5.1').
+- **jlab.com** (dev), JBuds Lux ANC Headphones & Go Pop+ Mauve Gift Set: "Warranty: 2 year, warranty specifications jbuds lux" [rule 3] - Second value 'warranty specifications jbuds lux' is a fragment spliced from the next heading and means nothing.
+- **jlab.com** (dev), Epic Open Sport Air Conduction Wireless Earbuds Black: "Screen: 40,000 Hz" [rule 2] - Earbuds have no screen; 40,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Epic Open Sport Air Conduction Wireless Earbuds Black: "Battery: 60 mAh, 450 mAh, 7 hours, 5 hours" [rule 3] - Earbud and case capacities unlabelled, and 5 hours is talk time listed next to 7h playtime with nothing distinguishing them.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Teal: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Teal: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Teal: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Slate: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Slate: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Slate: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Rose: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Rose: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Rose: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Lilac: "Battery: 32 hours, 2.2 hours" [rule 3] - 32 hours is total playtime and 2.2 hours is earbud charge time; nothing says which is which.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Lilac: "Connectivity: Bluetooth, 5G, 4G" [rule 2] - Neither 5G nor 4G is mentioned; the earbuds are Bluetooth 5.1 only.
+- **jlab.com** (dev), GO Air POP True Wireless Earbuds Lilac: "Warranty: warranty download user manual" [rule 3] - 'warranty download user manual' is a spliced fragment with no warranty term; the 2-year duration is lost.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 728 N: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 728 N: "Battery: 35 mAh, 250 mAh, 5.5 hours, 20 hours" [rule 3] - Earbud (35 mAh) and case (250 mAh) capacities and per-earbud vs total hours listed with nothing saying which is which.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 4625 W: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 4625 W: "Battery: 35 mAh, 250 mAh, 5.5 hours, 20 hours" [rule 3] - Earbud (35 mAh) and case (250 mAh) capacities and per-earbud vs total hours listed with nothing saying which is which.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 7572 W: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), JBuds Mini Tones True Wireless Earbuds 7572 W: "Battery: 35 mAh, 250 mAh, 5.5 hours, 20 hours" [rule 3] - Earbud (35 mAh) and case (250 mAh) capacities and per-earbud vs total hours listed with nothing saying which is which.
+- **jlab.com** (dev), Epic Lux Lab Edition ANC Over-Ear Headphones Black: "Screen: 40,000 Hz" [rule 2] - Headphones have no screen; 40,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Epic Lux Lab Edition ANC Over-Ear Headphones Black: "Battery: 750 mAh, 60 hours, 45 hours, 600 hours" [rule 3] - 60h (ANC on playtime), 45h (talk time) and 600h (standby) listed bare with nothing saying which is which.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Sage: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Sage: "Battery: 600 mAh, 40 hours, 400 hours, 7 hours" [rule 3] - 40h (ANC on or talk), 400h (standby) and 7h (quick-charge result) listed bare with nothing saying which is which.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Mauve: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Mauve: "Battery: 600 mAh, 40 hours, 400 hours, 7 hours" [rule 3] - 40h (ANC on or talk), 400h (standby) and 7h (quick-charge result) listed bare with nothing saying which is which.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Graphite: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Graphite: "Battery: 600 mAh, 40 hours, 400 hours, 7 hours" [rule 3] - 40h (ANC on or talk), 400h (standby) and 7h (quick-charge result) listed bare with nothing saying which is which.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Cloud: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Lux ANC Wireless Headphones Cloud: "Battery: 600 mAh, 40 hours, 400 hours, 7 hours" [rule 3] - 40h (ANC on or talk), 400h (standby) and 7h (quick-charge result) listed bare with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Teal: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Teal: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Earbud (45 mAh) and case (320 mAh) capacities and ANC off/on hours listed with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Purple: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Purple: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Earbud (45 mAh) and case (320 mAh) capacities and ANC off/on hours listed with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Neon Green: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Transparent Neon Green: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Earbud (45 mAh) and case (320 mAh) capacities and ANC off/on hours listed with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC Transparent Teal + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pop ANC Transparent Teal + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Earbud (45 mAh) and case (320 mAh) capacities and ANC off/on hours listed with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC Transparent Purple + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response.
+- **jlab.com** (dev), Go Pop ANC Transparent Purple + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Earbud (45 mAh) and case (320 mAh) capacities and ANC off/on hours listed with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC Transparent Neon Green + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC Transparent Neon Green + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop ANC Black + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC Black + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop ANC Teal + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC Teal + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop ANC Fuchsia + Tips: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC Fuchsia + Tips: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Travis Hunter JBuds Lux ANC Headphones: "Battery: 2.5 hours, 10 hours" [rule 3] - 2.5 hours is the charge time and 10 hours is what a 10-minute fast charge gives; under Battery they read as battery life, which is actually 70+ hours (40+ with ANC).
+- **jlab.com** (dev), Travis Hunter JBuds Lux ANC Headphones: "Warranty: 2 year, warranty download user manual" [rule 3] - The second value 'warranty download user manual' is a fragment glued from a list item and a download link, not a warranty term.
+- **jlab.com** (dev), Go Pop+ Cloud Light Blue and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Light Blue and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Violet Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Violet Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Teal and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Teal and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Slate and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Slate and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Rose and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Rose and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Pink and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Pink and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Navy and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Navy and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Mint and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Mint and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Mauve and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Mauve and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Lilac and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Lilac and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Dark Pink and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Dark Pink and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud White and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud White and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop+ Cloud Black and Cloud Foam Tips Gift Set: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop+ Cloud Black and Cloud Foam Tips Gift Set: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Clear: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Clear: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), JBuddies Pop Wired Kids Headphones Blue: "Warranty: warranty package includes" [rule 3] - 'warranty package includes' is a fragment joining the warranty bullet to the next heading; the actual term (JLab Lifetime Warranty) is lost.
+- **jlab.com** (dev), JBuddies Pop Wired Kids Headphones Pink: "Warranty: warranty package includes" [rule 3] - 'warranty package includes' is a fragment joining the warranty bullet to the next heading; the actual term (JLab Lifetime Warranty) is lost.
+- **jlab.com** (dev), JBuddies ANC Kids Headphones Purple/Pink: "Battery: 48 hours, 3 hours" [rule 3] - 48 hours is total playtime and 3 hours is charge time; shown as two bare durations under Battery with nothing saying which is which.
+- **jlab.com** (dev), JBuddies ANC Kids Headphones Blue/Red: "Battery: 48 hours, 3 hours" [rule 3] - 48 hours is total playtime and 3 hours is charge time; shown as two bare durations under Battery with nothing saying which is which.
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Pink: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Pink: "Battery: 380 mAh, 25 hours, 600 hours, 3 hours" [rule 3] - 25 h is talk time, 600 h standby and 3 h charge time, shown as bare durations with nothing saying which, while the 50-hour playtime is missing.
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Teal: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Pop Wireless Kids Headphones Teal: "Battery: 380 mAh, 25 hours, 600 hours, 3 hours" [rule 3] - 25 h is talk time, 600 h standby and 3 h charge time, shown as bare durations with nothing saying which, while the 50-hour playtime is missing.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Headphones Dark Pink: "Screen: 20,000 Hz" [rule 2] - Wired headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Headphones Blue/Green: "Screen: 20,000 Hz" [rule 2] - Wired headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Studio On-Ear Kids Wired Headphones Peach: "Screen: 20,000 Hz" [rule 2] - Wired headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO Sport+ True Wireless Earbuds Coral: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO Sport+ True Wireless Earbuds Coral: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), JBuddies Studio 2 Wireless Kids Headphones Purple/Pink: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Studio 2 Wireless Kids Headphones Purple/Pink: "Battery: 600 mAh, 70 hours, 3 hours" [rule 3] - 70 hours is playtime and 3 hours is charge time, shown as bare durations under Battery with nothing saying which is which.
+- **jlab.com** (dev), JBuddies Studio 2 Wireless Kids Headphones Blue/Red: "Screen: 20,000 Hz" [rule 2] - Headphones have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), JBuddies Studio 2 Wireless Kids Headphones Blue/Red: "Battery: 600 mAh, 70 hours, 3 hours" [rule 3] - 70 hours is playtime and 3 hours is charge time, shown as bare durations under Battery with nothing saying which is which.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Black: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Black: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Light Blue: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Light Blue: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Violet: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Violet: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Pink: "Battery: 22 hours, 3 hours, 400 hours" [rule 3] - 22 h is battery life, 3 h charge time and 400 h standby, shown as bare durations with nothing saying which is which.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Pink: "Warranty: 2 year, warranty download user manual" [rule 3] - The second value 'warranty download user manual' is a fragment glued from a list item and a download link, not a warranty term.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Blue: "Battery: 22 hours, 3 hours, 400 hours" [rule 3] - 22 h is battery life, 3 h charge time and 400 h standby, shown as bare durations with nothing saying which is which.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Blue: "Warranty: 2 year, warranty download user manual" [rule 3] - The second value 'warranty download user manual' is a fragment glued from a list item and a download link, not a warranty term.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Black: "Battery: 22 hours, 3 hours, 400 hours" [rule 3] - 22 h is battery life, 3 h charge time and 400 h standby, shown as bare durations with nothing saying which is which.
+- **jlab.com** (dev), JBuddies Play Gaming Kids Headset Black: "Warranty: 2 year, warranty download user manual" [rule 3] - The second value 'warranty download user manual' is a fragment glued from a list item and a download link, not a warranty term.
+- **jlab.com** (dev), JBuddies Learn On-Ear Kids Headphone Gray: "Warranty: warranty package includes, warranty download user manual" [rule 3] - Both values are fragments joining the warranty bullet to a heading and a download link; the actual term (lifetime warranty) is lost.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Fuchsia: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Fuchsia: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Teal: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Go Pop ANC True Wireless Earbuds Teal: "Battery: 45 mAh, 320 mAh, 7.5 hours, 6 hours" [rule 3] - Mixes earbud (45 mAh) and case (320 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Mauve: "Screen: 20,000 Hz" [rule 2] - Earbuds have no screen; 20,000 Hz is the upper end of the frequency response (20-20,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), GO POP+ True Wireless Earbuds Mauve: "Battery: 45 mAh, 380 mAh, 9 hours, 35 hours" [rule 3] - Mixes earbud (45 mAh) and case (380 mAh) capacities with per-earbud (9 h) and total (35 h) playtimes, with nothing saying which value is which.
+- **jlab.com** (dev), Epic Sport ANC 3 True Wireless Earbuds Black: "Screen: 40,000 Hz" [rule 2] - Earbuds have no screen; 40,000 Hz is the upper end of the frequency response (20-40,000 Hz), shown under the wrong label.
+- **jlab.com** (dev), Epic Sport ANC 3 True Wireless Earbuds Black: "Battery: 85 mAh, 820 mAh, 12 hours, 10 hours" [rule 3] - Mixes earbud (85 mAh) and case (820 mAh) capacities with ANC-off and ANC-on per-earbud runtimes, with nothing saying which value is which.
 - **marialuciahohan.com** (dev), MILAGROS: "Size range: one size" [rule 3] - 'one size' is torn from 'adjustable back allowing to fit one size up or down'; the dress is sized via a size chart.
 - **marialuciahohan.com** (dev), FABRIZIA: "Size range: one size" [rule 3] - 'one size' is torn from 'adjustable back allowing to fit one size up or down'; the garment is sized via a size chart.
 - **marialuciahohan.com** (dev), KELLY: "Size range: one size" [rule 3] - 'one size' is torn from 'fit one size up or down'; the dress uses French sizing.
@@ -2151,6 +2717,333 @@
 - **taylorstitch.com** (dev), The Apres Short in Burgundy Hemp: "Material: cotton" [rule 2] - The short is 100% hemp; cotton is only the pocketing, so "Material: cotton" misstates the product.
 - **taylorstitch.com** (dev), The Stevens Sportcoat in Morel Micro Check: "Pattern: striped" [rule 2] - Only the sleeve lining is striped; the sportcoat itself is a micro check puppytooth.
 - **taylorstitch.com** (dev), The Foundry Shirt in Japanese Shadow Nep: "Colour: black" [rule 2] - The title names the colour "Shadow"; "black" comes from "Black Indigo" in a description line naming a different colourway, and drops the indigo (doubtful).
+- **terraissa.com** (dev), Capsule cu pelin: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means a surface finish, which capsules do not have.
+- **terraissa.com** (dev), Pachet „Frumusețe pentru ten și corp cu tuberoze”: "Volume: 30 ml, 50 ml, 100 ml, 10 ml" [rule 3] - Volumes of different items in the pack are listed with nothing saying which is which; 30 ml and 50 ml each apply to several items.
+- **terraissa.com** (dev), Pachet „Frumusețe pentru ten și corp cu tuberoze”: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Pachet „Catifelare cu tuberoze”: "Volume: 50 ml, 100 ml" [rule 3] - Volumes of three pack items are collapsed to two values with nothing saying which item is which.
+- **terraissa.com** (dev), Pachet „Catifelare cu tuberoze”: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Pachet „Prospețime cu tuberoze”: "Volume: 50 ml, 30 ml, 10 ml" [rule 3] - Volumes of three different pack items with nothing saying which is which.
+- **terraissa.com** (dev), Pachet „Prospețime cu tuberoze”: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Pachet „Rutina Tenului cu Tuberoze”: "Volume: 100 ml, 30 ml" [rule 3] - Volumes of three pack items are collapsed to two values with nothing saying which item is which.
+- **terraissa.com** (dev), Pachet „Rutina Tenului cu Tuberoze”: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Ulei pentru masaj - Ediție specială cu tuberoze: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Lapte de corp și demachiant natural - Ediție specială cu tuberoze: "Format: oil" [rule 2] - The product is a body milk / cleansing milk, not an oil; oils are only ingredients.
+- **terraissa.com** (dev), Lapte de corp și demachiant natural - Ediție specială cu tuberoze: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Cremă pentru echilibrul hormonal: "Format: oil" [rule 2] - The product is a cream; oils are only ingredients.
+- **terraissa.com** (dev), Cremă pentru echilibrul hormonal: "Finish: natural" [rule 3] - 'Natural' is torn from '100% natural' (origin of ingredients); as a Finish it means something else.
+- **terraissa.com** (dev), Ulei de magneziu pentru aplicare cutanată: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural' (composition); the text states no natural finish for this magnesium spray.
+- **terraissa.com** (dev), Mazăre pentru germinare: "Finish: natural" [rule 3] - 'natural' comes from '100% natural' about the peas themselves; a finish means nothing on seeds.
+- **terraissa.com** (dev), Hibiscus (100 g): "Volume: 100 g, 250 ml" [rule 2] - 250 ml is the water for an infusion, not the product's quantity (100 g).
+- **terraissa.com** (dev), Hibiscus (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; dried hibiscus has no finish.
+- **terraissa.com** (dev), Parfum solid cu trandafir: "Format: oil" [rule 2] - The product is a solid perfume; oil is only part of its base, not its format.
+- **terraissa.com** (dev), Parfum solid cu trandafir: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural' (ingredients); no natural finish is stated for the perfume.
+- **terraissa.com** (dev), Protocol pentru masajul tenului: "Volume: 100 ml, 30 ml, 50 ml" [rule 3] - The sizes belong to different items in the pack (and a 50 ml oil is folded in) with nothing saying which is which; doubt: each value does occur.
+- **terraissa.com** (dev), Protocol pentru masajul tenului: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; the pack states no natural finish.
+- **terraissa.com** (dev), BB cream protecție solară: "Format: cream, oil" [rule 2] - The product is a BB cream; 'oil' comes from the ingredient algae/jojoba oil, not its format.
+- **terraissa.com** (dev), Pachet protecție solară naturală: "Key ingredients: SPF mediu, SPF mare" [rule 2] - SPF levels are protection ratings, not ingredients, and the numbers (30, 45) are cut away.
+- **terraissa.com** (dev), Pachet protecție solară naturală: "Format: cream, oil" [rule 2] - The pack holds a cream, a BB cream and a blush; oil appears only as ingredients, not as a format.
+- **terraissa.com** (dev), Cimbrișor (100 g): "Volume: 100 g, 250 ml" [rule 2] - 250 ml is the infusion water, not the product's quantity (100 g).
+- **terraissa.com** (dev), Cimbrișor (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% naturala'; a dried herb has no finish.
+- **terraissa.com** (dev), Săpun cu Lavandă, Miere și Aur Natural: "Format: oil" [rule 2] - The product is a bar soap; oils are only ingredients.
+- **terraissa.com** (dev), Protocol complet pentru regenerarea părului: "Skin type: normal" [rule 2] - 'normal' refers to hair type of the shampoo bar ('par normal/uscat'), not skin type.
+- **terraissa.com** (dev), Protocol complet pentru regenerarea părului: "Volume: 70 g, 250 ml" [rule 3] - Two of four component sizes with nothing saying which item each belongs to; 50 ml items are missing.
+- **terraissa.com** (dev), Protocol complet pentru regenerarea părului: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated for this hair pack.
+- **terraissa.com** (dev), Ulei esențial de portocală: "Finish: natural" [rule 3] - 'natural' is torn from '100% pur si natural' (purity); no finish is stated.
+- **terraissa.com** (dev), Amestec pentru echilibrul hormonal (100 g): "Finish: natural" [rule 2] - A tea blend has no finish; 'natural' appears only as 'natural support/balance'.
+- **terraissa.com** (dev), Amestec aromatic pentru energie și imunitate (100 g): "Finish: natural" [rule 2] - A tea blend has no finish; nothing in the text supports 'natural finish'.
+- **terraissa.com** (dev), Pachet cadou „Ritualul feminității”: "Volume: 100 ml, 30 ml, 50 ml" [rule 3] - Three sizes of three different items in the pack with nothing saying which is which; doubt: each value does occur.
+- **terraissa.com** (dev), Pachet cadou „Ritualul feminității”: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no natural finish is stated.
+- **terraissa.com** (dev), Demachiant cremă - Ediție specială cu tuberoze: "Format: oil" [rule 2] - The product is a cleansing cream; almond oil is only an ingredient.
+- **terraissa.com** (dev), Demachiant cremă - Ediție specială cu tuberoze: "Finish: natural" [rule 3] - 'natural' is torn from '100% naturala'; a cleanser's finish is not stated.
+- **terraissa.com** (dev), Ulei natural pentru masaj „Sufletul ei”: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no natural finish is stated for the oil.
+- **terraissa.com** (dev), Ser cu acid hialuronic - Ediție specială cu tuberoze: "Finish: natural" [rule 2] - The text describes a smooth, luminous look, not a natural finish; 'natural' appears only as natural balance/anti-aging effect.
+- **terraissa.com** (dev), Orz (1 kg): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; barley seeds have no finish.
+- **terraissa.com** (dev), Coada-calului (100 g): "Volume: 100 g, 250 ml" [rule 2] - 250 ml is the infusion water, not the product's quantity (100 g).
+- **terraissa.com** (dev), Coada-calului (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100 % naturala'; a dried herb has no finish.
+- **terraissa.com** (dev), Săpun cu Apă Florală de Trandafir, Miere și Lucernă (Alfalfa): "Format: oil" [rule 2] - The product is a bar soap; oils are only ingredients.
+- **terraissa.com** (dev), Săpun cu Apă Florală de Trandafir, Miere și Lucernă (Alfalfa): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no natural finish is stated for this soap.
+- **terraissa.com** (dev), Săpun cu Sevă de Mesteacăn și Dafin: "Format: oil" [rule 2] - The product is a bar soap; oil is only an ingredient.
+- **terraissa.com** (dev), Săpun cu Sevă de Mesteacăn și Dafin: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Gălbenele (100 g): "Volume: 100 g, 2 g, 250 ml" [rule 2] - 2 g is the dose per cup and 250 ml the infusion water; only 100 g is the product's quantity.
+- **terraissa.com** (dev), Gălbenele (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; dried flowers have no finish.
+- **terraissa.com** (dev), Pelin (100 g): "Volume: 100 g, 1 g, 250 ml" [rule 2] - 1 g is the dose and 250 ml the infusion water; only 100 g is the product's quantity.
+- **terraissa.com** (dev), Pelin (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; a dried herb has no finish.
+- **terraissa.com** (dev), Tonic natural pentru acnee și rozacee: "Finish: natural" [rule 3] - The only source is the title 'Tonic natural' (a natural tonic); no finish is stated, description empty.
+- **terraissa.com** (dev), Șampon baton pentru păr gras (70 g): "Skin type: normal" [rule 2] - 'normal' is the hair type ('par normal sau gras'), not a skin type.
+- **terraissa.com** (dev), Șampon baton pentru păr gras (70 g): "Format: oil" [rule 2] - The product is a solid shampoo bar; oils are only ingredients.
+- **terraissa.com** (dev), Șampon baton pentru păr gras (70 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated for the shampoo.
+- **terraissa.com** (dev), Ulei esențial de cuișoare (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Hidrolat de salvie: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated for the hydrosol.
+- **terraissa.com** (dev), Ruj natural: "Format: oil" [rule 2] - The product is a lipstick; oils are only ingredients.
+- **terraissa.com** (dev), Șampon Detox Lichid cu Alge Marine: "Format: oil" [rule 2] - The product is a liquid shampoo; essential oils are only ingredients.
+- **terraissa.com** (dev), Parfum solid cu iasomie: "Format: oil" [rule 2] - The product is a solid perfume; oil is only part of its base.
+- **terraissa.com** (dev), Parfum solid cu iasomie: "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated for the perfume.
+- **terraissa.com** (dev), Blush multifuncțional: "Format: cream, oil" [rule 2] - It is a cream blush; 'oil' comes from ingredients, not the format.
+- **terraissa.com** (dev), Roiniță (100 g): "Volume: 100 g, 250 ml" [rule 2] - 250 ml is the infusion water, not the product's quantity (100 g).
+- **terraissa.com** (dev), Coada-șoricelului (100 g): "Volume: 100 g, 2 g, 250 ml" [rule 2] - 2 g is the dose and 250 ml the infusion water; only 100 g is the product's quantity.
+- **terraissa.com** (dev), Coada-șoricelului (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; a dried herb has no finish.
+- **terraissa.com** (dev), Busuioc (100 g): "Volume: 100 g, 1 g, 250 ml" [rule 2] - 1 g is the dose and 250 ml the infusion water; only 100 g is the product's quantity.
+- **terraissa.com** (dev), Busuioc (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; a dried herb has no finish.
+- **terraissa.com** (dev), Salvie (100 g): "Volume: 100 g, 1 g, 250 ml" [rule 2] - 1 g is the dose and 250 ml the infusion water; only 100 g is the product's quantity.
+- **terraissa.com** (dev), Salvie (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% naturala'; a dried herb has no finish.
+- **terraissa.com** (dev), Cremă regeneratoare: "Key ingredients: salicylic acid" [rule 2] - Salicylic acid is only in the INCI list, not among the key active ingredients the text names; doubt: it is present in the product.
+- **terraissa.com** (dev), Cremă regeneratoare: "Format: oil" [rule 2] - The product is a cream; olive oil is only an ingredient.
+- **terraissa.com** (dev), Roll-on Lumină (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Roll-on Relax (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Roll-on Focus (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Roll-on Curaj (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Roll-on Iubire (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; no finish is stated.
+- **terraissa.com** (dev), Mentă (100 g): "Volume: 100 g, 200 ml" [rule 2] - 200 ml is the infusion water, not the product's quantity (100 g).
+- **terraissa.com** (dev), Grâu speltă bio (1 kg): "Finish: natural" [rule 3] - 'natural' is torn from '100% natural'; grain has no finish.
+- **terraissa.com** (dev), Sunătoare (100 g): "Volume: 100 g, 250 ml" [rule 2] - 250 ml is the infusion water, not the product's quantity (100 g).
+- **terraissa.com** (dev), Sunătoare (100 g): "Finish: natural" [rule 3] - 'natural' is torn from '100% naturala'; a dried herb has no finish.
+- **terraissa.com** (dev), Ulei esențial de rozmarin (10 ml): "Finish: natural" [rule 3] - 'natural' is torn from '100% pur si natural'; no finish is stated.
+- **terraissa.com** (dev), Spumă demachiantă: "Finish: natural" [rule 2] - Natural describes the ingredients of a cleanser, not a finish; the text states no finish.
+- **terraissa.com** (dev), Parfum solid cu tuberoze (5 ml): "Format: oil" [rule 2] - A solid wax perfume with a creamy texture; oils are ingredients, not the format.
+- **terraissa.com** (dev), Parfum solid cu tuberoze (5 ml): "Finish: natural" [rule 2] - 100% natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Apă Tonică Tuberoze: "Finish: natural" [rule 2] - Natural refers to the ingredients of a toner, not a finish.
+- **terraissa.com** (dev), Cremă antirid - Ediție specială cu tuberoze (30 ml): "Format: oil" [rule 2] - The product is a cream; oils are only ingredients.
+- **terraissa.com** (dev), Cremă antirid - Ediție specială cu tuberoze (30 ml): "Finish: natural" [rule 2] - Natural refers to the formula, not a finish.
+- **terraissa.com** (dev), Cremă protecție solară (60 g): "Format: oil" [rule 2] - A sunscreen cream; oils are ingredients, not the format.
+- **terraissa.com** (dev), Cremă protecție solară (60 g): "Finish: natural" [rule 2] - Natural refers to the formula, not a finish.
+- **terraissa.com** (dev), Gel de duș: "Format: gel, oil" [rule 2] - Gel is right but oil is only the essential oil ingredient, not a format of this shower gel.
+- **terraissa.com** (dev), Gel de duș: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Cremă lejeră pentru ten gras/normal - Ediție specială cu tuberoze: "Format: oil" [rule 2] - A light cream; oils are ingredients, not the format.
+- **terraissa.com** (dev), Cremă lejeră pentru ten gras/normal - Ediție specială cu tuberoze: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Pastă de dinți cu mentă și portocală: "Format: oil" [rule 2] - A toothpaste; essential oils are ingredients, not the format.
+- **terraissa.com** (dev), Pastă de dinți cu mentă și portocală: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish of a toothpaste.
+- **terraissa.com** (dev), Cremă ten matur/uscat cu trandafiri de Damasc: "Format: oil" [rule 2] - The product is an anhydrous cream; though oil-based, the text calls it a cream, not an oil (some doubt).
+- **terraissa.com** (dev), Deodorant protecție intensivă: "Format: oil" [rule 2] - A creamy deodorant; coconut and essential oils are ingredients, not the format.
+- **terraissa.com** (dev), Deodorant protecție intensivă: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Ser elixir de trandafiri (15 ml): "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Balsam pentru buze: "Format: oil" [rule 2] - A lip balm; oils are ingredients, not the format.
+- **terraissa.com** (dev), Balsam pentru buze: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Unt de corp: "Format: oil" [rule 2] - A body butter; oils are ingredients, not the format.
+- **terraissa.com** (dev), Unt de corp: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Balsam baton: "Format: oil" [rule 2] - A solid conditioner bar; oils are ingredients, not the format.
+- **terraissa.com** (dev), Balsam baton: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Ulei păr bogat: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Balsam cremă: "Format: oil" [rule 2] - A cream conditioner; oils are ingredients, not the format.
+- **terraissa.com** (dev), Balsam cremă: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Pachet „Păr frumos și sănătos”: "Skin type: normal" [rule 2] - Normal refers to hair type of the shampoo bar, not skin type.
+- **terraissa.com** (dev), Pachet „Păr frumos și sănătos”: "Volume: 70 g, 50 ml" [rule 3] - Two quantities belonging to different items in the bundle (shampoo 70 g, hydrolat 50 ml) with nothing saying which is which.
+- **terraissa.com** (dev), Pachet „Păr frumos și sănătos”: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Hidrolat de urzică: "Finish: natural" [rule 2] - Natural refers to the hydrolat being natural, not a finish.
+- **terraissa.com** (dev), Hidrolat de roiniță: "Format: balm" [rule 2] - The product is a floral water hydrolat, not a balm.
+- **terraissa.com** (dev), Hidrolat de roiniță: "Finish: natural" [rule 2] - Natural refers to the product being natural, not a finish.
+- **terraissa.com** (dev), Hidrolat de rozmarin: "Finish: natural" [rule 2] - Natural refers to the product being natural, not a finish.
+- **terraissa.com** (dev), Șampon solid pentru păr normal și uscat (70 g): "Skin type: normal" [rule 2] - Normal refers to hair type for this shampoo, not skin type.
+- **terraissa.com** (dev), Șampon solid pentru păr normal și uscat (70 g): "Format: oil" [rule 2] - A solid shampoo bar; oils are ingredients, not the format.
+- **terraissa.com** (dev), Șampon baton anti-mătreață: "Format: oil" [rule 2] - A shampoo bar; oils are ingredients, not the format.
+- **terraissa.com** (dev), Șampon baton anti-mătreață: "Finish: natural" [rule 2] - Natural refers to ingredients, not a finish.
+- **terraissa.com** (dev), Apă florală lavandă: "Finish: natural" [rule 2] - Natural refers to the floral water being natural, not a finish.
+- **terraissa.com** (dev), Ulei esențial de cimbru (10 ml): "Finish: natural" [rule 2] - Pure and natural describes the oil, not a finish.
+- **terraissa.com** (dev), Ulei esențial de mentă (5 ml): "Volume: 5 ml, 10 ml" [rule 2] - The product is 5 ml; 10 ml is the carrier oil amount in the massage dilution instructions.
+- **terraissa.com** (dev), Ulei esențial de mentă (5 ml): "Finish: natural" [rule 2] - Pure and natural describes the oil, not a finish.
+- **terraissa.com** (dev), Ulei esențial de lavandă (10 ml): "Finish: natural" [rule 2] - Pure and natural describes the oil, not a finish.
+- **thesill.com** (dev), Just Chill® Double White Camellia: "Compatibility: for improved cold hardiness, for winter, for you" [rule 3] - Fragments torn from sentences ('selected for improved cold hardiness', 'sheltered wall for winter', 'less fuss for you'); none states what the plant is compatible with.
+- **thesill.com** (dev), Just Chill® Double Mauve Camellia: "Material: wood" [rule 2] - 'Wood' comes from 'blooms on new wood', a pruning note; the camellia is a plant, not made of wood as a material.
+- **thesill.com** (dev), Hosui Asian Pear Tree: "Compatibility: for one simple reason, for fresh eating" [rule 3] - 'for one simple reason' is a phrase fragment with no meaning as a compatibility; only 'for fresh eating' is a real use.
+- **thesill.com** (dev), Crimson Doll™ Lilac Tree: "Compatibility: fits real yards, for bonus color after, for decks" [rule 3] - 'for bonus color after' is cut mid-phrase (after the spring show) and reads as nonsense; 'fits real yards' is a slogan rather than a compatibility.
+- **thesill.com** (dev), Beverly Sills Reblooming Bearded Iris: "Colour: blue, green, pink" [rule 3] - The flowers are coral pink; blue and green come from splitting the blue-green foliage, so 'blue' reads as a flower colour the iris does not have.
+- **thesill.com** (dev), Beverly Sills Reblooming Bearded Iris: "Compatibility: for bouquets tough, for years" [rule 3] - 'for bouquets tough' runs two sentences together and 'for years' is torn from 'enjoy coral pink ... for years', neither is a usable statement.
+- **thesill.com** (dev), Black Hero Double Peony Tulip: "Colour: white, black, pink" [rule 2] - The tulip is near-black/dark purple; white and pink are the companion plants it pairs with, not its colours.
+- **thesill.com** (dev), Black Is Black Bearded Iris: "Colour: black, blue, green" [rule 3] - Blue and green are split from the blue-green foliage, so 'blue' reads as a flower colour of a near-black iris.
+- **thesill.com** (dev), Blue Grape Hyacinth Super Sack: "Compatibility: for spring blue grape, for containers" [rule 3] - 'for spring blue grape' is a meaningless fragment stitched from the heading and product name.
+- **thesill.com** (dev), Blue Spectacle Double Peony Tulip: "Colour: white, blue, pink" [rule 2] - The tulip is violet-blue; white and pink are the other tulips it can be mixed with.
+- **thesill.com** (dev), Carlton Daffodil: "Size: 14 cm" [rule 3] - The bulbs are graded 12/14 cm; showing only 14 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Carlton Daffodil: "Compatibility: for early indoor color, for indoor bloom tuck" [rule 3] - 'for indoor bloom tuck' joins the end of one sentence to the first word of the next and is garbled.
+- **thesill.com** (dev), Cat's Eye Dwarf Bearded Iris: "Compatibility: fits where full-size irises, for free plant" [rule 3] - 'fits where full-size irises' and 'for free plant' are torn fragments whose meaning is lost.
+- **thesill.com** (dev), Daffodils for Shade Mix: "Colour: green" [rule 2] - Green comes from 'shade gardens don't have to be all green'; the daffodils are yellow, white and orange-cupped.
+- **thesill.com** (dev), Daffodils for Shade Mix: "Compatibility: for spring bouquets, for shade mix blooms, for shade tolerance, for spring arrangements" [rule 3] - 'for shade mix blooms' is a garbled fragment from the product name and the next heading.
+- **thesill.com** (dev), Dutch Iris Mix: "Compatibility: for cutting, for instant variety deer" [rule 3] - 'for instant variety deer' runs into the next bullet ('Deer resistant') and is garbled.
+- **thesill.com** (dev), English Charm Reblooming Bearded Iris: "Colour: blue, green" [rule 3] - The flowers are peach, apricot and cream; blue and green are split from the blue-green foliage, so the pair names none of the flower colours and suggests a blue iris.
+- **thesill.com** (dev), English Charm Reblooming Bearded Iris: "Compatibility: for little more than, for cutting" [rule 3] - 'for little more than' is a torn fragment with no meaning.
+- **thesill.com** (dev), Fragrant Daffodil Thalia: "Compatibility: for open beds, for twice, for years" [rule 3] - 'for twice' (from 'for twice the show') and 'for years' are fragments whose meaning is lost.
+- **thesill.com** (dev), Giant Crocus for Naturalizing: "Size: 9 cm" [rule 3] - The bulbs are 8-9 cm; showing only 9 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Giant Crocus for Naturalizing: "Compatibility: for naturalizing, for small-space gardeners who, for lawns" [rule 3] - 'for small-space gardeners who' is cut mid-clause, leaving a dangling fragment.
+- **thesill.com** (dev), Giant Daffodils for Naturalizing: "Size: 14 cm" [rule 3] - The bulbs are 12-14 cm stock; showing only 14 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Giant Daffodils for Naturalizing: "Compatibility: for naturalized areas, for early-season color right, for naturalizing staggered bloom, for cutting" [rule 3] - 'for naturalizing staggered bloom' fuses the name with the next heading and 'for early-season color right' is cut off.
+- **thesill.com** (dev), Giant Hyacinth Mixture: "Size: 16 cm" [rule 3] - The bulbs are 15-16 cm; showing only 16 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Giant Hyacinth Mixture: "Compatibility: fits borders, for instant variety without, for spring" [rule 3] - 'for instant variety without' is cut mid-phrase and 'for spring' is a fragment with no clear meaning.
+- **thesill.com** (dev), Golden Apeldoorn Darwin Hybrid Tulip: "Size: 12 cm" [rule 3] - The bulbs are 11-12 cm; showing only 12 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Golden Apeldoorn Darwin Hybrid Tulip: "Compatibility: for when, for porches" [rule 3] - 'for when' is a meaningless fragment.
+- **thesill.com** (dev), Immortality Reblooming Bearded Iris: "Colour: white, blue, green" [rule 3] - The flowers are snow-white; blue and green are split from the blue-green foliage, so 'blue' reads as a flower colour.
+- **thesill.com** (dev), Immortality Reblooming Bearded Iris: "Compatibility: for decades because" [rule 3] - 'for decades because' is a torn fragment with no meaning.
+- **thesill.com** (dev), Kiwi Sunset Daffodil: "Compatibility: for early color where, for borders" [rule 3] - 'for early color where' is cut mid-clause, leaving a dangling fragment.
+- **thesill.com** (dev), Late Season Blooming Tulip Mix: "Size: 12 cm" [rule 3] - The bulbs are 11-12 cm; showing only 12 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Late Season Blooming Tulip Mix: "Compatibility: for indoor bouquets, for big, for instant garden drama" [rule 3] - 'for big' is torn from 'for big, well-formed flowers' and means nothing on its own.
+- **thesill.com** (dev), Lily Mix: "Compatibility: for you, for tucking between shrubs, for cut flowers close" [rule 3] - 'for you' (from 'does the deciding for you') and 'for cut flowers close' are fragments whose meaning is lost.
+- **thesill.com** (dev), Long Stemmed Perennial Tulip Mix: "Size: 12 cm" [rule 3] - The bulbs are 11-12 cm; showing only 12 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Long Stemmed Perennial Tulip Mix: "Compatibility: for multiple springs, for cutting, for bouquets, for instant impact" [rule 3] - 'for multiple springs' is a duration torn from 'rebloom for multiple springs' and does not read as a use; doubtful, so marked error.
+- **thesill.com** (dev), Mid Season Blooming Tulip Mix: "Size: 12 cm" [rule 3] - The bulbs are 11-12 cm; showing only 12 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Orange King Bearded Iris: "Compatibility: for weeks rather than, for vases, for spring arrangements hardy, for years" [rule 3] - 'for weeks rather than', 'for spring arrangements hardy' and 'for years' are garbled fragments.
+- **thesill.com** (dev), Pink Impression Darwin Hybrid Tulip: "Size: 12 cm" [rule 3] - The bulbs are 11-12 cm; showing only 12 cm drops the lower bound and overstates the size.
+- **thesill.com** (dev), Queen of Night Tulip: "Colour: white, black, pink" [rule 2] - The tulip is maroon-black; white and pink are the daffodils and tulips it is paired with.
+- **thesill.com** (dev), Queen of Night Tulip: "Compatibility: for you, for cutting" [rule 3] - 'for you' (from 'does all the work for you') is a meaningless fragment.
+- **thesill.com** (dev), Red Impression Darwin Hybrid Tulip: "Compatibility: for perennializing, for spring bouquets works, for you" [rule 3] - 'for spring bouquets works' runs into the next bullet and 'for you' is a meaningless fragment.
+- **thesill.com** (dev), Royal Hyacinth Trio: "Compatibility: fits beds, for instant" [rule 3] - 'for instant' is torn from 'for instant, designed-looking color' and means nothing on its own.
+- **thesill.com** (dev), Salmon Impression Darwin Hybrid Tulip: "Colour: white, pink" [rule 2] - The petals are salmon edged in pale pink; white comes from the pink and white tulips it can be paired with.
+- **thesill.com** (dev), Snowdrops: "Colour: white, blue, green" [rule 3] - The bells are white; blue and green are split from the blue-green leaves, so 'blue' reads as a flower colour.
+- **thesill.com** (dev), Spring Garden Bulb Collection: "Compatibility: for you, for instant" [rule 3] - 'for you' and 'for instant' are fragments whose meaning is lost.
+- **thesill.com** (dev), Stairway to Heaven Bearded Iris: "Compatibility: for free plant" [rule 3] - 'for free plant' joins 'for free' with the next sentence's first word and is garbled.
+- **thesill.com** (dev), Summer Cheer Daffodil: "Compatibility: for early flowers, for bouquets, for forcing indoors, for early color cold" [rule 3] - 'for early color cold' runs into the next bullet ('Cold hardy') and is garbled.
+- **thesill.com** (dev), Sun Gold Jumbo Tulip: "Compatibility: for oversized blooms, for cutting, for multiple springs, for bigger" [rule 3] - 'for bigger' is torn from 'for bigger, more reliable first-year flowers' and means nothing on its own.
+- **thesill.com** (dev), Zesting Lemons Bearded Iris: "Compatibility: for small spaces, for height, for free plants plant" [rule 3] - 'for free plants plant' fuses one bullet with the next sentence's first word and is garbled.
+- **thesill.com** (dev), 3 Months of Daffodils Mixture: "Warranty: 3 months" [rule 2] - '3 months' is the bloom span of the daffodil mixture, not a warranty; no warranty is mentioned.
+- **thesill.com** (dev), Bee and Butterfly Garden Collection: "Compatibility: for nectar" [rule 2] - 'for nectar' comes from a clause about bees and butterflies looking for nectar, not a use of the product; doubtful, so marked error.
+- **thesill.com** (dev), Apricot Pride Darwin Hybrid Tulip: "Compatibility: for size, for repeat displays instead, for northern gardens easy, for patios" [rule 3] - 'for repeat displays instead' and 'for northern gardens easy' run past their phrases into the next words and are garbled.
+- **thesill.com** (dev), Apeldoorn Tulip Mixture: "Compatibility: for extra drama, for because, for several seasons, for depth" [rule 3] - 'for because' is a meaningless fragment.
+- **thesill.com** (dev), Amaryllis Belladonna: "Compatibility: for patios, for years" [rule 3] - 'for years' is torn from 'pays off for years' and is not a usable statement.
+- **thesill.com** (dev), Glow Girl® Birchleaf Spiraea: "Compatibility: fits easily into smaller, for northern gardens, for foundation plantings, for borders" [rule 3] - 'fits easily into smaller' is cut before 'landscapes' and the phrase is left incomplete.
+- **thesill.com** (dev), Fine Line® Buckthorn: "Compatibility: fits tight spaces, for adding height, for modern landscapes, for patio containers where" [rule 3] - 'for patio containers where' is cut mid-clause, leaving a dangling fragment.
+- **thesill.com** (dev), Yuzu Tree: "Compatibility: for sauces, for cooking, for fruit, for easier" [rule 3] - 'for easier' is torn from 'for easier care and harvesting' and means nothing on its own.
+- **thesill.com** (dev), Santa Rosa Plum: "Compatibility: for fresh eating, for cross-pollination, for areas" [rule 3] - 'for areas' is torn from 'recommended for areas with approximately 400 chill hours' and loses its meaning.
+- **thesill.com** (dev), Sunshine Blue Blueberry: "Compatibility: fits beautifully into small, for beautiful spring color, for containers" [rule 3] - 'fits beautifully into small' is cut before 'landscapes' and left incomplete.
+- **thesill.com** (dev), Ponca Blackberry: "Compatibility: for flavor above all" [rule 3] - 'for flavor above all' is cut from 'bred for flavor above all else' and is not a use; doubtful, so marked error.
+- **thesill.com** (dev), Peach Fruit Snacks® Sweet Sensation™: "Compatibility: for today, for small yards, for pollination, for tight spaces" [rule 3] - 'for today' is torn from 'for today's gardens' and 'for pollination' comes from 'without needing a second tree for pollination'.
+- **thesill.com** (dev), Lo-Hugger™ Cranberry: "Compatibility: for fresh eating, for borders, for large containers, for reliable performance" [rule 3] - 'for reliable performance' drops 'in cold climates' and is left without content; doubtful, so marked error.
+- **thesill.com** (dev), Nagami Kumquat Tree: "Compatibility: for many home gardeners, for growing, for fruit, for fresh citrus when" [rule 3] - 'for growing' and 'for fresh citrus when' are torn fragments whose meaning is lost.
+- **thesill.com** (dev), Gold Nugget Mandarin Tree: "Colour: gold" [rule 2] - 'Gold' comes from the variety name Gold Nugget; the description never gives the fruit or tree a gold colour.
+- **thesill.com** (dev), Gold Nugget Mandarin Tree: "Compatibility: for edible landscapes, for gardeners looking, for even longer harvests, for months" [rule 3] - 'for gardeners looking' and 'for months' are fragments cut from longer sentences.
+- **thesill.com** (dev), Burning Bush 'Compactus': "Compatibility: for gardeners who love" [rule 3] - 'for gardeners who love' is cut mid-clause, leaving a dangling fragment.
+- **thesill.com** (dev), Black Beauty® Elderberry: "Colour: black, green, pink, silver" [rule 2] - Green and silver are the neighbouring plants it contrasts with; the shrub itself is purple-black with pink flowers.
+- **thesill.com** (dev), Black Beauty® Elderberry: "Compatibility: for large containers while" [rule 3] - 'for large containers while' is cut before 'young', which changes a temporary suitability into an unconditional one.
+- **thesill.com** (dev), Leaf Care Spray: "Compatibility: for best, for each plant" [rule 3] - 'for best' is torn from 'for best care' and means nothing on its own.
+- **thesill.com** (dev), Stella de Oro Daylily: "Compatibility: fits easily into borders, for good reason, for borders, for mass plantings" [rule 3] - 'for good reason' is an idiom torn from 'and for good reason', not a use of the plant.
+- **thesill.com** (dev), Skyrocket Juniper: "Compatibility: for tight spaces where, for side yards, for screening" [rule 3] - 'for tight spaces where' is cut mid-clause, leaving a dangling fragment.
+- **thesill.com** (dev), Orange Rocket Barberry: "Compatibility: for adding height, for very little, for mass plantings, for added peace" [rule 3] - 'for very little' (from 'asking for very little in return') and 'for added peace' (from 'peace of mind') are torn fragments that lose their meaning.
+- **thesill.com** (dev), Green Velvet Boxwood: "Compatibility: fits beautifully into both, for easy maintenance, for hedges" [rule 3] - 'fits beautifully into both' is cut before 'formal gardens and relaxed landscape designs', so it means nothing.
+- **thesill.com** (dev), Valencia Orange Tree: "Material: glass" [rule 2] - 'glass' comes from 'poured a glass of orange juice'; the tree is not made of glass.
+- **thesill.com** (dev), Valencia Orange Tree: "Compatibility: for months" [rule 3] - 'for months' is a duration torn from 'holds on the tree for months', not a compatibility.
+- **thesill.com** (dev), 20th Century Asian Pear: "Compatibility: for home orchards, for fresh snacking, for months, for enjoying long after" [rule 3] - 'for months' and 'for enjoying long after' are torn fragments about storage, meaningless as compatibility.
+- **thesill.com** (dev), Urban Jungle Party Pack, 30: "Colour: green" [rule 2] - 'green' comes from 'green gifting', a figure of speech, not a stated colour of the pack.
+- **thesill.com** (dev), Pet Friendly Party Pack, 30: "Colour: green" [rule 2] - 'green' comes from 'green up your home', not a stated colour of the product.
+- **thesill.com** (dev), Pet Friendly Party Pack, 30: "Compatibility: for absolute peace" [rule 3] - 'for absolute peace' is cut from 'peace of mind' and loses its meaning.
+- **thesill.com** (dev), Bearss Lemon Tree: "Compatibility: for limoncello, for warm" [rule 3] - 'for warm' is cut from 'Bred for warm, humid growing' and means nothing on its own.
+- **thesill.com** (dev), Hamlin Orange Tree: "Colour: green, gold" [rule 2] - 'green' comes from other trees' fruit that is 'still hard and green'; only the pale gold flesh is this product's.
+- **thesill.com** (dev), Hamlin Orange Tree: "Compatibility: for one reason above, for fresh-squeezed juice rather" [rule 3] - 'for one reason above' and 'for fresh-squeezed juice rather' are torn fragments.
+- **thesill.com** (dev), Westin Orange Tree: "Compatibility: for fruit, for fresh juice all" [rule 3] - 'for fruit' (from 'prized for fruit that') and 'for fresh juice all' are cut fragments.
+- **thesill.com** (dev), Ray Ruby Grapefruit Tree: "Colour: red, pink" [rule 2] - 'pink' is what older varieties fade to; the text says this one stays red instead of bleaching to pink.
+- **thesill.com** (dev), Ray Ruby Grapefruit Tree: "Compatibility: for people who think, for salads" [rule 3] - 'for people who think' is cut from 'people who think they don't like grapefruit' and loses its meaning.
+- **thesill.com** (dev), Harvey Lemon Tree: "Compatibility: for lemonade, for cold tolerance, for cold hardiness" [rule 3] - 'for cold tolerance' and 'for cold hardiness' are torn from 'selected/bred for', a breeding aim, not a use; doubtful as a compatibility statement.
+- **thesill.com** (dev), Persian 'Bearss' Lime Tree (FL): "Material: glass" [rule 2] - 'glass' comes from 'zest straight into the glass'; the tree is not glass.
+- **thesill.com** (dev), Makrut Lime Tree: "Colour: red, green" [rule 2] - 'red' comes from 'green and red curries', dishes, not the plant's colour.
+- **thesill.com** (dev), Makrut Lime Tree: "Compatibility: for what" [rule 3] - 'for what' is a meaningless fragment of 'grown for what you squeeze out'.
+- **thesill.com** (dev), GrowScripts Citrus Tree Care Kit: "Colour: green" [rule 2] - 'green' describes the tree's foliage the kit helps keep green, not the kit's colour.
+- **thesill.com** (dev), GrowScripts Citrus Tree Care Kit: "Compatibility: for healthier citrus container-grown, for potted citrus trees, for citrus trees grown, for container-grown citrus trees" [rule 3] - 'for healthier citrus container-grown' joins a heading to the next sentence and 'for citrus trees grown' is cut.
+- **thesill.com** (dev), GrowScripts Citrus Tree Care Kit: "Warranty: 6 months" [rule 2] - '6 months' is the reapplication interval, not a warranty.
+- **thesill.com** (dev), Festive Amaryllis: "Colour: green" [rule 2] - Only the foil wrapping is green; stating the amaryllis colour as green misrepresents the product.
+- **thesill.com** (dev), Waxed Amaryllis Bulb: "Colour: white, red, green, pink" [rule 2] - White, red and pink blooms are stated, but 'green' comes from 'no green thumb required'.
+- **thesill.com** (dev), Waxed Amaryllis Bulb: "Compatibility: for anyone who loves" [rule 3] - 'for anyone who loves' is cut before what they love.
+- **thesill.com** (dev), Happy Birthday Fiddle Leaf Fig Bush: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), I Dig You Fiddle Leaf Fig Bush: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), Happy Birthday Lemon Lime Prayer Plant: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), I Dig You Lemon Lime Prayer Plant: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), Happy Birthday Pothos Marble Queen: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), Happy Birthday Pothos Marble Queen: "Compatibility: for good reason, for beginners" [rule 3] - 'for good reason' is a torn idiom, not a compatibility.
+- **thesill.com** (dev), I Dig You Pothos Marble Queen: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), I Dig You Pothos Marble Queen: "Compatibility: for good reason, for beginners" [rule 3] - 'for good reason' is a torn idiom, not a compatibility.
+- **thesill.com** (dev), I Dig You Money Tree Plant: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), Happy Birthday Money Tree Plant: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), I Dig You Jade Pothos: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), I Dig You Jade Pothos: "Compatibility: for their quick-growing, for beginner plant parents" [rule 3] - 'for their quick-growing' is cut from 'loved for their quick-growing vines' and loses its meaning.
+- **thesill.com** (dev), Happy Birthday Jade Pothos: "Material: ceramic" [rule 2] - Only the small message pop head is ceramic; the plant bundle is not ceramic.
+- **thesill.com** (dev), Happy Birthday Jade Pothos: "Compatibility: for their quick-growing, for beginner plant parents" [rule 3] - 'for their quick-growing' is cut from 'loved for their quick-growing vines' and loses its meaning.
+- **thesill.com** (dev), Double Philodendron Ring of Fire: "Compatibility: for support as" [rule 3] - 'for support as' is a cut fragment of 'pole or trellis for support as they mature'.
+- **thesill.com** (dev), Japanese Painted Fern: "Compatibility: for added contrast, for edging shady pathways, for rain gardens, for borders" [rule 3] - 'for added contrast' describes the dark ribs' effect, not a use; torn from its phrase.
+- **thesill.com** (dev), Adagio Maiden Grass: "Compatibility: fits beautifully into smaller, for birds when many, for sunny landscapes, for mass plantings" [rule 3] - 'fits beautifully into smaller' and 'for birds when many' are cut fragments.
+- **thesill.com** (dev), Popcorn Drift® Rose: "Compatibility: for borders, for colorful garden combinations, for easier, for small spaces" [rule 3] - 'for easier' is cut from 'for easier care' and means nothing.
+- **thesill.com** (dev), Greensboro Red Camellia: "Compatibility: for added landscape interest, for cutting, for privacy hedges, for added versatility glossy" [rule 3] - 'for added versatility glossy' runs two lines together into a garbled fragment.
+- **thesill.com** (dev), Euphorbia Mint Cream: "Compatibility: for when kept" [rule 3] - 'for when kept' is a meaningless fragment of 'easy to care for when kept in direct sun'.
+- **thesill.com** (dev), Theobroma Cacao Tree: "Compatibility: for anyone who wants, for chocolate" [rule 3] - 'for anyone who wants' is cut and 'for chocolate' is torn from 'their love for chocolate'.
+- **thesill.com** (dev), Ficus Burgundy Rubber Tree: "Material: rubber" [rule 2] - 'rubber' comes from the plant's name and its sap history; the plant is not made of rubber.
+- **thesill.com** (dev), Dracaena Steudneri Gold Dream: "Compatibility: for anyone craving, for filling bright corners" [rule 3] - 'for anyone craving' is cut before what is craved.
+- **thesill.com** (dev), Bellini® Strawberry Crape Myrtle: "Compatibility: fits easily into smaller, for borders" [rule 3] - 'fits easily into smaller' is cut before 'landscapes'.
+- **thesill.com** (dev), Alocasia Portora: "Compatibility: for filling large indoor" [rule 3] - 'for filling large indoor' is cut before 'spaces'.
+- **thesill.com** (dev), Pink Double Knock Out® Rose: "Compatibility: for almost" [rule 3] - 'for almost' is a meaningless fragment.
+- **thesill.com** (dev), Large Set & Forget Duo: "Compatibility: for folks who want, for frequent travelers" [rule 3] - 'for folks who want' is cut before what they want.
+- **thesill.com** (dev), Large Double Bi-Color Anthurium: "Compatibility: for decor purposes" [rule 2] - 'for decor purposes' is why the planters lack drainage holes, not a use of the product.
+- **thesill.com** (dev), Turquoise Watercolor Double Orchid: "Colour: white, green" [rule 2] - White is the planter and green the moss; the orchids are turquoise, so the colour pair misrepresents the product.
+- **thesill.com** (dev), Turquoise Watercolor Double Orchid: "Compatibility: for decor purposes" [rule 2] - 'for decor purposes' is why the planters lack drainage holes, not a use of the product.
+- **thesill.com** (dev), Luxe Grove Duo: "Compatibility: for as" [rule 3] - 'for as' is a meaningless fragment.
+- **thesill.com** (dev), Alocasia Frydek Variegated: "Material: plastic" [rule 2] - Only the grow-pot option arrives in a plastic nursery pot; the product is not plastic.
+- **thesill.com** (dev), Alocasia Frydek Variegated: "Compatibility: for anyone looking" [rule 3] - 'for anyone looking' is cut before what they are looking for.
+- **thesill.com** (dev), Revival Planter with Saucer: "Size: diameter 17 ", diameter 16 ", height 17 "" [rule 3] - Two diameters are shown with 'exterior' and 'interior' dropped, so nothing says which is which.
+- **thesill.com** (dev), Revival Planter with Saucer: "Compatibility: for both indoor" [rule 3] - 'for both indoor' is cut before 'and outdoor spaces'.
+- **thesill.com** (dev), MitoGrow™ Tree and Shrub: "Compatibility: for your landscape, for stressed, for flexible use where, for long-term plant health" [rule 3] - 'for stressed' and 'for flexible use where' are cut fragments.
+- **thesill.com** (dev), Spindle Palm Tree: "Compatibility: for underplanting, for warm climates, for coastal, for entrances" [rule 3] - 'for coastal' is cut before 'and beachside properties'; likely understood but the noun is lost.
+- **thesill.com** (dev), Waterfall Japanese Maple: "Compatibility: for contrast performs well, for large containers when, for patios" [rule 3] - 'for contrast performs well' and 'for large containers when' are garbled fragments.
+- **thesill.com** (dev), Tamukeyama Japanese Maple: "Warranty: 300 years" [rule 2] - '300 years' is the variety's history of cultivation, not a warranty.
+- **thesill.com** (dev), Inaba Shidare Japanese Maple: "Colour: black, red" [rule 2] - Red is stated, but the foliage is reddish-purple and only 'nearly black in spring light'; 'black' overstates it.
+- **thesill.com** (dev), Inaba Shidare Japanese Maple: "Compatibility: for asian-inspired, for patios" [rule 3] - 'for asian-inspired' is cut before 'or woodland garden designs'.
+- **thesill.com** (dev), Inaba Shidare Japanese Maple: "Warranty: 15 years" [rule 2] - '15 years' is the time to mature size, not a warranty.
+- **thesill.com** (dev), Emperor Japanese Maple: "Compatibility: fits comfortably as, for adding structure, for smaller yards, for large patio containers" [rule 3] - 'fits comfortably as' is cut before what it fits as.
+- **thesill.com** (dev), Crimson Queen Japanese Maple: "Compatibility: for seasonal impact perfect, for specimen planting, for containers, for decks" [rule 3] - 'for seasonal impact perfect' runs two lines together into a garbled fragment.
+- **thesill.com** (dev), Areca Purifying Palm: "Compatibility: for brightening up" [rule 3] - 'for brightening up' is cut before 'any space'.
+- **thesill.com** (dev), Monstera Burle Marx Flame: "Compatibility: for dramatic, for climbing" [rule 3] - 'for dramatic' is cut from 'famous for dramatic leaves' and means nothing.
+- **thesill.com** (dev), Bromeliad Deseo White: "Compatibility: for months" [rule 3] - 'for months' is a duration of bloom, not a compatibility.
+- **thesill.com** (dev), Bromeliad Guzmania Francesca: "Compatibility: for months, for your own space" [rule 3] - 'for months' is a duration of bloom, not a compatibility.
+- **thesill.com** (dev), Amethyst Dream Kaleidoscope Orchid: "Colour: white" [rule 2] - The orchid as sold is dyed violet and lavender; white is only its colour when it re-blooms.
+- **thesill.com** (dev), Cosmic Ocean Kaleidoscope Orchid: "Colour: white, blue" [rule 2] - Blue is stated, but white is only the colour of future re-blooms, not the orchid as sold.
+- **thesill.com** (dev), Cosmic Ocean Kaleidoscope Orchid: "Compatibility: for anyone who loves" [rule 3] - 'for anyone who loves' is cut before what they love.
+- **thesill.com** (dev), Electric Tangerine Kaleidoscope Orchid: "Colour: white, pink" [rule 2] - Pink is stated, but white is only the colour of future re-blooms, not the orchid as sold.
+- **thesill.com** (dev), Electric Tangerine Kaleidoscope Orchid: "Compatibility: for gifting something unique, for orchids virtual workshop" [rule 2] - 'for orchids virtual workshop' comes from the name of a bonus workshop, not a use of the product.
+- **thesill.com** (dev), Mystic Emerald Kaleidoscope Orchid: "Colour: white, green" [rule 2] - Green is stated, but white is only the colour of future re-blooms, not the orchid as sold.
+- **thesill.com** (dev), Prism Rose Kaleidoscope Orchid: "Colour: white, pink" [rule 2] - Pink is stated, but white is only the colour of future re-blooms, not the orchid as sold.
+- **thesill.com** (dev), Tropical Turquoise Kaleidoscope Orchid: "Colour: white" [rule 2] - The orchid as sold is turquoise and purple; white is only its colour when it re-blooms.
+- **thesill.com** (dev), Heartleaf Philodendron Totem: "Compatibility: for both seasoned plant" [rule 3] - 'for both seasoned plant' is cut before 'parents and beginners'.
+- **thesill.com** (dev), Organic Neem Oil (LGL): "Compatibility: for bees" [rule 3] - Torn from 'safe for bees'; 'Compatibility: for bees' says it is meant for bees, which changes the meaning.
+- **thesill.com** (dev), Large Double Anthurium: "Compatibility: for decor purposes" [rule 2] - 'for decor purposes' is why the planters lack drainage holes, not a use of the product.
+- **thesill.com** (dev), Large Double Anthurium: "Warranty: 3 months" [rule 2] - '3 months' is how long blooms last, not a warranty.
+- **thesill.com** (dev), Australian Finger Lime Tree: "Compatibility: for slender fruit packed, for cocktails, for small spaces" [rule 3] - 'for slender fruit packed' is torn from 'trading traditional slices for slender fruit', not a use.
+- **thesill.com** (dev), Mission Olive Tree: "Compatibility: for rich, for pressing, for both oil production" [rule 3] - 'for rich' is cut before 'flavorful oil' and means nothing.
+- **thesill.com** (dev), Frantoio Olive Tree: "Colour: green, gold" [rule 2] - Silvery-green foliage is stated, but 'gold' comes from 'the gold standard'.
+- **thesill.com** (dev), Frantoio Olive Tree: "Compatibility: for olive oil enthusiasts, for rich, for zones 8" [rule 3] - 'for rich' is cut and 'for zones 8' drops the range 8-11.
+- **thesill.com** (dev), Cara Cara Orange Tree: "Compatibility: for zones 8" [rule 3] - 'for zones 8' drops the range 'Zones 8-11', changing its meaning.
+- **thesill.com** (dev), Owari Satsuma Tree: "Compatibility: for nonstop citrus action, for zones 8" [rule 3] - 'for zones 8' drops the range 'Zones 8-11', and 'for nonstop citrus action' describes pairing with other mandarins.
+- **thesill.com** (dev), Koroneiki Olive Tree: "Compatibility: for producing high-quality, for containers" [rule 3] - 'for producing high-quality' is cut from 'known for producing high-quality oil', not a use.
+- **thesill.com** (dev), Eureka Lemon Tree: "Colour: white, gold" [rule 2] - White blooms are stated, but 'gold' comes from 'the gold standard'.
+- **thesill.com** (dev), Moisture Meter: "Size: 20cm" [rule 3] - 20cm is the probe length, but shown as Size it reads as the size of the meter with nothing saying what it measures.
+- **thesill.com** (dev), Moisture Meter: "Compatibility: for those who just, for high accuracy, for just moisture using, for indoor" [rule 3] - Torn fragments ('for those who just', 'for high accuracy', 'for just moisture using') that state no compatibility and have lost their meaning.
+- **thesill.com** (dev), Lipstick Plant: "Compatibility: for sunny shelves, for both" [rule 3] - 'for both' is a torn fragment with no meaning; only 'for sunny shelves' is supported.
+- **thesill.com** (dev), Madagascar Palm: "Compatibility: for plant lovers looking, for something bold, for sunny corners" [rule 3] - 'for plant lovers looking' and 'for something bold' are torn from 'a favorite for plant lovers looking for something bold' and lose their meaning.
+- **thesill.com** (dev), Philodendron Red Anderson: "Compatibility: for plant parents ready" [rule 3] - 'for plant parents ready' is cut before 'to level up their collection', leaving an incomplete phrase.
+- **thesill.com** (dev), Well Wishes Duo: "Compatibility: for their eye-catching foliage, for get-well gestures" [rule 2] - 'for their eye-catching foliage' comes from 'known for their eye-catching foliage', a reason for fame, not a compatibility.
+- **thesill.com** (dev), Large Double Bi-Color Orchid: "Colour: green" [rule 2] - Green is only the decorative moss; the product is a bi-color orchid whose colours are not green.
+- **thesill.com** (dev), Large Double Bi-Color Orchid: "Compatibility: for decor purposes" [rule 2] - 'for decor purposes' explains why the planter has no drainage holes, not what the product is compatible with.
+- **thesill.com** (dev), Wintergreen Cherry Berries: "Compatibility: for isabella planters" [rule 2] - Taken from 'except for Isabella planters which ship separately', a shipping exception, not a compatibility.
+- **thesill.com** (dev), Philodendron Pluto: "Compatibility: for shelves, for both new" [rule 3] - 'for both new' is torn from 'for both new and seasoned plant parents' and means nothing alone.
+- **thesill.com** (dev), The Sill Jumbo Tote Bag: "Compatibility: for our plant subscription" [rule 2] - From a promotion ('free when you sign up for our plant subscription box'), not a compatibility of the tote.
+- **thesill.com** (dev), White Anthurium: "Compatibility: for weddings, for best results" [rule 2] - 'for best results' is from care advice, not a compatibility; only 'for weddings' is supported.
+- **thesill.com** (dev), Hoya Pubicalyx Green: "Compatibility: for good reason" [rule 2] - 'for good reason' is a figure of speech, not a compatibility.
+- **thesill.com** (dev), Calathea Network: "Compatibility: for plant lovers ready" [rule 3] - 'for plant lovers ready' is cut before 'to level up their collection', leaving an incomplete phrase.
+- **thesill.com** (dev), Aglaonema Beauty: "Compatibility: for adapting easily, for beginners" [rule 2] - 'for adapting easily' comes from 'known for adapting easily', a trait, not a compatibility.
+- **thesill.com** (dev), Jade Pothos: "Compatibility: for their quick-growing, for beginner plant parents" [rule 2] - 'for their quick-growing' comes from 'loved for their quick-growing vines', a trait, and is also torn.
+- **thesill.com** (dev), Snake Plant Cylindrica: "Compatibility: for both new plant, for you" [rule 3] - 'for both new plant' is torn mid-phrase and 'for you' is empty; neither keeps its meaning.
+- **thesill.com** (dev), Versa Tabletop Grow Light: "Colour: gold" [rule 2] - Gold is only the accent hardware, not the colour of the lamp as a whole (doubt: partial accent colour).
+- **thesill.com** (dev), Versa Tabletop Grow Light: "Compatibility: for ideal light placement, for stability accented, for plants requiring medium" [rule 3] - Fragments like 'for stability accented' and 'for plants requiring medium' are torn from feature bullets and lose their meaning.
+- **thesill.com** (dev), Aspect Grow Light with Stello Pendant Stand Set: "Material: steel" [rule 2] - Steel is only the stand's weighted base, not the material of the grow light set.
+- **thesill.com** (dev), Aspect Grow Light with Stello Pendant Stand Set: "Compatibility: fits most plant pots, for ideal light placement, for cable management keeps, for both low-light" [rule 3] - 'for cable management keeps' and 'for both low-light' are torn fragments; only 'fits most plant pots' is a clean compatibility.
+- **thesill.com** (dev), Orchid Confetti Party Pack: "Compatibility: for extending, for styling showers" [rule 3] - 'for extending' is torn from 'for extending that summer feeling' and means nothing alone.
+- **thesill.com** (dev), Euphorbia White Ghost: "Compatibility: for these leaves" [rule 2] - From 'normal for these leaves to drop', not a compatibility.
+- **thesill.com** (dev), Monstera Esqueleto: "Compatibility: for climbing" [rule 3] - From 'support for climbing'; 'Compatibility: for climbing' loses that the plant needs climbing support (doubt).
+- **thesill.com** (dev), Ficus Shivereana: "Material: rubber" [rule 2] - 'rubber' comes from the common name 'rubber tree'; the plant is not made of rubber.
+- **thesill.com** (dev), Ficus Shivereana: "Compatibility: for both collectors" [rule 3] - 'for both collectors' is torn from 'for both collectors and first-time plant parents', leaving a dangling 'both'.
+- **thesill.com** (dev), Teddy Bear Cactus: "Compatibility: for plant parents who" [rule 3] - 'for plant parents who' is cut mid-clause and states nothing.
+- **thesill.com** (dev), Peace Lily Party Pack: "Compatibility: for styling events, for both, for homes" [rule 3] - 'for both' is a torn fragment with no meaning among otherwise supported values.
+- **thesill.com** (dev), ZZ Plant Party Pack: "Compatibility: for styling long events, for their thick, for being one" [rule 2] - 'for their thick' and 'for being one' come from 'prized for their thick, waxy foliage' and 'reputation for being one of...', not compatibilities.
+- **thesill.com** (dev), Fern Friends Party Pack: "Compatibility: for party favors, for their rosette growth" [rule 2] - 'for their rosette growth' comes from 'known for their rosette growth', a trait, not a compatibility.
+- **thesill.com** (dev), Feng Shui Party Pack: "Compatibility: for milestone moments, for adding extra positive, for money tree" [rule 3] - 'for adding extra positive' is torn and 'for money tree' is the product itself, not a compatibility.
+- **thesill.com** (dev), Echeveria Party Pack: "Compatibility: for beginners as, for long-time plant lovers" [rule 3] - 'for beginners as' is torn mid-comparison with a dangling 'as' (doubt: core meaning partly survives).
+- **thesill.com** (dev), White Flowering Party Pack: "Compatibility: for their long-lasting blooms, for showers, for their arching stems" [rule 2] - 'for their long-lasting blooms' and 'for their arching stems' come from 'grown/prized for their...', traits, not compatibilities.
+- **thesill.com** (dev), Bromeliad Assortment: "Compatibility: for gifting, for their bold foliage, for both new plant" [rule 2] - 'for their bold foliage' is from 'known for their bold foliage' and 'for both new plant' is torn.
+- **thesill.com** (dev), Watercolor Orchid Party Pack: "Colour: white, blue, green, pink" [rule 2] - White is the colour they return to on re-bloom, not the colour sold, and purple and orange are listed while white is not among the offered colours.
+- **thesill.com** (dev), Patterned Calathea Party Pack: "Colour: green" [rule 2] - 'green' comes only from 'grow your green thumbs', about the owner, not the plants' colour.
+- **thesill.com** (dev), Patterned Calathea Party Pack: "Compatibility: for their bold foliage" [rule 2] - From 'celebrated for their bold foliage', a trait, not a compatibility.
+- **thesill.com** (dev), Fancy Philodendron Party Pack: "Compatibility: for their lush" [rule 3] - 'for their lush' is torn from 'beloved for their lush, sculptural leaves' and means nothing.
+- **thesill.com** (dev), Colorful Anthurium Party Pack: "Compatibility: for weeks" [rule 2] - 'for weeks' is a duration from 'enjoy them in a vase for weeks', not a compatibility.
+- **thesill.com** (dev), Calathea Rattlesnake Party Pack: "Compatibility: for households, for their bold" [rule 3] - 'for their bold' is torn from 'known for their bold, patterned leaves'.
 - **toskovat.com** (dev), Amaretto In The Melting Room (Betrayal Collection): "Key ingredients: with them" [rule 2] - 'with them' comes from the narrative 'shared my memories with them', not an ingredient.
 - **toskovat.com** (dev), Amaretto In The Melting Room (Betrayal Collection): "Format: foam" [rule 2] - 'Sugar Syrup Foam' is a scent note; the perfume is not a foam.
 - **toskovat.com** (dev), Pornstar (Noyau Doux): "Format: lotion" [rule 2] - 'Body Lotion' is a scent note; the perfume is not a lotion.
@@ -2177,6 +3070,44 @@
 - **twelvesouth.com** (dev), BookArc - Insert B: "Screen: retina" [rule 2] - The insert has no screen; Retina describes the compatible MacBooks.
 - **twelvesouth.com** (dev), BookArc - Insert F: "Connectivity: USB-C" [rule 2] - The insert has no USB-C; it names the compatible MacBook Pro model.
 - **twelvesouth.com** (dev), BookArc - Insert E: "Screen: retina" [rule 2] - The insert has no screen; Retina describes the compatible MacBook Air.
+- **wildone.com** (dev), Cat Harness & Leash + Collar Kit: "Ingredients: with adjustable straps, with lightweight hardware" [rule 2] - Straps and hardware are features, not ingredients of a harness kit.
+- **wildone.com** (dev), Cat Meal Kit: "Ingredients: contains spills, with food-safe" [rule 2] - 'contains spills' is what the placemat does and 'with food-safe' is torn; neither is an ingredient.
+- **wildone.com** (dev), Cat Slow Feeder: "Ingredients: with ridges" [rule 2] - Ridges are a design feature of the feeder, not an ingredient.
+- **wildone.com** (dev), Playful Plush Cat Toy: "Diet: dental" [rule 2] - 'dental' is from mesh for dental stimulation on a toy, not a diet.
+- **wildone.com** (dev), Cat Wild Wand: "Ingredients: with every wave" [rule 2] - 'with every wave' describes motion, not an ingredient.
+- **wildone.com** (dev), Cat Bolster Bed: "Ingredients: with supportive raised walls" [rule 2] - Raised walls are a design feature of a bed, not an ingredient.
+- **wildone.com** (dev), Breakaway Cat Collar: "Ingredients: with ease" [rule 2] - 'with ease' is an adverbial phrase, not an ingredient.
+- **wildone.com** (dev), Cushioned Harness + Lightweight Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'move with your dog', not an ingredient.
+- **wildone.com** (dev), Cushioned Harness + Hands-Free Rope Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'move with your dog', not an ingredient.
+- **wildone.com** (dev), Waterproof Collar + Hands-Free Rope Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Waterproof Collar + Lightweight Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Quick-Release Collar + Lightweight Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Quick-Release Collar + Hands-Free Rope Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Quick-Release Collar + Waterproof Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Step-In Harness + Lightweight Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Step-In Harness + Hands-Free Rope Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Playful Plush Dog Toy: "Ingredients: with vibrant colors" [rule 2] - 'with vibrant colors' describes appearance, not an ingredient.
+- **wildone.com** (dev), Playful Plush Dog Toy: "Format: treats, toy" [rule 2] - 'treats' comes from a pocket for stashing treats; the product is a toy, not treats.
+- **wildone.com** (dev), Playful Plush Dog Toy Kit: "Ingredients: with personality, with bold colors" [rule 2] - 'with personality' and 'with bold colors' are descriptive phrases, not ingredients.
+- **wildone.com** (dev), Playful Plush Dog Toy Kit: "Format: treats, toy" [rule 2] - 'treats' comes from pockets for hiding treats; the product is toys, not treats.
+- **wildone.com** (dev), Lightweight Dog Leash: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'moves with your dog', not an ingredient.
+- **wildone.com** (dev), Waterproof Collar + Waterproof Leash Walk Kit: "Ingredients: with durable, with your dog" [rule 2] - 'with durable' is torn and 'with your dog' is from 'moves with your dog'; neither is an ingredient.
+- **wildone.com** (dev), Cushioned Harness + Waterproof Leash Walk Kit: "Ingredients: with your dog" [rule 2] - 'with your dog' is from 'move with your dog', not an ingredient.
+- **wildone.com** (dev), Dog Flair Pack: "Ingredients: with our s-xl waterproof" [rule 2] - From 'compatible with our S-XL Waterproof Dog Collar', a compatibility, not an ingredient, and torn.
+- **wildone.com** (dev), Dog Flair Pack: "Format: collar, harness" [rule 2] - The product is flair charms that slide onto collars and harnesses; it is not itself a collar or harness.
+- **wildone.com** (dev), Treat Pouch: "Ingredients: with spacious compartments" [rule 2] - Compartments are a feature of the pouch, not an ingredient.
+- **wildone.com** (dev), Treat Pouch: "Format: treats" [rule 2] - The product is a pouch that carries treats, not treats.
+- **wildone.com** (dev), Gift Card: "Format: treats" [rule 2] - The product is a gift card; treats appear only as something people can choose to buy with it.
+- **wildone.com** (dev), Tennis Tumble: "Ingredients: with limited-edition" [rule 2] - 'with limited-edition' is a torn fragment about matching tennis balls, not an ingredient.
+- **wildone.com** (dev), Organic Baked Treats: "Ingredients: contains no artificial colors, contains about 60 treats, with just 9 plant-based" [rule 2] - 'contains no artificial colors' is a negation and 'contains about 60 treats' is the bag count; neither is an ingredient.
+- **wildone.com** (dev), Personalized Bowl: "Ingredients: with enthusiastic eaters" [rule 2] - From 'works well with enthusiastic eaters', not an ingredient.
+- **wildone.com** (dev), Travel Carrier: "Size: 7 kg" [rule 3] - 7 kg is the maximum dog weight, but as Size it loses what it measures and reads as the carrier's size.
+- **wildone.com** (dev), Travel Carrier: "Format: bed" [rule 2] - The product is a carrier whose cushion folds out into a bed; Format: bed misstates what it is (doubt: partial function).
+- **wildone.com** (dev), Travel Carrier: "Weight: 7 kg" [rule 2] - 7 kg is the maximum weight of the dog it holds, not the weight of the carrier.
+- **wildone.com** (dev), Bolt Bite: "Format: treats, toy" [rule 2] - 'treats' comes from open ends for hiding treats; the product is a chew toy, not treats.
+- **wildone.com** (dev), Twist Toss: "Ingredients: with your pup" [rule 2] - 'with your pup' is from 'freeze with your pup's favorite spread', not an ingredient.
+- **wildone.com** (dev), Triangle Tug: "Ingredients: with two shapes" [rule 2] - 'with two shapes' describes design; the actual materials are rubber and cotton.
+- **wildone.com** (dev), Custom Dog Tag: "Ingredients: with our collars" [rule 2] - From 'pairs perfectly with our collars', a pairing, not an ingredient.
 - **zeedog.com** (dev), Neopro Bubblegum | Waterproof Cat Collar: "Animal: dog" [rule 2] - It is a cat collar; 'dog' comes from the brand name Zee.Dog.
 - **zeedog.com** (dev), Cocoa | Hands-Free Leash: "Ingredients: with ease, with nylon" [rule 2] - 'with ease' comes from 'move with ease' and is not a component.
 - **zeedog.com** (dev), Naturals | Classic Bowl 2.0: "Ingredients: with any room decor" [rule 2] - 'with any room decor' is about matching decor, not an ingredient.

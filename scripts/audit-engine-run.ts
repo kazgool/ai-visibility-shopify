@@ -26,6 +26,7 @@ import {
   checkCitationReadiness, stopwordSet, type BusinessInfo,
 } from "../app/engine";
 import { buildAltText } from "../app/engine/alt-text";
+import { buildFaq } from "../app/engine/faq";
 import { parseCsv } from "./csv";
 
 const args = process.argv.slice(2);
@@ -87,6 +88,16 @@ for (const [i, p] of products.entries()) {
     id: p.id, title: p.title, facts,
     summary: buildSummary(input),
     questions: buildQuestions(input),
+    // What the live path passes buildFaq: the shop's name, and the preset
+    // effectivePresetId gives a shop with no stored one (an empty dictionary
+    // reads as furniture). No mappings, the default cap, no options (a
+    // products.json read carries them, a CSV row does not; left out on both).
+    faq: buildFaq({
+      title: p.title, descriptionHtml: p.descriptionHtml, facts, vendor: p.vendor,
+      shopName: which === "rb" ? "Republica BIO" : "Global Mobila",
+      presetId: dict.trim() === "" ? "furniture" : null,
+      business, language: lang,
+    }),
     fit_for: buildFitFor(input),
   });
   if (i % Math.ceil(products.length / 6) === 0 || facts.length === 0) {

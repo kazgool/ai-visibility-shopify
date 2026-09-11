@@ -102,7 +102,7 @@ describe("description sections", () => {
 
   it("asks the intent's question in the content language", () => {
     const html = "<h2>Ingrediente</h2><p>Faina de ovaz, miere.</p>";
-    expect(qs(base({ descriptionHtml: html, language: "ro" }))).toEqual(["Ce conține Masa Oslo?"]);
+    expect(qs(base({ descriptionHtml: html, language: "ro" }))).toEqual(["Ce conține produsul Masa Oslo?"]);
     expect(qs(base({ descriptionHtml: html, language: "en" }))).toEqual(["What does Masa Oslo contain?"]);
   });
 
@@ -176,7 +176,7 @@ describe("description sections", () => {
       "<p><strong>Lungime masa</strong>: 180 cm</p>";
     const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
     expect(faq).toEqual([
-      expect.objectContaining({ q: "Ce dimensiuni are Masa Oslo?", a: "Lungime masa: 180 cm. Latime masa: 90 cm." }),
+      expect.objectContaining({ q: "Ce dimensiuni are produsul Masa Oslo?", a: "Lungime masa: 180 cm. Latime masa: 90 cm." }),
     ]);
   });
 
@@ -302,7 +302,7 @@ describe("bundles", () => {
     const html = two("<p><b>Ce contine?</b></p><p>60 de capsule.</p>", "<p><b>Ce contine?</b></p><p>90 de tablete.</p>");
     const faq = buildFaq(base({ title: "Pachet", descriptionHtml: html, language: "ro" }));
     expect(faq.map((x) => [x.q, x.a])).toEqual([
-      ["Ce conține Pachet?", "Maca Forte ecologica, 60 capsule: 60 de capsule. Zinc Bisglycinate 25 mg, 90 tablete: 90 de tablete."],
+      ["Ce conține produsul Pachet?", "Maca Forte ecologica, 60 capsule: 60 de capsule. Zinc Bisglycinate 25 mg, 90 tablete: 90 de tablete."],
     ]);
   });
 
@@ -489,8 +489,8 @@ describe("presets and the shop's own mappings", () => {
     );
     expect(faq.map((x) => [x.q, x.source])).toEqual([
       ["Cum se monteaza Masa Oslo?", "mapping"],
-      ["Ce material are Masa Oslo?", "preset"],
-      ["Cum se întreține Masa Oslo?", "preset"],
+      ["Ce material are produsul Masa Oslo?", "preset"],
+      ["Cum se întreține produsul Masa Oslo?", "preset"],
       ["Ce forma are Masa Oslo?", "mapping"],
     ]);
   });
@@ -581,6 +581,69 @@ describe("classes from the first hold-out run (stores moved to dev)", () => {
       const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
       expect(faq.some((x) => x.intent === "safety")).toBe(true);
     }
+  });
+});
+
+describe("classes from the second hold-out run (stores moved to dev)", () => {
+  it("keeps every bulleted step after a first 'Label: value' step", () => {
+    const faq = buildFaq(
+      base({
+        title: "Roinita",
+        descriptionHtml:
+          "<p><b>Indicatii de utilizare</b></p><p>• Infuzie: adauga 1 lingurita in 250 ml apa.<br>• Se lasa la infuzat 5-10 minute.<br>• Se recomanda 1-3 cani pe zi.</p>",
+        language: "ro",
+      }),
+    );
+    const usage = faq.find((x) => x.intent === "usage");
+    expect(usage?.a).toMatch(/5-10 minute/);
+    expect(usage?.a).toMatch(/1-3 cani/);
+  });
+
+  it("ends a list at a plain-text label of another section and leaves no emoji mark behind", () => {
+    const faq = buildFaq(
+      base({
+        descriptionHtml:
+          "<p><b>Potrivit pentru</b></p><p>✔️ Persoane stresate<br>✔️ Somn agitat</p><p>Ingrediente active cheie</p><p>· Roinita, bogata in uleiuri volatile.</p>",
+        language: "ro",
+      }),
+    );
+    const who = faq.find((x) => x.intent === "suitability");
+    expect(who?.a).toBe("Persoane stresate; Somn agitat.");
+  });
+
+  it("gives no answer when two parts carry the same label and no name tells them apart", () => {
+    const faq = buildFaq(
+      base({
+        descriptionHtml:
+          "<p><b>1. Demachiant crema (100 ml)</b><br><b>Ingrediente active:</b> ulei de migdale.</p><p><b>2. Ser cu acid hialuronic (30 ml)</b><br><b>Ingrediente active:</b> acid hialuronic.</p>",
+        language: "ro",
+      }),
+    );
+    expect(faq.some((x) => x.intent === "composition")).toBe(false);
+  });
+
+  it("reads a negated heading as no section at all, and 'Precautii' as warnings", () => {
+    expect(classifyHeading("No special care required")).toBeNull();
+    expect(classifyHeading("Fără ingrediente controversate")).toBeNull();
+    expect(classifyHeading("Precauții")).toBe("safety");
+  });
+
+  it("reads external-use, toxic and only-attach sentences as warnings, but not 'non-toxic' or one that points back", () => {
+    for (const [html, warns] of [
+      ["<p>Ulei de masaj.</p><p>Exclusiv pentru uz extern.</p>", true],
+      ["<p>Rubber tree.</p><p>The latex sap is toxic to pets.</p>", true],
+      ["<p>Harness.</p><p>The leash should only be attached to the harness.</p>", true],
+      ["<p>Paint for kids.</p><p>Our non-toxic paint washes off.</p>", false],
+      ["<p>A palm with a fuzzy trunk.</p><p>Avoid scraping these fibers off.</p>", false],
+    ] as const) {
+      const faq = buildFaq(base({ descriptionHtml: html, language: /Ulei/.test(html) ? "ro" : "en" }));
+      expect(faq.some((x) => x.intent === "safety")).toBe(warns);
+    }
+  });
+
+  it("asks Romanian questions of 'produsul X', which agrees with a plural title", () => {
+    const faq = buildFaq(base({ title: "Capsule cu pelin", descriptionHtml: "<h3>Ingrediente</h3><p>Pelin.</p>", language: "ro" }));
+    expect(faq.find((x) => x.intent === "composition")?.q).toBe("Ce conține produsul Capsule cu pelin?");
   });
 });
 

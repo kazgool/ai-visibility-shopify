@@ -65,7 +65,13 @@ export const CORPUS_STORES: CorpusStore[] = [
   { name: "animax.ro", set: "dev", language: "ro", vertical: "pets", preset: "pets", shopName: "Animax" },
   { name: "istyle.ro", set: "dev", language: "ro", vertical: "electronics", preset: "electronics", shopName: "iStyle" },
   { name: "jlab.com", set: "dev", language: "en", vertical: "electronics", preset: "electronics", shopName: "JLab" },
-  { name: "terraissa.com", set: "holdout", language: "ro", vertical: "cosmetics", preset: "beauty", shopName: "Terra Issa" },
+  // Hold-out in run holdout3, moved to dev after its errors were read.
+  { name: "terraissa.com", set: "dev", language: "ro", vertical: "cosmetics", preset: "beauty", shopName: "Terra Issa" },
+  // Third split (after holdout3): same-language replacements, counts only.
+  { name: "herbaris.ro", set: "holdout", language: "ro", vertical: "cosmetics and household", preset: "beauty", shopName: "Herbaris" },
+  { name: "miledy.ro", set: "holdout", language: "ro", vertical: "cosmetics", preset: "beauty", shopName: "Miledy" },
+  { name: "gunner.com", set: "holdout", language: "en", vertical: "pets", preset: "pets", shopName: "Gunner" },
+  { name: "outdoorvoices.com", set: "holdout", language: "en", vertical: "fashion", preset: "clothing", shopName: "Outdoor Voices" },
   { name: "e-ring.ro", set: "holdout", language: "ro", vertical: "jewellery", preset: "retail", shopName: "E-Ring" },
   { name: "peakdesign.com", set: "holdout", language: "en", vertical: "electronics and gear", preset: "electronics", shopName: "Peak Design" },
   // Added to the hold-out the same day, from counts only, so the bar is not
@@ -73,7 +79,7 @@ export const CORPUS_STORES: CorpusStore[] = [
   { name: "jolar.ro", set: "holdout", language: "ro", vertical: "fashion (leather goods)", preset: "fashion", shopName: "Jolar" },
   { name: "iarmaroc.com", set: "holdout", language: "ro", vertical: "designer marketplace", preset: "retail", shopName: "IARMAROC" },
   { name: "vintageradar.com", set: "holdout", language: "en", vertical: "fashion (watches)", preset: "retail", shopName: "Vintage Radar" },
-  { name: "thesill.com", set: "holdout", language: "en", vertical: "home", preset: "retail", shopName: "The Sill" },
+  { name: "thesill.com", set: "dev", language: "en", vertical: "home", preset: "retail", shopName: "The Sill" },
   { name: "cocokind.com", set: "holdout", language: "en", vertical: "cosmetics", preset: "beauty", shopName: "cocokind" },
-  { name: "wildone.com", set: "holdout", language: "en", vertical: "pets", preset: "pets", shopName: "Wild One" },
+  { name: "wildone.com", set: "dev", language: "en", vertical: "pets", preset: "pets", shopName: "Wild One" },
 ];

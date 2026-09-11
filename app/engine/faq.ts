@@ -150,7 +150,7 @@ export const INTENT_KEYWORDS: Record<Language, Partial<Record<Intent, string[]>>
     benefits: ["benefit*", "special", "stand out"],
   },
   ro: {
-    safety: ["atentionar*", "atentie", "alergen*"],
+    safety: ["atentionar*", "atentie", "alergen*", "precauti*"],
     usage: ["folosest*", "utilizare"],
     composition: ["ce contine", "ingrediente"],
     materials: ["material*"],
@@ -222,7 +222,9 @@ export function classifyHeading(label: string, maxWords = 4): Intent | null {
   if (words.length === 0 || words.length > maxWords) return null;
   const negated = words.some((w) => NEGATORS.has(w));
   for (const intent of INTENT_ORDER) {
-    if (intent === "safety" && negated) continue;
+    // "Fara alergeni", "No special care required", "Fara ingrediente
+    // controversate": a claim that there is none, never the section itself.
+    if (negated) continue;
     if ((NOT_INTENT[intent] ?? []).some((k) => matchesKeyword(words, k))) continue;
     if (!namesIntent(words, intent)) continue;
     if (intent === "safety") {
@@ -322,7 +324,9 @@ const ACTION_LINK =
 
 /** Bullets, symbols and dashes opening a line, never the sign of a number:
  * "+15cm" (fifteen centimetres more than the mattress) and "-5°C" keep it. */
-const LEAD_JUNK = /^(?:(?![+\-−]\d)[\s\p{So}\p{Po}\p{Sk}\p{Sm}\p{Pd}])+/u;
+// With the emoji joiners and variation selectors a "✔️" leaves behind when
+// its symbol is stripped (U+FE0F read as an empty mark before every item).
+const LEAD_JUNK = /^(?:(?![+\-−]\d)[\s\p{So}\p{Po}\p{Sk}\p{Sm}\p{Pd}\u{FE0F}\u{200D}\u{20E3}])+/u;
 const INLINE_SEPARATOR = /^(?:(?![+\-−]\d)[\s:|\p{Pd}])+/u;
 
 function cleanLabel(text: string): string {
@@ -523,7 +527,26 @@ function isPair(b: Block): boolean {
 /** A line of a list written as paragraphs: a "Label: value" pair, or a short
  * line that is not a sentence ("- Enchanted Rose Lip Mask"). */
 function isListLine(b: Block): boolean {
-  return isPair(b) || (b.rank === 99 && b.text.length <= LIST_LINE_CHARS && !/[.!?]$/.test(b.text));
+  return (
+    isPair(b) ||
+    (b.rank === 99 && b.text.length <= LIST_LINE_CHARS && !/[.!?]$/.test(b.text)) ||
+    // A line the merchant marked as an item is one, sentence or not: "•
+    // Infuzie: 1 lingurita..." then "• Se lasa la infuzat 5-10 minute." are
+    // two steps of one list.
+    (b.rank === 99 && BULLET.test(b.text) && b.text.length <= BULLET_LINE_CHARS)
+  );
+}
+
+const BULLET = /^(?:[•·*▪►◦✔✓☑]|[-–]\s)/u;
+const BULLET_LINE_CHARS = 400;
+
+/** A line with no mark, a few words and no end, that names a section
+ * ("Ingrediente", "Ingrediente active cheie"): a label written as plain text. */
+function plainLabelIntent(b: Block): Intent | null {
+  // No colon and no figure: "Lungime: 100 cm" is a line of the list, not a label.
+  if (b.rank !== 99 || b.label || !/^\p{L}/u.test(b.text) || /[.!?;,]$/.test(b.text.trim()) || /[:\d]/.test(b.text)) return null;
+  if (wordCount(b.text) > 4) return null;
+  return classifyHeading(b.text);
 }
 
 /** A list, and a list of "Label: value" lines, end where their lines end:
@@ -700,6 +723,16 @@ function unitsOf(
     // sub-heading keeps its colon, so the lines under it stay its own
     // ("Spatar: Inaltime: 70cm", not a bed 70cm high).
     const b = blocks[j];
+    // A label written as plain text: its own section's is a sub-heading, any
+    // other's is where this section ends ("Ingrediente active cheie" after
+    // the list of who it is for).
+    const named = plainLabelIntent(b);
+    if (named && named !== s.intent) break;
+    if (named) {
+      units.push({ text: b.text, heading: true });
+      end = b.end;
+      continue;
+    }
     units.push(b.label && b.inline === undefined && !b.question ? { text: b.text, heading: true } : { text: b.text });
     end = b.end;
   }
@@ -796,9 +829,13 @@ export function joinAnswer(
  * a heading anyway.
  */
 const WARNING_OPENING =
-  /^(a nu se|a se utiliza sub supraveghere\w*|nu se (recomanda|administreaza|consuma|utilizeaza|lasa)|nu este (potrivit|recomandat|o jucarie|destinat)|nu (depasi|depasiti|prepara|preparati|amesteca|amestecati|folosi|folositi|utiliza|utilizati|consuma|consumati|administra|administrati|expune|expuneti|lasa|lasati|permite|permiteti|scoateti)|este recomandat sa nu|evita\w*|supraveghea\w*|poate contine urme|contraindicat|consulta\w*|keep (out of|away from)|do not (use|exceed|give|leave|consume|take|swallow|apply|allow)|never (leave|allow|use)|not (suitable|recommended|intended) for|avoid|always (supervise|monitor)|supervise|consult (a|your)|may contain traces)\b/;
+  /^(a nu se|a se utiliza sub supraveghere\w*|(exclusiv|doar|numai) pentru uz extern|for external use only|nu se (recomanda|administreaza|consuma|utilizeaza|lasa)|nu (este|sunt) (potrivit\w*|recomandat\w*|o jucarie|destinat\w*)|not for \w+ (use|attachment|consumption)|nu (depasi|depasiti|prepara|preparati|amesteca|amestecati|folosi|folositi|utiliza|utilizati|consuma|consumati|administra|administrati|expune|expuneti|lasa|lasati|permite|permiteti|scoateti)|este recomandat sa nu|evita\w*|supraveghea\w*|poate contine urme|contraindicat|consulta\w*|keep (out of|away from)|do not (use|exceed|give|leave|consume|take|swallow|apply|allow)|never (leave|allow|use)|not (suitable|recommended|intended) for|avoid|always (supervise|monitor)|supervise|consult (a|your)|may contain traces)\b/;
 const WARNING_ANYWHERE =
-  /\b(poate contine urme de|may contain traces of|consultati medicul|sub supravegherea|pericol(ul)? de|choking hazard|under (adult|parental) supervision|consult (a|your) (vet|veterinarian|doctor|physician))\b/;
+  /\b(poate contine urme de|may contain traces of|consultati medicul|sub supravegherea|pericol(ul)? de|choking hazard|under (adult|parental) supervision|consult (a|your) (vet|veterinarian|doctor|physician)|out of (the )?reach of|should (only|never) be (used|attached|given|left)|trebuie sa consulte)\b|(?<!\bnon |\bnot |\bnon-)\btoxic\b/;
+
+/** A warning that points back at what it is about ("Avoid scraping these
+ * fibers off") says nothing once the sentence before it is left out. */
+const POINTS_BACK = /\b(these|those|acestea|acestia)\b/;
 
 /** Warnings written as sentences, in the blocks `keep` accepts. A sentence
  * "Label: text" is read on both sides of its colon, and a plain "Alergeni:
@@ -819,6 +856,7 @@ function warningSentences(blocks: Block[], keep: (i: number) => boolean = () => 
       const bare = sentence.replace(LEAD_JUNK, "");
       const after = bare.includes(":") ? bare.slice(bare.indexOf(":") + 1).trim() : "";
       const key = normalize(bare);
+      if (!labelled && POINTS_BACK.test(key)) continue;
       if (labelled || WARNING_OPENING.test(key) || WARNING_OPENING.test(normalize(after)) || WARNING_ANYWHERE.test(key)) {
         units.push({ text: sentence });
         if (start === -1) start = b.start;
@@ -1065,6 +1103,11 @@ export function buildFaq(input: FaqInput): FaqItem[] {
 
   const hasContents = (byIntent.get("contents")?.length ?? 0) > 0 || askGroups.some((g) => g.intent === "contents");
 
+  // Romanian verbs agree with the title: "Ce contine Capsule cu pelin?" is
+  // wrong for a plural name, and no rule can tell a plural title from a
+  // singular one. "produsul X" is singular whatever X is. The phrase table
+  // stays as it is for the other callers.
+  const subject = input.language === "ro" ? `produsul ${title}` : title;
   const ordered: FaqItem[] = [];
   for (const intent of INTENT_ORDER) {
     const limit = limitFor(intent);
@@ -1091,6 +1134,9 @@ export function buildFaq(input: FaqInput): FaqItem[] {
     }
     const labelCount = new Map<string, number>();
     for (const x of parts) labelCount.set(normalize(x.label), (labelCount.get(normalize(x.label)) ?? 0) + 1);
+    // The same label twice with no product name over either: "Ingrediente
+    // active: ... Ingrediente active: ..." cannot say which list is whose.
+    if (!bundle && parts.some((x) => (labelCount.get(normalize(x.label)) ?? 0) > 1 && !x.context)) continue;
     const partText = (x: Part) =>
       bundle && x.context
         ? labelled(x.context, x.units, limit)
@@ -1123,7 +1169,7 @@ export function buildFaq(input: FaqInput): FaqItem[] {
         : joinAnswer(parts.map(partText), bundle ? bundleLimit : limit);
     if (a === "") continue;
     ordered.push({
-      q: intentQuestion(p, intent, title),
+      q: intentQuestion(p, intent, subject),
       a,
       source: "section",
       intent,
@@ -1165,7 +1211,7 @@ export function buildFaq(input: FaqInput): FaqItem[] {
     if (!hasContent(value)) continue;
     const own = groupQuestions.get(key);
     if (own) ordered.push({ q: fillTitle(own, title), a: `${value}.`, source: "mapping" });
-    else if (preset?.[key]) ordered.push({ q: preset[key](p, title), a: `${value}.`, source: "preset" });
+    else if (preset?.[key]) ordered.push({ q: preset[key](p, subject), a: `${value}.`, source: "preset" });
   }
 
   // e: options with a real choice, and a brand that is not the shop's own.
@@ -1217,7 +1263,7 @@ export function buildFaq(input: FaqInput): FaqItem[] {
     }
     if (b.warranty && !asked("warranty")) {
       ordered.push({
-        q: p.qWarranty(title),
+        q: p.qWarranty(subject),
         a: cleanOutput(`${warrantyWithUnit(b.warranty, input.language)}.`),
         source: "business",
       });

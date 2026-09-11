@@ -117,6 +117,38 @@ the bar applies to, 994 Q&A); e-ring.ro 39, wildone.com 31, cocokind.com 10,
 peakdesign.com 0, vintageradar.com 0 (their vendor is the shop itself and
 their headings name no intent). Total 1,074.
 
+### Third split, 11 September 2026, after hold-out run holdout3
+
+Run holdout3 (engine of commit f92548f) missed the bar: 26 errors in 1,079,
+2.41%; terraissa.com 5.53% (21/380), thesill.com 1.06% (3/284), iarmaroc.com
+0% (0/275), jolar.ro 0% (0/58). The errors of terraissa.com, thesill.com and
+wildone.com (6.06%, 2/33) were read to fix rules; all three moved to dev.
+The errors of iarmaroc.com, jolar.ro, e-ring.ro, cocokind.com,
+peakdesign.com and vintageradar.com were not read (they had none, or none
+was listed); they stay.
+
+Replacements, chosen from counts only (no description opened):
+
+| Store | Replaces | Vertical | Language | Products | With description | Heading or bold start | Line ending in ? |
+|---|---|---|---|---|---|---|---|
+| herbaris.ro | terraissa.com | cosmetics and household | ro | 198 | 198 | 75% (148/198) | 7% (13/198) |
+| miledy.ro | (added) | cosmetics | ro | 121 | 121 | 93% (113/121) | 1% (1/121) |
+| gunner.com (reserve) | thesill.com | pets | en | 134 | 133 | 0% (0/133) | 0% (0/133) |
+| outdoorvoices.com (reserve) | wildone.com | fashion | en | 250 | 250 | 0% (0/250) | 0% (0/250) |
+
+Where they came from: a search for Romanian natural-cosmetics shops, each
+checked for a Shopify `/products.json` (biospot.ro, crisnatur.ro,
+sabiocosmetics.ro, laterre.ro and narjecosmetics.ro returned 404; herbaris.ro
+and miledy.ro answered). gunner.com and outdoorvoices.com are the last two
+English reserves.
+
+Q&A the engine produces on the hold-out now (holdout4, counts only, before
+any verdict): outdoorvoices.com 302, iarmaroc.com 275, herbaris.ro 264,
+miledy.ro 202, gunner.com 84, jolar.ro 58 (the six the bar applies to: four
+Romanian, two English); e-ring.ro 39, cocokind.com 10, peakdesign.com 0,
+vintageradar.com 0. Dev is now 29 stores: the 23 above plus animax.ro,
+istyle.ro, jlab.com, terraissa.com, thesill.com and wildone.com.
+
 ### Counts against the brief
 
 - Further stores beyond the two catalogues: 20 (at least 12 required).
