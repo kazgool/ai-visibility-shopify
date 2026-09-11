@@ -57,6 +57,7 @@ import {
   type FindingCode,
   type FindingOwner,
 } from "../services/seo-findings";
+import { calendarDayNumber } from "../services/seo-since";
 import {
   GROUP_WORD,
   PUBLISHED_LABEL,
@@ -103,6 +104,8 @@ export type SeoDashboardData =
   | {
       unlocked: true;
       domain: string;
+      /** The shop's IANA timezone, for "day N" (addendum item 13). */
+      timezone?: string | null;
       findings: FindingsAggregate;
       themeNodes: ThemeNodeAggregate;
       readiness: Readiness;
@@ -610,13 +613,10 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
   // property of the code rather than a promise in a changelog.
   const { listing, wide } = dashboardDerived(data);
 
+  // Calendar days where the shop is, the snapshot's day being day 1 (addendum
+  // item 13); whole 24-hour blocks said "day 1" until well into the next day.
   const dayNumber =
-    before && before.takenAt
-      ? Math.max(
-          1,
-          Math.floor((Date.now() - new Date(before.takenAt).getTime()) / 86400000) + 1,
-        )
-      : null;
+    before && before.takenAt ? calendarDayNumber(before.takenAt, new Date(), data.timezone) : null;
 
   const headerParts = [
     domain,

@@ -23,7 +23,7 @@ import type { Readiness } from "./seo-readiness";
 
 const PRIMARY_DOMAIN = `#graphql
   query PrimaryDomainSeoDashboard {
-    shop { primaryDomain { host } }
+    shop { primaryDomain { host } ianaTimezone }
   }
 `;
 
@@ -38,6 +38,11 @@ export type SeoDashboardSource = {
   business: { deliveryStated: boolean; returnsStated: boolean } | null;
   blogPosts: { read: number; withoutLinks: number } | null;
   collections: CollectionSeoQueue | null;
+  /**
+   * The shop's IANA timezone, for "day N" in calendar days where the shop is
+   * (addendum item 13). Optional: absent or null counts in UTC.
+   */
+  timezone?: string | null;
   published: {
     at: string | null;
     reasons: { nodeType: string; emitted: boolean; reason: string | null }[];
@@ -81,10 +86,12 @@ export async function readSeoDashboardSource(
   // The name the merchant knows their shop by, rather than the myshopify one.
   // One Admin call, and a failure falls back rather than breaking the screen.
   let domain = sessionShop;
+  let timezone: string | null = null;
   try {
     const res = await named("PrimaryDomainSeoDashboard", () => graphql(PRIMARY_DOMAIN));
     const json = await res.json();
     domain = json.data?.shop?.primaryDomain?.host ?? sessionShop;
+    timezone = json.data?.shop?.ianaTimezone ?? null;
   } catch {
     domain = sessionShop;
   }
@@ -103,6 +110,7 @@ export async function readSeoDashboardSource(
 
   return {
     domain,
+    timezone,
     findings: dashboard.findings,
     themeNodes: dashboard.themeNodes,
     readiness: dashboard.readiness,
