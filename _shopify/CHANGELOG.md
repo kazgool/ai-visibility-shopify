@@ -16,6 +16,34 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### The app embed's "enabled" default stays, and why (11 September 2026)
+
+Asked on 11 September: drop `"default": true` from the "enabled" setting of
+`ai-visibility.liquid`, because "enabled by default" did not take effect on
+Republica BIO's existing theme - the embed had to be switched off, saved and
+switched on before the block appeared. The brief was to keep the default only
+if a Shopify document says a setting's default activates an app embed on an
+existing theme, and to remove it otherwise.
+
+No document says that, and the one that governs says the opposite: "By
+default, app embed blocks are deactivated after an app is installed"
+(https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration).
+Activation is the App embeds toggle in the theme editor, or the deep link the
+dashboard's embed step already gives. The setting's default never activated
+anything.
+
+It is kept anyway, because of what removing it would do. The setting is the
+checkbox inside the embed, "Enable AI Visibility output", and for a checkbox
+"If `default` is unspecified, then the value is `false` by default"
+(https://shopify.dev/docs/storefronts/themes/architecture/settings/input-settings).
+Without the default, every merchant who switches the embed on would get an
+embed that renders nothing until they also find and tick a checkbox inside
+it, and nothing on any screen would say so. The literal instruction and its
+purpose point in opposite directions here; this keeps the purpose. Nothing in
+the schema changed. The dashboard's embed step remains what activates the
+embed, and it verifies activation on every load. If the dead-toggle problem
+recurs, the fix is that step, not this default.
+
 ### Serving suggestions are no longer read as product facts (10 September 2026)
 
 Republica BIO went through their own dictionary line by line after install and
