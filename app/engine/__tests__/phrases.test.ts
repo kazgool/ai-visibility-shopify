@@ -67,7 +67,10 @@ describe("one phrase table", () => {
       const samples = [
         p.isA("T", "type"), p.isAProduct("T"), p.keyDetails("a: b"),
         p.qMaterial("T"), p.qDimensions("T"), p.qSeats("T"), p.qIncludes("T"),
-        p.qIncludesOrSeats("T"), p.qRoom("T"), p.qGeneric("label", "T"),
+        p.qIncludesOrSeats("T"), p.qRoom("T"),
+        p.qSafety("T"), p.qUsage("T"), p.qComposition("T"), p.qStorage("T"), p.qCare("T"),
+        p.qCompatibility("T"), p.qSuitability("T"), p.qBenefits("T"), p.qFinish("T"),
+        p.qOptions("T"), p.qVendor("T"),
         p.qDelivery("T"), p.aDelivery("1-2", "15 RON", true), p.aDelivery("1-2", null, false),
         p.qReturns("T"), p.aReturns(14), p.qWarranty("T"), p.months(24), p.qPayment(),
         p.collectionCount("T", 25), p.collectionDiffer("a: b"), p.andMore("a, b", 3),
@@ -145,32 +148,30 @@ describe("the product text in the content language", () => {
     ).toBe("Ashwagandha Ecologica din India (400 mg), 60 capsule face parte din categoria Supliment.");
   });
 
-  it("asks from the merchant's own labels, then business, capped, dose skipped", () => {
+  // Changed on purpose by CC-PROMPT-AI-READABILITY-3 item 2: the generic
+  // "Ce {label} are X?" template is gone, so a label with no template of its
+  // own asks nothing and the business questions follow the specific ones.
+  it("asks nothing from a merchant's label that has no template of its own", () => {
     const qa = buildQuestions({ ...ASHWAGANDHA, language: "ro" });
     const t = ASHWAGANDHA.title;
     expect(qa).toEqual([
-      { q: `Ce forma are ${t}?`, a: "capsule." },
-      { q: `Ce gramaj are ${t}?`, a: "29,7 g." },
-      { q: `Ce ingrediente are ${t}?`, a: "radacina de ashwagandha." },
       { q: `În cât timp se livrează ${t}?`, a: "1-2. Livrarea costă 15 RON." },
       { q: `Pot returna ${t}?`, a: "Da, în termen de 14 zile." },
       { q: "Cum pot plăti?", a: "Card bancar; Ramburs." },
     ]);
-    expect(qa).toHaveLength(MAX_QUESTIONS);
-    // "3 capsule zilnic" is a dosage (DOSE_MARKERS), never a question.
-    expect(qa.map((x) => x.q).join(" ")).not.toContain("utilizare");
+    expect(qa.length).toBeLessThanOrEqual(MAX_QUESTIONS);
   });
 
-  it("skips a value that opens like an instruction to the buyer", () => {
+  it("asks nothing of an instruction value either", () => {
     const qa = buildQuestions({
       title: "Cacao",
       facts: [{ k: "Sugestie", v: "adauga in smoothie" }, { k: "Forma", v: "pudra" }],
       language: "ro",
     });
-    expect(qa.map((x) => x.q)).toEqual(["Ce forma are Cacao?"]);
+    expect(qa).toEqual([]);
   });
 
-  it("puts the label-specific questions first and cuts at six", () => {
+  it("keeps the label-specific questions, then business", () => {
     const qa = buildQuestions({
       title: "Masa",
       facts: [
@@ -188,10 +189,7 @@ describe("the product text in the content language", () => {
     expect(qa.map((x) => x.q)).toEqual([
       "What is Masa made of?",
       "What are the dimensions of Masa?",
-      "What finisaj does Masa have?",
-      "What stil does Masa have?",
-      "What culoare does Masa have?",
-      "What forma does Masa have?",
+      "Can I return Masa?",
     ]);
   });
 

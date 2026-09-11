@@ -30,6 +30,26 @@ export {
 } from "./summary";
 export { buildMetaTitle, buildMetaDescription, type MetaInput } from "./meta";
 export {
+  buildFaq,
+  classifyHeading,
+  parseBlocks,
+  descriptionOutline,
+  joinAnswer,
+  validateFaqQuestion,
+  INTENT_ORDER,
+  INTENT_KEYWORDS,
+  PRESET_QUESTIONS,
+  DEFAULT_FAQ_CAP,
+  MAX_ANSWER_CHARS,
+  TITLE_PLACEHOLDER,
+  type FaqInput,
+  type FaqItem,
+  type FaqSource,
+  type FaqMappings,
+  type FaqOption,
+  type Intent,
+} from "./faq";
+export {
   phrases,
   PHRASES,
   LANGUAGES,

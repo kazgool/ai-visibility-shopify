@@ -41,14 +41,27 @@ export type Phrases = {
   isAProduct(title: string): string;
   keyDetails(clauses: string): string;
 
-  // Product questions, label-specific first, then one generic template.
+  // Product questions. The label-specific ones double as preset templates
+  // and, with the ones below, as the questions of description sections.
   qMaterial(title: string): string;
   qDimensions(title: string): string;
   qSeats(title: string): string;
   qIncludes(title: string): string;
   qIncludesOrSeats(title: string): string;
   qRoom(title: string): string;
-  qGeneric(label: string, title: string): string;
+
+  // FAQ (faq.ts): one question per description intent, and Shopify data.
+  qSafety(title: string): string;
+  qUsage(title: string): string;
+  qComposition(title: string): string;
+  qStorage(title: string): string;
+  qCare(title: string): string;
+  qCompatibility(title: string): string;
+  qSuitability(title: string): string;
+  qBenefits(title: string): string;
+  qFinish(title: string): string;
+  qOptions(title: string): string;
+  qVendor(title: string): string;
 
   // Business questions and their answers.
   qDelivery(title: string): string;
@@ -100,7 +113,18 @@ export const PHRASES: Record<Language, Phrases> = {
     qIncludes: (title) => `What does ${title} include?`,
     qIncludesOrSeats: (title) => `What does ${title} include or seat?`,
     qRoom: (title) => `Where is ${title} used?`,
-    qGeneric: (label, title) => `What ${label} does ${title} have?`,
+
+    qSafety: (title) => `What precautions apply to ${title}?`,
+    qUsage: (title) => `How do I use ${title}?`,
+    qComposition: (title) => `What does ${title} contain?`,
+    qStorage: (title) => `How should ${title} be stored?`,
+    qCare: (title) => `How do I care for ${title}?`,
+    qCompatibility: (title) => `What is ${title} compatible with?`,
+    qSuitability: (title) => `Who is ${title} for?`,
+    qBenefits: (title) => `What are the benefits of ${title}?`,
+    qFinish: (title) => `What finish does ${title} have?`,
+    qOptions: (title) => `Which options is ${title} available in?`,
+    qVendor: (title) => `Who makes ${title}?`,
 
     qDelivery: (title) => `How long does delivery take for ${title}?`,
     aDelivery: (time, cost, costIsFrom) =>
@@ -150,7 +174,18 @@ export const PHRASES: Record<Language, Phrases> = {
     qIncludes: (title) => `Ce include ${title}?`,
     qIncludesOrSeats: (title) => `Ce include sau câte locuri are ${title}?`,
     qRoom: (title) => `Unde se folosește ${title}?`,
-    qGeneric: (label, title) => `Ce ${label} are ${title}?`,
+
+    qSafety: (title) => `Ce precauții trebuie respectate pentru ${title}?`,
+    qUsage: (title) => `Cum se folosește ${title}?`,
+    qComposition: (title) => `Ce conține ${title}?`,
+    qStorage: (title) => `Cum se păstrează ${title}?`,
+    qCare: (title) => `Cum se întreține ${title}?`,
+    qCompatibility: (title) => `Cu ce se poate folosi ${title}?`,
+    qSuitability: (title) => `Pentru cine este ${title}?`,
+    qBenefits: (title) => `Ce avantaje are ${title}?`,
+    qFinish: (title) => `Ce finisaj are ${title}?`,
+    qOptions: (title) => `Ce opțiuni sunt disponibile pentru ${title}?`,
+    qVendor: (title) => `Cine produce ${title}?`,
 
     qDelivery: (title) => `În cât timp se livrează ${title}?`,
     aDelivery: (time, cost, costIsFrom) =>

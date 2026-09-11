@@ -47,6 +47,18 @@ that store moves to dev and a reserve store of the same language replaces it.
 | fablepets.com | pets and toys | en | 67 | 65 | 23% (15/65) | 0% (0/65) |
 | twelvesouth.com | electronics | en | 45 | 45 | 38% (17/45) | 4% (2/45) |
 | shokz.com | electronics | en | 59 | 38 | 5% (2/38) | 13% (5/38) |
+| brightland.co | food (olive oil, vinegar) | en | 43 | 42 | 12% (5/42) | 0% (0/42) |
+| feals.com | supplements | en | 7 | 7 | 0% (0/7) | 0% (0/7) |
+| graza.co | food (olive oil) | en | 80 | 44 | 32% (14/44) | 0% (0/44) |
+| meowmeowtweet.com | cosmetics | en | 55 | 55 | 0% (0/55) | 0% (0/55) |
+| moleculesofyouth.com | supplements | en | 18 | 18 | 100% (18/18) | 39% (7/18) |
+| toskovat.com | cosmetics | en | 26 | 25 | 16% (4/25) | 28% (7/25) |
+| truff.com | food (sauces) | en | 40 | 39 | 3% (1/39) | 0% (0/39) |
+
+The last seven were reserves and moved to dev on the same day, still before
+any rule was written: the first sixteen dev stores held almost no English
+usage, care or safety headings to derive keyword lists from. Dev is now 23
+stores; the hold-out is unchanged.
 
 ### Hold-out set (never opened while writing rules): 6 stores
 

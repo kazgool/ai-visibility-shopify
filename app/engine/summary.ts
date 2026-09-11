@@ -16,7 +16,6 @@
 // Every fixed phrase comes from phrases.ts, in the shop's content language.
 
 import type { Fact } from "./extract";
-import { isInstructionValue } from "./extract";
 import { stripTags, cleanOutput } from "./normalize";
 import { phrases, type Language } from "./phrases";
 
@@ -137,26 +136,10 @@ export type QA = { q: string; a: string };
 export const MAX_QUESTIONS = 6;
 
 /**
- * Labels the specific templates below own, under every alias they answer to.
- * None of them gets the generic question as well: "capacity" beside "seats"
- * is deliberately left unasked, and a second "fabric" question beside
- * "material" would ask the same thing twice.
- */
-const SPECIFIC_LABELS = new Set([
-  "material", "materials", "fabric",
-  "dimensions", "dimensiuni", "size",
-  "seats", "locuri",
-  "includes", "continut", "set",
-  "capacity", "capacitate",
-  "room", "camera", "occasion",
-]);
-
-/**
  * The questions people actually ask an assistant, answered from the facts we
  * hold. A question without a real answer is never emitted.
  *
- * Order (item 5d): the label-specific templates, then one generic question per
- * other label in orderFacts order, then the business questions; at most
+ * Order: the label-specific templates, then the business questions; at most
  * MAX_QUESTIONS in all.
  */
 export function buildQuestions(input: CapsuleInput): QA[] {
@@ -193,23 +176,10 @@ export function buildQuestions(input: CapsuleInput): QA[] {
   const room = byLabel.get("room") ?? byLabel.get("camera") ?? byLabel.get("occasion");
   if (room) out.push({ q: p.qRoom(title), a: `${room.v}.` });
 
-  // Every other label the merchant's dictionary produced, in its own words:
-  // on a 26-group food dictionary the specific templates above match nothing,
-  // and the list used to be the same four commerce questions on every
-  // product. Skipped: a value that is a dose or an instruction to the buyer
-  // (isInstructionValue, the two contexts extract.ts already treats apart),
-  // because "3 capsule zilnic" is a dosage and not an answer to lift.
-  const asked = new Set<string>();
-  for (const fact of orderFacts(input.facts)) {
-    const key = fact.k.toLowerCase();
-    if (SPECIFIC_LABELS.has(key) || asked.has(key)) continue;
-    if (isInstructionValue(fact.v)) continue;
-    asked.add(key);
-    out.push({
-      q: p.qGeneric(cleanOutput(fact.k).toLowerCase(), title),
-      a: cleanOutput(`${fact.v}.`),
-    });
-  }
+  // No generic "What {label} does X have?" question any more
+  // (CC-PROMPT-AI-READABILITY-3 item 2): it restated the facts list, published
+  // every extraction error twice, and under the cap cut safety labels while
+  // trivia stayed. faq.ts replaces this builder once it meets the bar.
 
   // Commercial questions (WP 1.6.7/1.6.9 port). Everything here is a product
   // for sale, so the 1.6.9 "only about things you actually sell" rule is
