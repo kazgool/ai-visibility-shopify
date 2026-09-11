@@ -26,12 +26,14 @@ import {
   type ShopInfo,
 } from "./catalogue.server";
 import {
-  mayWrite,
+  ENGINE_VERSION,
+  parseState,
   writeFacts,
   writeVariantFacts,
   hasWithdrawableAutoValues,
   type ProductInput,
 } from "./facts.server";
+import { humanMerge, humanRowCount, readFacts, type HumanMerge } from "./facts-human";
 import { catalogueQuery, eligibility } from "./eligibility";
 import { prefsFor } from "./eligibility.server";
 import { reconcileMirrors, type Reconciliation } from "./mirror-reconcile.server";
@@ -394,7 +396,7 @@ export async function runBulkExtract(
   // to come first. Held as names, written as ten rows.
   const perProductFamilies: WeakProduct[] = [];
 
-  const batch: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[] = [];
+  const batch: { product: ProductInput; facts: Fact[]; fields?: FieldValue[]; human?: HumanMerge }[] = [];
   let done = 0;
 
   // Handle per product id, so IndexNow pings only pages that changed.
@@ -414,7 +416,6 @@ export async function runBulkExtract(
   for (const product of products) {
     const facts = extractProduct(product, dictionary, engineOptions);
 
-    if (!mayWrite(product, "facts")) report.wouldSkip += 1;
     if (report.examples.length < 20 && facts.length > 0) {
       report.examples.push({ title: product.title, facts });
     }
@@ -439,7 +440,21 @@ export async function runBulkExtract(
     const split = splitFactsByLevel(facts, product.variants ?? []);
     if (product.handle) handleById.set(product.id, product.handle);
 
-    if (!options.dryRun && (facts.length > 0 || hasWithdrawableAutoValues(product))) {
+    // The rows a person wrote go on top of the fresh ones, and the merged list
+    // is what every reader below gets - the metafield, the summary, the
+    // questions, the mirror (CC-PROMPT-AI-READABILITY-4 item 4b). "Protected"
+    // counts products with at least one such row, as it counted products a
+    // person had edited before protection went per row (item 4b f).
+    const merge = humanMerge(
+      parseState(product),
+      readFacts(product.metafields?.find((m) => m.key === "facts")?.value),
+      split.productFacts,
+      new Date().toISOString(),
+      ENGINE_VERSION,
+    );
+    if (humanRowCount(merge.human) > 0) report.wouldSkip += 1;
+
+    if (!options.dryRun && (facts.length > 0 || merge.facts.length > 0 || hasWithdrawableAutoValues(product))) {
       // Push into the product-level write when there is something to write
       // (productFacts) OR something already written to withdraw. The old
       // `facts.length === 0` form missed the all-variant-level case: a
@@ -449,11 +464,12 @@ export async function runBulkExtract(
       // run) diverged from the metafields. A product with empty
       // productFacts and nothing withdrawable is still never pushed - the
       // no-op stays free.
-      if (split.productFacts.length > 0 || hasWithdrawableAutoValues(product)) {
+      if (merge.facts.length > 0 || merge.migrated || hasWithdrawableAutoValues(product)) {
         batch.push({
           product,
-          facts: split.productFacts,
-          fields: capsuleFields(product, split.productFacts, business, language),
+          facts: merge.facts,
+          fields: capsuleFields(product, merge.facts, business, language),
+          human: merge,
         });
         if (batch.length >= 8) await flush();
       }
@@ -486,7 +502,7 @@ export async function runBulkExtract(
     // row one Admin round trip at a time - hundreds of jobs on a large store
     // to produce what the pass had in memory.
     if (!options.dryRun && eligibility(product, prefs) === "eligible") {
-      await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo, language);
+      await cacheMirror(shopId, shop.domain, product, merge.facts, business, shopInfo, language);
     }
 
     done += 1;
@@ -596,17 +612,26 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   // must have the stale facts, summary, questions and fit_for retracted,
   // not left publishing forever because this path returned early before
   // ever calling writeFacts (the bug). Human-written values are never
-  // touched - writeFacts guards every field on its own provenance.
+  // touched - writeFacts guards every field on its own provenance, and the
+  // facts row by row (CC-PROMPT-AI-READABILITY-4 item 4b).
+  const merge = humanMerge(
+    parseState(product),
+    readFacts(product.metafields?.find((m) => m.key === "facts")?.value),
+    split.productFacts,
+    new Date().toISOString(),
+    ENGINE_VERSION,
+  );
   const [outcome] = await writeFacts(graphql, [
     {
       product,
-      facts: split.productFacts,
-      fields: capsuleFields(product, split.productFacts, business, language),
+      facts: merge.facts,
+      fields: capsuleFields(product, merge.facts, business, language),
+      human: merge,
     },
   ]);
 
   if (isPublished) {
-    await cacheMirror(shopId, shop.domain, product, split.productFacts, business, shopInfo, language);
+    await cacheMirror(shopId, shop.domain, product, merge.facts, business, shopInfo, language);
     if (outcome.written.length > 0 && product.handle) {
       await pingProducts(shopId, shop.domain, [product.handle]);
     }

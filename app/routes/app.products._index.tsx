@@ -20,6 +20,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { cleanOutput } from "../engine";
 import db from "../db.server";
+import { factsHumanOf, humanRowCount } from "../services/facts-human";
 import {
   hasPaidAccess,
   isSeoUnlocked,
@@ -259,8 +260,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       hasSummary: Boolean(mf.get("summary")),
       described: images.filter((i: any) => (i.altText ?? "").trim() !== "").length,
       images: images.length,
-      // Any field a person wrote makes the product theirs, not ours.
-      edited: Object.values(state).some((s) => s?.source === "human"),
+      // Any field a person wrote makes the product theirs, not ours - and for
+      // the attributes, any row (CC-PROMPT-AI-READABILITY-4 item 4b f).
+      edited:
+        Object.values(state).some((s) => s?.source === "human") ||
+        humanRowCount(factsHumanOf(state)) > 0,
       // Published means an assistant has something to read on this product.
       readable: attributes > 0 && Boolean(mf.get("summary")),
       // Whether the plain text mirror exists for this handle, so the link

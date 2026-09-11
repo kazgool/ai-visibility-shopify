@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useState } from "react";
-import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -29,6 +29,15 @@ import {
 } from "../engine";
 import { buildAltText, looksLikeMachineAlt } from "../engine/alt-text";
 import { NAMESPACE, ENGINE_VERSION, parseState } from "../services/facts.server";
+import {
+  diffFactRows,
+  factKey,
+  humanMerge,
+  humanRowCount,
+  readFacts,
+  withFactsHuman,
+} from "../services/facts-human";
+import { enqueue } from "../services/queue.server";
 import { isSeoUnlocked, hasPaidAccess, isFreeProduct } from "../services/billing.server";
 import { contentLanguageFor } from "../services/business.server";
 import { describeFinding, findingsForProduct } from "../services/seo-aggregate";
@@ -48,7 +57,10 @@ import {
 // The editor pattern the WordPress module got right, and the reason human work
 // survives: the extracted value is shown as the starting point, the merchant
 // edits on top, and a reset puts it back to automatic. Anything the merchant
-// touches is marked `human` in state and is then invisible to bulk passes.
+// touches is marked `human` in state and is then invisible to bulk passes -
+// for the attributes, row by row since CC-PROMPT-AI-READABILITY-4 item 4b
+// (facts-human.ts): a corrected row stays the merchant's and every other row
+// keeps following the description.
 
 const PRODUCT = `#graphql
   query ProductForEditor($id: ID!) {
@@ -101,6 +113,32 @@ function gid(id: string) {
   return id.startsWith("gid://") ? id : `gid://shopify/Product/${id}`;
 }
 
+/**
+ * What the dictionary reads from this product now. A save and a row reset
+ * need it to convert a table still in the old whole-table form the same way
+ * the writers do (facts-human.ts humanMerge), so the screen and the next pass
+ * agree about which rows are the person's.
+ */
+async function freshFactsFor(product: any, domain: string): Promise<Fact[]> {
+  if (!product) return [];
+  const shop = await db.shop.findUnique({ where: { domain } });
+  const setting = shop
+    ? await db.setting.findUnique({ where: { shopId_key: { shopId: shop.id, key: "dictionary" } } })
+    : null;
+  return extractProduct(product, setting?.value ?? "");
+}
+
+/**
+ * Queue this product's own extraction, so a reset row or table is refilled
+ * now rather than at the next catalogue pass. The existing job and writer
+ * (extract_product, writeFacts): no new write path.
+ */
+async function queueRefresh(domain: string, productGid: string): Promise<void> {
+  const shop = await db.shop.findUnique({ where: { domain } });
+  if (!shop) return;
+  await enqueue("extract_product", { shopId: shop.id, productGid }, { jobKey: `extract:${productGid}` });
+}
+
 export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const res = await admin.graphql(PRODUCT, { variables: { id: gid(params.id!) } });
@@ -145,6 +183,14 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   }
 
   const autoFacts = extractProduct(product, setting?.value ?? "");
+
+  // Which rows a person wrote or removed (CC-PROMPT-AI-READABILITY-4 item 4b),
+  // read through the merge the writers run: a table still in the old
+  // whole-table form shows every row as the person's, which is how the next
+  // pass converts it.
+  const humanRows = Object.entries(humanMerge(state, storedFacts, autoFacts, "", ENGINE_VERSION).human);
+  const humanKeys = humanRows.filter(([, row]) => row.v !== null).map(([key]) => key);
+  const removedRows = humanRows.filter(([, row]) => row.v === null).map(([key, row]) => ({ key, k: row.k }));
 
   // Every image with its current description, where that description came
   // from, and what we would write if it were empty. A merchant should be able
@@ -334,8 +380,12 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     images,
     storedFacts,
     autoFacts,
-    source: state.facts?.source ?? null,
+    // "human" when any row is a person's, which is when the product counts as
+    // written by a person (item 4b f); otherwise the field's own record.
+    source: humanRows.length > 0 ? "human" : state.facts?.source ?? null,
     updatedAt: state.facts?.at ?? null,
+    humanKeys,
+    removedRows,
     capsule: {
       summary: metafields.find((m) => m.key === "summary")?.value ?? "",
       questions: storedQuestions,
@@ -640,8 +690,14 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   }
 
   if (intent === "reset") {
-    // Back to automatic: drop the human flag, let the next pass refill it.
-    delete state.facts;
+    // Back to automatic: every row a person wrote or removed goes, and the
+    // field is marked as the app's, so extraction fills it again. This used
+    // to delete the facts entry, which left the value with no record of who
+    // wrote it - and such a value is read as a person's by every pass, so the
+    // table was never refilled (CC-PROMPT-AI-READABILITY-4 item 4b). The
+    // product is queued, so the refill does not wait for the next pass.
+    withFactsHuman(state, {});
+    state.facts = { source: "auto", at: new Date().toISOString(), engine: ENGINE_VERSION };
     await admin.graphql(SET, {
       variables: {
         metafields: [
@@ -655,17 +711,54 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
         ],
       },
     });
+    await queueRefresh(session.shop, id);
     return { reset: true };
   }
 
-  // Save: whatever is in the boxes becomes the truth, and is protected.
+  if (intent === "reset_row") {
+    // One row back to automatic (item 4b d); the others stay as they are.
+    const now = new Date().toISOString();
+    const stored = readFacts(metafields.find((m) => m.key === "facts")?.value);
+    const fresh = await freshFactsFor(json.data?.product, session.shop);
+    const human = { ...humanMerge(state, stored, fresh, now, ENGINE_VERSION).human };
+    delete human[String(form.get("rowKey") ?? "")];
+    withFactsHuman(state, human);
+    state.facts = { source: "auto", at: now, engine: ENGINE_VERSION };
+    await admin.graphql(SET, {
+      variables: {
+        metafields: [
+          { ownerId: id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) },
+        ],
+      },
+    });
+    await queueRefresh(session.shop, id);
+    return { rowReset: true };
+  }
+
+  // Save (item 4b b): the rows submitted against the rows the screen showed.
+  // Only a row that changed, was added or was removed becomes the person's; a
+  // save that changed nothing writes nothing and marks nothing - it used to
+  // mark the whole table human either way. The rows written are exactly the
+  // ones on the screen, so the next render shows what was saved, and the
+  // field stays the app's so passes keep every other row current.
   const labels = form.getAll("label").map(String);
   const values = form.getAll("value").map(String);
   const facts: Fact[] = labels
     .map((k, i) => ({ k: k.trim(), v: (values[i] ?? "").trim() }))
     .filter((f) => f.k !== "" && f.v !== "");
 
-  state.facts = { source: "human", at: new Date().toISOString(), engine: ENGINE_VERSION };
+  // A page opened before this field existed sends no original rows: every
+  // row then counts as the person's, the safe direction.
+  const origRaw = form.get("origFacts");
+  const original = origRaw === null ? [] : readFacts(String(origRaw));
+  const now = new Date().toISOString();
+  const changes = diffFactRows(original, facts, now, ENGINE_VERSION);
+  if (Object.keys(changes).length === 0) return { saved: true, unchanged: true };
+
+  const stored = readFacts(metafields.find((m) => m.key === "facts")?.value);
+  const fresh = await freshFactsFor(json.data?.product, session.shop);
+  withFactsHuman(state, { ...humanMerge(state, stored, fresh, now, ENGINE_VERSION).human, ...changes });
+  state.facts = { source: "auto", at: now, engine: ENGINE_VERSION };
 
   await admin.graphql(SET, {
     variables: {
@@ -848,6 +941,8 @@ export default function ProductEditor() {
     autoFacts,
     source,
     updatedAt,
+    humanKeys,
+    removedRows,
     capsule,
     crawlers,
     answer,
@@ -878,6 +973,8 @@ export default function ProductEditor() {
       autoFacts: Fact[];
       source: string | null;
       updatedAt: string | null;
+      humanKeys: string[];
+      removedRows: { key: string; k: string }[];
       capsule: {
         summary: string;
         questions: { q: string; a: string }[];
@@ -902,6 +999,10 @@ export default function ProductEditor() {
     };
   const nav = useNavigation();
   const busy = nav.state !== "idle";
+  // One row back to automatic (item 4b d). A button inside the save form
+  // cannot post a different intent, so it submits on its own.
+  const submit = useSubmit();
+  const resetRow = (key: string) => submit({ intent: "reset_row", rowKey: key }, { method: "post" });
   // Refusal errors from the action (entitlement checks, write failures) were
   // returned but never rendered, so a refused save looked like a successful
   // one. Surfaced as a critical banner at the top of the editor.
@@ -973,8 +1074,10 @@ export default function ProductEditor() {
 
         {source === "human" ? (
           <Banner tone="info">
-            These values were written by a person, so bulk passes leave them
-            alone. Reset to automatic to let extraction fill them again.
+            Rows marked Edited by hand were written or removed by a person, so
+            automatic passes leave those rows alone and keep the others up to
+            date with the description. Reset a row to hand it back, or Reset to
+            automatic to hand back every row.
           </Banner>
         ) : null}
 
@@ -1178,10 +1281,38 @@ export default function ProductEditor() {
                   >
                     Remove
                   </Button>
+                  {humanKeys.includes(factKey(row.k)) ? (
+                    <InlineStack gap="100" blockAlign="center">
+                      <Badge tone="attention">Edited by hand</Badge>
+                      <Button variant="plain" onClick={() => resetRow(factKey(row.k))}>
+                        Reset this row
+                      </Button>
+                    </InlineStack>
+                  ) : null}
                 </InlineStack>
               ))}
 
+              {removedRows.length > 0 ? (
+                <BlockStack gap="100">
+                  <Text as="p" tone="subdued">
+                    Removed by hand, and kept off this product by automatic passes:
+                  </Text>
+                  <InlineStack gap="200" wrap>
+                    {removedRows.map((row) => (
+                      <InlineStack key={row.key} gap="100" blockAlign="center">
+                        <Badge>{row.k}</Badge>
+                        <Button variant="plain" onClick={() => resetRow(row.key)}>
+                          Put back
+                        </Button>
+                      </InlineStack>
+                    ))}
+                  </InlineStack>
+                </BlockStack>
+              ) : null}
+
               <input type="hidden" name="intent" value="save" />
+              {/* The rows as shown, so the save can tell what changed (item 4b b). */}
+              <input type="hidden" name="origFacts" value={JSON.stringify(initial)} />
               <InlineStack gap="200">
                 <Button onClick={() => setRows((prev) => [...prev, { k: "", v: "" }])}>
                   Add attribute

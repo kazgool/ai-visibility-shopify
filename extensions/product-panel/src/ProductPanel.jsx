@@ -106,6 +106,17 @@ function ProductPanel() {
   // never overwrite it. Everything else is automatic and refreshes with the
   // description.
   const human = (key) => fieldState?.[key]?.source === "human";
+  // The attributes are protected row by row since CC-PROMPT-AI-READABILITY-4
+  // item 4b: the rows a person wrote or deleted are in `factsHuman`, and the
+  // others refresh with the description. A table still in the old form
+  // (facts marked human) reads as the person's until the next pass converts
+  // it, which keeps every row it holds.
+  const editedRows = Object.keys(fieldState?.factsHuman ?? {}).length;
+  const factsBadge = human("facts")
+    ? "Edited by you"
+    : editedRows > 0
+      ? `${editedRows} ${editedRows === 1 ? "row" : "rows"} edited by you`
+      : "Automatic";
 
   return (
     <AdminBlock title="AI Visibility">
@@ -114,8 +125,8 @@ function ProductPanel() {
           <BlockStack gap="small">
             <InlineStack gap="small" blockAlignment="center">
               <Text fontWeight="bold">Attributes</Text>
-              <Badge tone={human("facts") ? "attention" : "success"}>
-                {human("facts") ? "Edited by you" : "Automatic"}
+              <Badge tone={human("facts") || editedRows > 0 ? "attention" : "success"}>
+                {factsBadge}
               </Badge>
             </InlineStack>
             <Text>{facts.map((f) => `${f.k}: ${f.v}`).join(" - ")}</Text>

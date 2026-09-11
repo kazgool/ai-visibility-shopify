@@ -7,6 +7,7 @@
 
 import type { Fact } from "../engine";
 import type { GraphqlFn } from "./admin.server";
+import { humanMerge, readFacts, withFactsHuman, type HumanMerge } from "./facts-human";
 
 export const NAMESPACE = "$app";
 export const ENGINE_VERSION = "1.0.0";
@@ -111,9 +112,13 @@ export function hasWithdrawableAutoValues(product: ProductInput): boolean {
 /**
  * May we write this key? No, if a human wrote it. No, if a value exists but
  * we have no record of writing it - that value came from somewhere else.
+ *
+ * `state` defaults to the product's own; writeFacts passes the state after a
+ * whole-table facts entry was converted to rows (facts-human.ts), which is
+ * what lets a pass write the rows nobody touched (CC-PROMPT-AI-READABILITY-4
+ * item 4b).
  */
-export function mayWrite(product: ProductInput, key: string): boolean {
-  const state = parseState(product);
+export function mayWrite(product: ProductInput, key: string, state: ProductState = parseState(product)): boolean {
   const entry = state[key];
   if (entry?.source === "human") return false;
 
@@ -226,14 +231,27 @@ export type FieldValue = { key: string; type: string; value: string };
  */
 export async function writeFacts(
   graphql: GraphqlFn,
-  entries: { product: ProductInput; facts: Fact[]; fields?: FieldValue[] }[],
+  entries: {
+    product: ProductInput;
+    facts: Fact[];
+    fields?: FieldValue[];
+    /**
+     * The person's rows over the fresh ones (facts-human.ts humanMerge), when
+     * the caller merged them: `facts` is then the merged list, and the rows are
+     * stored in state next to it (CC-PROMPT-AI-READABILITY-4 item 4b). A state
+     * in the old whole-table form is converted here, through this same write,
+     * and the conversion is written even when the facts come out identical,
+     * so it happens once.
+     */
+    human?: HumanMerge;
+  }[],
 ): Promise<WriteOutcome[]> {
   const outcomes: WriteOutcome[] = [];
   // ownerId is stated in the type because the slicing below groups on it.
   const metafields: { ownerId: string; [key: string]: unknown }[] = [];
   const deletions: { ownerId: string; [key: string]: unknown }[] = [];
 
-  for (const { product, facts, fields = [] } of entries) {
+  for (const { product, facts, fields = [], human } of entries) {
     const outcome: WriteOutcome = {
       productId: product.id,
       written: [],
@@ -244,16 +262,26 @@ export async function writeFacts(
     const state = parseState(product);
     const now = new Date().toISOString();
 
+    let touched = false;
+    if (human) {
+      withFactsHuman(state, human.human);
+      if (human.migrated) {
+        // The facts field is the app's to write from here on; the rows a
+        // person wrote are protected one by one in factsHuman.
+        state.facts = { source: "auto", at: now, engine: ENGINE_VERSION };
+        touched = true;
+      }
+    }
+
     const candidates: FieldValue[] = [
       { key: "facts", type: "json", value: JSON.stringify(facts) },
       ...fields,
     ];
 
-    let touched = false;
     for (const field of candidates) {
       // Each field is guarded on its own: a merchant may have written the
       // summary by hand while leaving the attributes automatic.
-      if (!mayWrite(product, field.key)) {
+      if (!mayWrite(product, field.key, state)) {
         outcome.skipped.push(field.key);
         continue;
       }
@@ -330,11 +358,17 @@ export async function writeFacts(
 }
 
 /**
- * Write option-derived facts on variants (PRD §5.4). Same three guards as
- * products, per variant: a human-written value is never touched, a value we
- * cannot account for is treated as human, and an identical value is never
- * rewritten - a variant write marks the product updated, so without that
- * last check every pass would feed the products/update webhook.
+ * Write option-derived facts on variants (PRD §5.4). Same guards as products,
+ * per variant: a row a person wrote or deleted is never touched, a value we
+ * cannot account for is treated as the person's, and an identical value is
+ * never rewritten - a variant write marks the product updated, so without
+ * that last check every pass would feed the products/update webhook.
+ *
+ * Per row since CC-PROMPT-AI-READABILITY-4 item 4b, as on products: the fresh
+ * option rows with the person's rows on top (facts-human.ts). A variant whose
+ * state is the old whole-table form - marked human, or facts with no state -
+ * is converted in the safe direction, which publishes exactly the table it
+ * holds; the conversion is written once, even when the facts are identical.
  */
 export async function writeVariantFacts(
   graphql: GraphqlFn,
@@ -344,8 +378,6 @@ export async function writeVariantFacts(
   const now = new Date().toISOString();
 
   for (const { variant, facts } of variants) {
-    if (facts.length === 0) continue;
-
     const rawState = variant.metafields?.find((m) => m.key === "state")?.value;
     let state: ProductState = {};
     if (rawState) {
@@ -356,18 +388,20 @@ export async function writeVariantFacts(
       }
     }
 
-    if (state["facts"]?.source === "human") continue;
-    const existing = variant.metafields?.find((m) => m.key === "facts")?.value;
-    if (existing && existing !== "" && !state["facts"]) continue;
+    const stored = readFacts(variant.metafields?.find((m) => m.key === "facts")?.value);
+    const merge = humanMerge(state, stored, facts, now, ENGINE_VERSION);
+    if (merge.facts.length === 0 && !merge.migrated) continue;
 
-    const value = JSON.stringify(facts);
-    if (existing === value) continue;
+    withFactsHuman(state, merge.human);
+    const value = JSON.stringify(merge.facts);
+    const identical = JSON.stringify(stored) === value;
+    if (identical && !merge.migrated) continue;
 
-    state["facts"] = { source: "auto", at: now, engine: ENGINE_VERSION };
-    metafields.push(
-      { ownerId: variant.id, namespace: NAMESPACE, key: "facts", type: "json", value },
-      { ownerId: variant.id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) },
-    );
+    if (merge.migrated || !identical) state["facts"] = { source: "auto", at: now, engine: ENGINE_VERSION };
+    if (!identical) {
+      metafields.push({ ownerId: variant.id, namespace: NAMESPACE, key: "facts", type: "json", value });
+    }
+    metafields.push({ ownerId: variant.id, namespace: NAMESPACE, key: "state", type: "json", value: JSON.stringify(state) });
   }
 
   for (let i = 0; i < metafields.length; i += 24) {
