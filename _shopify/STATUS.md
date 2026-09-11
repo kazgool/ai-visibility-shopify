@@ -82,6 +82,23 @@ products, Shella theme). Everything below section 0 was written on 3 August;
 - Visible facts measured, not changed: 37.4% wrong on dev, 48.1% on the
   hold-out.
 
+**Its addendum, approved the same day (items 9 to 15)**:
+
+- The merchant's SEO screens show only what this app does or can do:
+  `MERCHANT_VISIBLE` in `seo-findings.ts`, 13 codes visible (B1 and B22 only
+  when ours), 33 hidden; every check still runs and is stored.
+- B15 counts the product's own photos, never an empty alt; B22 is ours and
+  says so; B33 only when our description is really held back; Full mode
+  beside the theme is B1, in the brief's words.
+- "Written by this app" recounts when the SEO apply and alt-text jobs finish.
+- "Day N" counts calendar days in the shop's timezone.
+- The Google listings card lost barcode and condition; brand is
+  "recommended", as Google's documentation says.
+- To read on Republica BIO before and after the deploy:
+  `npx tsx scripts/read-dashboard-visibility.ts republicabio.myshopify.com`
+  and `npx tsx scripts/read-written-since.ts republicabio.myshopify.com`
+  (both read only).
+
 Last full run: see the handover of 11 September and the CHANGELOG entries.
 
 **Not yet observed on a store**, and each needs Marius: the App embeds toggle

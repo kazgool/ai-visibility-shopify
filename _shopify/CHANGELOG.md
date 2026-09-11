@@ -160,6 +160,37 @@ it. Dev, 29 stores: 37.4% wrong (3,044 of 8,132). Hold-out: 48.1% (1,047 of
 only; no default changed. This is the number behind the "On the product
 page" switches, and the question whether facts should show by default.
 
+### The merchant's screens show only what this app does or can do (11 September 2026)
+
+Addendum to `CC-PROMPT-AI-READABILITY-3`, item 9, approved by Marius the same
+day. One rule, as data: `MERCHANT_VISIBLE` in `seo-findings.ts` says of every
+check code "yes", "ours" or "no". Visible: A3, A5, A6, B10, B11 (fields this
+app drafts and writes), B15 (the alt-text button), B4, B6, B7, B33, B34 (this
+app's own output); B1 only when the theme's node and this app's are both on
+the page, B22 only when the old-style data is this app's own FAQPage. The
+other 33 codes are hidden. Every check still runs and every stored row stays;
+a hidden finding appears on no merchant surface and changes no number on one.
+Applied where rows are folded, so no two surfaces can disagree: the readiness
+fold (headline dial, four groups, shop-wide codes and card, print view,
+report, spreadsheets), the column accounting ("That is all 4 checks on this
+side", "all 9" - it was 13 and 33), the check aggregate (a hidden code has no
+row, not a clean one), the Products list's dot and filter, the product
+editor's list, the then-and-now rows per code, the per-product spreadsheet
+(it read every stored finding, found by the test update), and the
+collections and blog rows (A10, A11, B30). `merchant-visibility.test.ts`
+builds one shop twice, with and without hidden findings, and asserts the same
+answer from every function the surfaces draw from.
+
+Where the brief's starting classification was not followed: B10 and B11 are
+visible whole rather than "restricted to fields this app wrote", because the
+scan row does not know who wrote a field and the SEO screen's draft button
+fixes either kind (rule (a)); and B4, B6 and B7, not named in the brief, are
+visible under rule (b). Everything else the brief named is as it said. Nine
+existing test files changed on purpose, each marked.
+`scripts/read-dashboard-visibility.ts` prints a shop's headline before and
+after the rule from its stored rows, read only; it has not been run against
+Republica BIO, so that before and after is Marius's to read.
+
 ### "Written by this app" counts a write when the job that made it finishes (11 September 2026)
 
 The count under "written by this app since" was taken only at the end of a
@@ -179,6 +210,65 @@ the catalogue per product was not worth a catalogue read each. Tested on the
 prints the stored count beside the live one for a shop, read only; it has
 not been run against Republica BIO yet, so its before and after on the live
 store are Marius's to read.
+
+### Day N counts calendar days where the shop is (11 September 2026)
+
+Addendum item 13. The dashboard header's "day N" was whole 24-hour blocks
+from the snapshot's instant, so a snapshot taken at 23:00 still read day 1
+at 22:00 the next evening. It is now calendar days in the shop's own
+timezone, the snapshot's day being day 1 (`calendarDayNumber`); the
+dashboard's existing shop query also asks `ianaTimezone`, and without it the
+count is in UTC. Tested across midnight in Europe/Bucharest.
+
+### The Google listings card keeps only what this app publishes (11 September 2026)
+
+Addendum item 14. A barcode and a product's condition are the merchant's
+data, which this app cannot supply: both rows leave the card, and the
+shop-wide "no product carries a barcode" item leaves the shop-wide card.
+Every label was checked against Google's merchant listing documentation
+(https://developers.google.com/search/docs/appearance/structured-data/merchant-listing,
+cited in the code): name, image, price and currency are Required; brand,
+availability, shipping and returns Recommended. Brand had been labelled
+required and is now recommended; "strongly asked" was never the
+documentation's word.
+
+### Photo descriptions counted on the product's photos; rows about this app's own output told truthfully (11 September 2026)
+
+Addendum items 10 and 11, in one commit because both changed the same
+registry file.
+
+B15 counted every `<img>` on the page - the theme's logo, icons, other
+products' thumbnails - and counted `alt=""`, which is the correct markup for
+a decorative image. It now counts only the product's own photos, the media
+the alt-text button can describe, as the storefront lists them in the
+product's `/products/<handle>.js`, matched by file name with Shopify's size
+suffix removed and each photo counted once however often the page repeats
+it; an empty alt never counts. The JSON is read only when the page shows an
+image with no alt or a machine one, one request charged to the nightly
+allowance like the link checks; without it B15 says nothing rather than
+counting the theme's images. The shop-wide sentence no longer claims "No
+photo has a description" on a shop where this app has written some: it
+states "N of M product photos on the pages read have no description". The
+step that named "Write photo descriptions on the dashboard", a button that
+does not exist, now points at the real one on the home screen, described
+rather than quoted because its label says "alt text", which the vocabulary
+rule keeps off these screens.
+
+B22, shown only when the old-style data is this app's own FAQPage, is now
+this app's row: owner "Us", and its words say the buyer questions are
+published on purpose in a form Google no longer shows. B33 was raised when
+this app's Product node was on the page beside a theme node with no `@id` -
+which is Full mode printing a second description, not Extend mode holding
+one back. It is now raised only when the block's link is on the page and no
+Product node of ours is, which is the hold-back itself. Full mode beside the
+theme's node is B1, whose one visible row now reads, in the brief's words,
+"Two product descriptions on these pages: your theme's and this app's.
+Yours stays until your theme's is removed; ours is complete." (in the
+vocabulary test). The structured data card's closing sentence, "we reference
+what your theme already publishes ... assistants read one product and not
+two", is now shown only when that is what the pages read show; otherwise it
+says what is true instead - two descriptions on N pages, held back on N
+pages, or no theme description at all.
 
 ### The engine measured before anything changed (11 September 2026)
 
