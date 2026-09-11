@@ -74,6 +74,49 @@ stores; the hold-out is unchanged.
 Hold-out: 2 Romanian, 4 English, 4 verticals (pets, electronics, home,
 cosmetics), from almost no structure (istyle.ro) to full structure (jlab.com).
 
+### Second split, 11 September 2026, after hold-out run holdout2
+
+Run holdout2 (engine of commit 6603cc7, frozen before the run) missed the
+bar: 105 errors in 1,087, 9.66%. The errors of animax.ro (2.56%), istyle.ro
+(24.90%) and jlab.com (32.93%) were read to fix rules, so under rule 5 those
+three stores moved to dev. The errors of thesill.com, cocokind.com and
+wildone.com were not read; they stay in the hold-out.
+
+Replacements, same language, chosen from `corpus-report.ts` counts and
+product-type counts only (no description opened):
+
+| Store | Replaces | Vertical | Language | Products | With description | Heading or bold start | Line ending in ? |
+|---|---|---|---|---|---|---|---|
+| terraissa.com | animax.ro | cosmetics | ro | 95 | 87 | 100% (87/87) | 1% (1/87) |
+| e-ring.ro | istyle.ro | jewellery | ro | 250 | 250 | 10% (26/250) | 0% (0/250) |
+| peakdesign.com (reserve) | jlab.com | electronics and gear | en | 241 | - | - | - |
+
+A count-only run (holdout3, no verdict read) showed e-ring.ro at 39 Q&A and
+peakdesign.com at 0, which would leave the bar on two stores. Three more
+unopened stores were added the same day, again from counts only:
+
+| Store | Vertical | Language | Products | With description | Heading or bold start | Line ending in ? |
+|---|---|---|---|---|---|---|
+| jolar.ro | fashion (leather goods) | ro | 58 | 58 | 100% (58/58) | 0% (0/58) |
+| iarmaroc.com | designer marketplace | ro | 250 | 242 | 0% (0/242) | 1% (2/242) |
+| vintageradar.com | fashion (watches) | en | 250 | 248 | 99% (246/248) | 0% (0/248) |
+
+Where they came from: a search for Romanian brands on Shopify (e-ring.ro, a
+Shopify case study; jolar.ro and terraissa.com, whose blog URLs have
+Shopify's shape; iarmaroc.com, a Romanian designers' marketplace) and Store
+Leads' Romania page (vintageradar.com). Each was read the same way as the
+first corpus (robots.txt first, one `/products.json?limit=250` request).
+
+Hold-out now: terraissa.com, e-ring.ro, jolar.ro, iarmaroc.com (ro);
+thesill.com, cocokind.com, wildone.com, peakdesign.com, vintageradar.com
+(en). Dev: the 23 stores above plus animax.ro, istyle.ro and jlab.com.
+
+Q&A the engine produces on them (holdout3, counts only, before any verdict):
+terraissa.com 378, thesill.com 283, iarmaroc.com 275, jolar.ro 58 (the four
+the bar applies to, 994 Q&A); e-ring.ro 39, wildone.com 31, cocokind.com 10,
+peakdesign.com 0, vintageradar.com 0 (their vendor is the shop itself and
+their headings name no intent). Total 1,074.
+
 ### Counts against the brief
 
 - Further stores beyond the two catalogues: 20 (at least 12 required).

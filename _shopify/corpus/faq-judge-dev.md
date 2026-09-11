@@ -1,4 +1,4 @@
-# Judge results, run dev11
+# Judge results, run dev12
 
 Unjudged items: 0.
 
@@ -6,28 +6,31 @@ Unjudged items: 0.
 
 | Set | Q&A produced | judged | missing safety | errors | error rate |
 |---|---|---|---|---|---|
-| dev | 3989 | 3989 | 1 | 29 | 0.73% (29/3990) |
+| dev | 4570 | 4570 | 1 | 29 | 0.63% (29/4571) |
 
 ## By store
 
 | Store | Set | Q&A produced | judged | missing safety | errors | error rate |
 |---|---|---|---|---|---|---|
-| aquaframe.ro | dev | 162 | 162 | 0 | 1 | 0.62% (1/162) |
+| animax.ro | dev | 321 | 321 | 0 | 1 | 0.31% (1/321) |
+| aquaframe.ro | dev | 160 | 160 | 0 | 0 | 0.00% (0/160) |
 | beardbrand.com | dev | 14 | 14 | 0 | 0 | 0.00% (0/14) |
 | brightland.co | dev | 3 | 3 | 0 | 0 | 0.00% (0/3) |
 | colourpop.com | dev | 65 | 65 | 0 | 0 | 0.00% (0/65) |
 | deathwishcoffee.com | dev | 151 | 151 | 0 | 0 | 0.00% (0/151) |
 | fablepets.com | dev | 75 | 75 | 0 | 0 | 0.00% (0/75) |
 | feals.com | dev | 1 | 1 | 0 | 0 | 0.00% (0/1) |
-| globalmobila-fixture.csv | dev | 52 | 52 | 0 | 1 | 1.92% (1/52) |
+| globalmobila-fixture.csv | dev | 51 | 51 | 0 | 1 | 1.96% (1/51) |
 | graza.co | dev | 25 | 25 | 0 | 0 | 0.00% (0/25) |
 | greatjonesgoods.com | dev | 93 | 93 | 0 | 1 | 1.08% (1/93) |
+| istyle.ro | dev | 186 | 186 | 0 | 0 | 0.00% (0/186) |
+| jlab.com | dev | 79 | 79 | 0 | 0 | 0.00% (0/79) |
 | marialuciahohan.com | dev | 336 | 336 | 0 | 0 | 0.00% (0/336) |
 | meowmeowtweet.com | dev | 31 | 31 | 0 | 0 | 0.00% (0/31) |
 | mobexpert.ro | dev | 61 | 61 | 0 | 0 | 0.00% (0/61) |
 | moleculesofyouth.com | dev | 78 | 78 | 0 | 0 | 0.00% (0/78) |
 | republicabio.ro | dev | 1427 | 1427 | 0 | 23 | 1.61% (23/1427) |
-| rusticart.ro | dev | 249 | 249 | 0 | 2 | 0.80% (2/249) |
+| rusticart.ro | dev | 247 | 247 | 0 | 2 | 0.81% (2/247) |
 | secom.ro | dev | 240 | 240 | 1 | 1 | 0.41% (1/241) |
 | shokz.com | dev | 45 | 45 | 0 | 0 | 0.00% (0/45) |
 | taylorstitch.com | dev | 695 | 695 | 0 | 0 | 0.00% (0/695) |
@@ -41,17 +44,17 @@ Unjudged items: 0.
 | Source | Q&A produced | judged | errors | error rate |
 |---|---|---|---|---|
 | business | 446 | 446 | 0 | 0.00% (0/446) |
-| merchant | 307 | 307 | 7 | 2.28% (7/307) |
+| merchant | 310 | 310 | 7 | 2.26% (7/310) |
 | missing safety | 0 | 0 | 1 | 100.00% (1/1) |
 | preset | 592 | 592 | 0 | 0.00% (0/592) |
-| section | 849 | 849 | 15 | 1.77% (15/849) |
-| section:safety | 192 | 192 | 6 | 3.13% (6/192) |
-| variants | 1089 | 1089 | 0 | 0.00% (0/1089) |
-| vendor | 514 | 514 | 0 | 0.00% (0/514) |
+| section | 923 | 923 | 15 | 1.63% (15/923) |
+| section:safety | 218 | 218 | 6 | 2.75% (6/218) |
+| variants | 1131 | 1131 | 0 | 0.00% (0/1131) |
+| vendor | 950 | 950 | 0 | 0.00% (0/950) |
 
 ## Every error (29)
 
-- **aquaframe.ro** (dev), Resilience D+ [section, rule 2]: "Ce avantaje are Resilience D+?" -> "Caracteristici: Monitorizează și reglează automat chimia apei din piscină; Nu necesită intervenție manuală; Menține constant nivelul optim de clor și pH; Reglare inteligentă a pH-ului și ORP-ului pentru o apă perfect echilibrată; Funcționea" - The answer puts the technical specifications (automatic 120V/240V voltage detection, chlorine precision +-5%, salinity range 1.500-7.000 ppm) under the heading 'Pompa integrata pentru dozare de acid', attributing them to the acid pump, while the description lists them under 'Caracteristici Tehnice'; the pump's actual text is missing.
+- **animax.ro** (dev), Hrana uscata pentru broaste testoase Tetra Gammarus Mix 250ml-25g [section, rule 1]: "Ce conține Hrana uscata pentru broaste testoase Tetra Gammarus Mix 250ml-25g?" -> "Proteina bruta 56,0%, Grasimi brute 7,0%, Fibra neprelucrata 6,0%, Continutul de apa 10,0%." - 'Ce contine' is answered with the nutrient percentages (protein, fat, fibre, water) from the mislabelled Ingrediente heading, while the actual contents (gammarus 67%, anchovy 33%) sit under Analiza; doubt: nutrient levels could be read as contents.
 - **globalmobila-fixture.csv** (dev), Set Terasa 7 Locuri si Masa - Rattan [section, rule 3]: "Ce dimensiuni are Set Terasa 7 Locuri si Masa - Rattan?" -> "Dimensiuni: Canapea 3 locuri: Lungime: 186 cm; Șezut: 177 x 64 cm; Înălțime spătar: 86 cm." - Asked for the set's dimensions, the answer stops after the sofa subsection and drops the armchair, stool and table dimensions (190x160 glass top etc.), so a buyer gets one piece's size as the set's; doubt: the shown items are whole and labelled, but the cut loses most of the section.
 - **greatjonesgoods.com** (dev), The Lid Family [section, rule 1]: "What are the benefits of The Lid Family?" -> "Are you one of those cooks who can juggle four pans on four burners and a pot in the oven? One, we're impressed. Two, you'll need extra lids." - The answer is a rhetorical joke ("Are you one of those cooks... you will need extra lids") that names no benefit of the lids; doubtful since it implies spare lids are useful, logged as error per rubric.
 - **republicabio.ro** (dev), Discovery Pack Sanatele BIO fara gluten, Pachet Promotional [section:safety, rule 3]: "Ce precauții trebuie respectate pentru Discovery Pack Sanatele BIO fara gluten, Pachet Promotional?" -> "SANATELE BIO Linte, Orez Negru si Ceapa, ecologic, fara gluten, 40g: Produsul nu contine alergeni. Poate contine urme de soia. SANATELE BIO Ciocolata neagra si Cocos, ecologic, fara gluten, 28g: produsul nu contine alergeni. Poate contine u" - For Sanatele BIO din Linte si Piper the answer carries only 'Alergeni: produsul nu contine alergeni.' and drops the description's next line 'Poate contine urme de soia', so the safety answer loses a trace-allergen warning for that item (doubt: the omission is a separate bullet, not a mid-sentence cut).

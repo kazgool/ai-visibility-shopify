@@ -141,7 +141,7 @@ export const TITLE_PLACEHOLDER = "{title}";
  */
 export const INTENT_KEYWORDS: Record<Language, Partial<Record<Intent, string[]>>> = {
   en: {
-    safety: ["warning*", "precaution*", "safety"],
+    safety: ["warning*", "precaution*", "safety", "caution"],
     usage: ["use"],
     composition: ["ingredient*"],
     storage: ["storage"],
@@ -150,7 +150,7 @@ export const INTENT_KEYWORDS: Record<Language, Partial<Record<Intent, string[]>>
     benefits: ["benefit*", "special", "stand out"],
   },
   ro: {
-    safety: ["atentionar*", "alergen*"],
+    safety: ["atentionar*", "atentie", "alergen*"],
     usage: ["folosest*", "utilizare"],
     composition: ["ce contine", "ingrediente"],
     materials: ["material*"],
@@ -158,9 +158,21 @@ export const INTENT_KEYWORDS: Record<Language, Partial<Record<Intent, string[]>>
     dimensions: ["dimensiun*", "lungime*", "latime", "inaltime", "suprafata de dormit"],
     contents: ["continut pachet", "continut set", "componenta set"],
     suitability: ["ideal pentru", "potrivit pentru", "cine"],
-    benefits: ["benefici*", "de ce sa alegi", "caracteristic*"],
+    benefits: ["benefici*", "de ce sa alegi"],
   },
 };
+
+/** Words that keep a heading from an intent its keyword would give it:
+ * "Ingrediente analitice" and "Constituenti analitici" are the nutrient
+ * analysis, not what the product is made of. */
+const NOT_INTENT: Partial<Record<Intent, string[]>> = {
+  composition: ["analitic*", "analytical", "nutritional*"],
+};
+
+/** "Safety and features": a heading that joins a safety word to another
+ * topic heads a mixed list, and a precautions question would read features
+ * as warnings. */
+const JOINER = /\s+(?:and|&|si|și|\+)\s+|\s*[,/]\s*/i;
 
 /** Words that turn a heading into its opposite: "Fara alergeni" is a claim
  * that there are none, not a warning about them. */
@@ -211,12 +223,21 @@ export function classifyHeading(label: string, maxWords = 4): Intent | null {
   const negated = words.some((w) => NEGATORS.has(w));
   for (const intent of INTENT_ORDER) {
     if (intent === "safety" && negated) continue;
-    for (const language of ["en", "ro"] as const) {
-      const list = INTENT_KEYWORDS[language][intent] ?? [];
-      if (list.some((k) => matchesKeyword(words, k))) return intent;
+    if ((NOT_INTENT[intent] ?? []).some((k) => matchesKeyword(words, k))) continue;
+    if (!namesIntent(words, intent)) continue;
+    if (intent === "safety") {
+      const parts = label.replace(/\([^)]*\)/g, " ").split(JOINER).filter((x) => normalize(x) !== "");
+      if (parts.length > 1 && !parts.every((x) => namesIntent(labelWords(x), "safety"))) continue;
     }
+    return intent;
   }
   return null;
+}
+
+function namesIntent(words: string[], intent: Intent): boolean {
+  return (["en", "ro"] as const).some((language) =>
+    (INTENT_KEYWORDS[language][intent] ?? []).some((k) => matchesKeyword(words, k)),
+  );
 }
 
 function intentQuestion(p: Phrases, intent: Intent, title: string): string {
@@ -289,8 +310,15 @@ function blankNonText(html: string): string {
   for (const tag of SKIP_TAGS) {
     out = out.replace(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}\\s*>`, "gi"), blank);
   }
-  return out.replace(DEICTIC_LINK, (m) => LINK_MARK + " ".repeat(m.length - 1));
+  const mark = (m: string) => LINK_MARK + " ".repeat(m.length - 1);
+  return out.replace(DEICTIC_LINK, mark).replace(ACTION_LINK, mark);
 }
+
+/** A link whose text is an instruction to click ("Download User Manual",
+ * "Descarca fisa tehnica") is a button, not a line of the description: under
+ * "Package includes" it would be read as one more thing in the box. */
+const ACTION_LINK =
+  /<a\b[^>]*>(?:\s|<(?!\/a>)[^>]*>)*(?:download|descarca\w*|view|read more|learn more|shop now|click|vezi|citeste|afla mai mult)\b(?:(?!<\/a>)[^<]|<(?!\/a>)[^>]*>){0,80}<\/a>/gi;
 
 /** Bullets, symbols and dashes opening a line, never the sign of a number:
  * "+15cm" (fifteen centimetres more than the mattress) and "-5°C" keep it. */
@@ -708,7 +736,9 @@ export function joinAnswer(
       .filter((sentence) => {
         if (sentence.includes(LINK_MARK)) return false;
         const key = normalize(sentence);
-        if (key.length < 20) return true;
+        // A list line with no sentence end is an item, and two of the same
+        // item are two in the box ("USB-C charging cable" once per product).
+        if (key.length < 20 || !/[.!?]$/.test(sentence)) return true;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -766,8 +796,9 @@ export function joinAnswer(
  * a heading anyway.
  */
 const WARNING_OPENING =
-  /^(a nu se|nu se (recomanda|administreaza|consuma|utilizeaza|lasa)|nu este (potrivit|recomandat)|nu (depasi|depasiti|prepara|preparati|amesteca|amestecati|folosi|folositi|utiliza|utilizati|consuma|consumati|administra|administrati|expune|expuneti|lasa|lasati)|este recomandat sa nu|evita|poate contine urme|contraindicat|consulta|keep (out of|away from)|do not (use|exceed|give|leave|consume|take|swallow|apply)|not (suitable|recommended|intended) for|avoid|always (supervise|monitor)|consult (a|your)|may contain traces)\b/;
-const WARNING_ANYWHERE = /\b(poate contine urme de|may contain traces of)\b/;
+  /^(a nu se|a se utiliza sub supraveghere\w*|nu se (recomanda|administreaza|consuma|utilizeaza|lasa)|nu este (potrivit|recomandat|o jucarie|destinat)|nu (depasi|depasiti|prepara|preparati|amesteca|amestecati|folosi|folositi|utiliza|utilizati|consuma|consumati|administra|administrati|expune|expuneti|lasa|lasati|permite|permiteti|scoateti)|este recomandat sa nu|evita\w*|supraveghea\w*|poate contine urme|contraindicat|consulta\w*|keep (out of|away from)|do not (use|exceed|give|leave|consume|take|swallow|apply|allow)|never (leave|allow|use)|not (suitable|recommended|intended) for|avoid|always (supervise|monitor)|supervise|consult (a|your)|may contain traces)\b/;
+const WARNING_ANYWHERE =
+  /\b(poate contine urme de|may contain traces of|consultati medicul|sub supravegherea|pericol(ul)? de|choking hazard|under (adult|parental) supervision|consult (a|your) (vet|veterinarian|doctor|physician))\b/;
 
 /** Warnings written as sentences, in the blocks `keep` accepts. A sentence
  * "Label: text" is read on both sides of its colon, and a plain "Alergeni:
@@ -881,6 +912,11 @@ function sameBrand(a: string, b: string): boolean {
 
 /** What shops type in the vendor field when there is no maker to name. */
 const PLACEHOLDER_VENDOR = /^(nedefinit|necunoscut|undefined|unknown|default|none|n a|na|vendor|generic|no brand|fara brand)$/;
+
+/** A vendor field used as a switch in the store's admin ("applehide" on
+ * products hidden from a feed) names no maker: a word with a system suffix
+ * glued to it. */
+const SYSTEM_VENDOR = /^[a-z0-9]+(hide|hidden|draft|test|import|backup)$/;
 
 function optionsAnswer(options: FaqOption[], p: Phrases): string {
   const parts = options.map((o) => {
@@ -1149,6 +1185,7 @@ export function buildFaq(input: FaqInput): FaqItem[] {
     !sameBrand(vendor, input.shopName) &&
     wordCount(vendor) <= 4 &&
     !PLACEHOLDER_VENDOR.test(normalize(vendor)) &&
+    !SYSTEM_VENDOR.test(normalize(vendor)) &&
     !GIFT_CARD.test(title) &&
     !bundle
   ) {

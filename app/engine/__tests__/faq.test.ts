@@ -536,6 +536,54 @@ describe("business", () => {
   });
 });
 
+describe("classes from the first hold-out run (stores moved to dev)", () => {
+  it("does not read a mixed 'Safety and features' list as precautions; a warnings heading stays one", () => {
+    expect(classifyHeading("Safety and features")).toBeNull();
+    expect(classifyHeading("Safety & Features")).toBeNull();
+    expect(classifyHeading("Warnings and precautions")).toBe("safety");
+    expect(classifyHeading("ATENTIE")).toBe("safety");
+    expect(classifyHeading("Caution")).toBe("safety");
+  });
+
+  it("does not read the nutrient analysis as composition, nor 'Caracteristici' as benefits", () => {
+    expect(classifyHeading("Ingrediente analitice")).toBeNull();
+    expect(classifyHeading("Ingrediente")).toBe("composition");
+    expect(classifyHeading("Caracteristici")).toBeNull();
+  });
+
+  it("drops a download link from a package list and keeps a repeated item", () => {
+    const faq = buildFaq(
+      base({
+        descriptionHtml:
+          "<h3>Package includes</h3><ul><li>Speaker</li><li>USB-C charging cable</li><li>Headphones</li><li>USB-C charging cable</li></ul>" +
+          '<div><a href="/manual.pdf">Download User Manual</a></div>',
+        language: "en",
+      }),
+    );
+    const contents = faq.find((x) => x.intent === "contents");
+    expect(contents?.a).not.toMatch(/Download/);
+    expect(contents?.a.match(/USB-C charging cable/g)).toHaveLength(2);
+  });
+
+  it("asks no maker when the vendor field is an admin switch, and still asks a lowercase brand", () => {
+    const hidden = buildFaq(base({ vendor: "applehide", shopName: "iStyle", language: "ro" }));
+    expect(hidden.some((x) => x.source === "vendor")).toBe(false);
+    const brand = buildFaq(base({ vendor: "tuft + paw", shopName: "Fable", language: "en" }));
+    expect(brand.some((x) => x.source === "vendor")).toBe(true);
+  });
+
+  it("reads supervision and see-your-vet sentences as warnings", () => {
+    for (const html of [
+      "<p>Jucarie din nylon.</p><p>Supravegheati permanent jocul animalului.</p>",
+      "<p>Hrana dietetica. Va recomandam ca inainte de utilizare sa consultati medicul veterinar.</p>",
+      "<p>Rucsac pentru animale.</p><p>Nu este o jucarie sau un produs destinat copiilor.</p>",
+    ]) {
+      const faq = buildFaq(base({ descriptionHtml: html, language: "ro" }));
+      expect(faq.some((x) => x.intent === "safety")).toBe(true);
+    }
+  });
+});
+
 describe("output hygiene", () => {
   it("writes plain characters only", () => {
     const html = "<h3>Ingredients</h3><p>Oats &#8211; honey &amp; “salt”…</p>";
