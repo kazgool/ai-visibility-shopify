@@ -848,8 +848,8 @@ export const MERCHANT_REASON: Record<string, string> = {
     "This app has not yet read your pages to see whether your theme already describes this product, so it adds nothing yet rather than risk a second description.",
   "The theme's Product node carries no @id, so extend mode holds ours back rather than add a second product (B33).":
     "Your theme already describes this product in a way that leaves nowhere for this app's details to attach, so this app adds nothing here rather than a second description.",
-  "No store social profile URLs are filled in on the Business screen.":
-    "No social profile addresses are filled in on the Business screen in this app.",
+  "No store social profile URLs are filled in, and no delivery price or free-delivery threshold could be read, on the Business screen.":
+    "No social profile addresses are filled in, and no delivery price or free-delivery threshold could be read from what you typed, on the Business screen in this app.",
   "This property is part of the operator-configured SEO module, not yet enabled for this shop.":
     "This detail is part of the SEO work, which is not switched on for this shop yet.",
   "Could not be determined - the last scan could not read this page.":
@@ -898,6 +898,11 @@ export const LEGACY_MERCHANT_REASON: Record<string, string> = {
   // delivery time is no longer the whole reason.
   "Delivery time is empty, or marked as varying, on the Business screen.":
     "The delivery time is empty, or marked as varying, on the Business screen in this app.",
+  // Replaced by CC-PROMPT-AI-READABILITY-4 item 3: the delivery policy
+  // publishes the Organization node too, so missing profiles alone no longer
+  // explain its absence.
+  "No store social profile URLs are filled in on the Business screen.":
+    "No social profile addresses are filled in on the Business screen in this app.",
 };
 
 /** The merchant sentence for one recorded reason, never the raw string. */

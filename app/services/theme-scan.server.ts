@@ -542,6 +542,13 @@ export type MissingReasonInput = {
    * 2, when a price alone started to publish the node too.
    */
   hasShippingDetails: boolean;
+  /**
+   * The Business record gives the Organization node a shop-wide delivery
+   * policy (delivery-parse.ts shippingServicePublished; CC-PROMPT-AI-READABILITY-4
+   * item 3), which publishes that node even with no social profiles. Optional:
+   * a caller that does not say is read as no policy, the answer before item 3.
+   */
+  hasShippingService?: boolean;
   /** null when the scanned page could not be read at all (e.g. password wall). */
   hasRating: boolean | null;
   /**
@@ -650,14 +657,17 @@ export function deriveMissingReasons(input: MissingReasonInput): MissingReason[]
     });
   }
 
-  // Organization / sameAs.
+  // Organization: sameAs, and since CC-PROMPT-AI-READABILITY-4 item 3 the
+  // shop-wide delivery policy. Either one publishes the node.
   reasons.push(
-    input.hasSocialProfiles
+    input.hasSocialProfiles || input.hasShippingService === true
       ? { nodeType: "Organization", emitted: true, reason: null, fixScreen: null }
       : {
           nodeType: "Organization",
           emitted: false,
-          reason: "No store social profile URLs are filled in on the Business screen.",
+          reason:
+            "No store social profile URLs are filled in, and no delivery price or free-delivery threshold " +
+            "could be read, on the Business screen.",
           fixScreen: "/app/business",
         },
   );

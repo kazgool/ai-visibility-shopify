@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   deliveryCostLine,
   normalizeDeliveryText,
+  offerShippingPublished,
   parseAmount,
   parseCountryList,
   readDeliveryCost,
+  shippingServicePublished,
 } from "../delivery-parse";
 
 // CC-PROMPT-AI-READABILITY-4 item 2a: the delivery cost text, read into
@@ -106,6 +108,27 @@ describe("parseCountryList", () => {
   });
   it("is empty for an empty field", () => {
     expect(parseCountryList("  ")).toEqual({ countries: [], invalid: [] });
+  });
+});
+
+// Items 2d and 3: the Liquid rules in TypeScript, for B6.
+describe("shippingServicePublished and offerShippingPublished", () => {
+  const parsed = (value: number | null, free: number | null = null) => ({
+    rate: value,
+    currency: "RON",
+    freeOverAmount: free,
+  });
+  it.each([
+    ["a rate read", { deliveryCostParsed: parsed(20) }, true, true],
+    ["a starting price", { deliveryCostParsed: parsed(20), deliveryCostIsFrom: true }, false, false],
+    ["a starting price and a time", { deliveryCostParsed: parsed(20), deliveryCostIsFrom: true, deliveryTime: "1-2" }, false, true],
+    ["a threshold alone", { deliveryCostParsed: parsed(null, 200) }, true, true],
+    ["a starting price and a threshold", { deliveryCostParsed: parsed(15, 200), deliveryCostIsFrom: true }, true, true],
+    ["a time that varies", { deliveryTime: "1-2", deliveryVaries: true }, false, false],
+    ["nothing", {}, false, false],
+  ])("%s", (_name, record, service, offer) => {
+    expect(shippingServicePublished(record)).toBe(service);
+    expect(offerShippingPublished(record)).toBe(offer);
   });
 });
 

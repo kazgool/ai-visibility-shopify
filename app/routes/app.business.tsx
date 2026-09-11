@@ -438,11 +438,14 @@ export default function Business() {
             </Text>
             <Text as="p">
               As buyer questions on every product ("Can I return it?", "How
-              long does delivery take?"), in the plain text mirror, and as
-              shipping and return-policy structured data when the app embed
-              runs in Full mode. Store profile URLs publish as sameAs on
-              your store's Organization data. A field left empty publishes
-              nothing.
+              long does delivery take?") and in the plain text mirror, in
+              your own words. The delivery price and free-delivery threshold
+              read from what you typed publish as your store's delivery
+              policy for Google, on every page. The return window and
+              delivery details publish on each product's offer when this app
+              publishes the product's description itself. Store profile URLs
+              publish as sameAs on your store's Organization data. A field
+              left empty publishes nothing.
             </Text>
           </BlockStack>
         </Card>

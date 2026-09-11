@@ -28,7 +28,7 @@
 import db from "../db.server";
 import { describeGraphqlError } from "./graphql-errors";
 import { businessFor } from "./business.server";
-import { offerShippingPublished } from "./delivery-parse";
+import { offerShippingPublished, shippingServicePublished } from "./delivery-parse";
 import { checkAppEmbed } from "./embed-check.server";
 import { deriveMissingReasons } from "./theme-scan.server";
 import { b6Detail, type NodeContext } from "./seo-nodes";
@@ -416,6 +416,7 @@ type NodeExpectation = {
   context: NodeContext;
   hasReturnDays: boolean;
   hasShippingDetails: boolean;
+  hasShippingService: boolean;
   hasSocialProfiles: boolean;
   /** Off the home page's last read; see homeWebSiteSeen. One value per pass. */
   hasWebSiteNode: boolean | null;
@@ -456,6 +457,7 @@ async function readNodeExpectation(
       },
       hasReturnDays: Boolean(business?.returnDays),
       hasShippingDetails: offerShippingPublished(business ?? {}),
+      hasShippingService: shippingServicePublished(business ?? {}),
       hasSocialProfiles: Boolean(
         business?.socialProfiles && Object.keys(business.socialProfiles).length > 0,
       ),
@@ -560,6 +562,7 @@ function b6For(
     hasFitFor: metafield("fit_for"),
     hasReturnDays: expectation.hasReturnDays,
     hasShippingDetails: expectation.hasShippingDetails,
+    hasShippingService: expectation.hasShippingService,
     // Page-derived, off this product's own last page read. Null until source B
     // has read it, which reads as "could not be determined".
     hasRating: ratingSeen(row),

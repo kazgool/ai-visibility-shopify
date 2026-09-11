@@ -605,7 +605,17 @@ describe("every reason deriveMissingReasons can record has a merchant sentence",
     { ...base, themeHasProductNode: true, themeProductId: "" },
     { ...base, themeHasProductNode: true, themeProductId: "https://x/p#product" },
     { ...base, mode: "full" as const, hasFacts: true, hasSummary: true, hasRating: true, hasSocialProfiles: true, hasReturnDays: true, hasShippingDetails: true },
+    // CC-PROMPT-AI-READABILITY-4 item 3: a delivery policy and no profiles.
+    { ...base, hasShippingService: true, hasShippingDetails: true },
   ];
+
+  it("publishes the Organization node for the delivery policy alone, with no profiles (item 3)", () => {
+    const org = (over: Partial<typeof base> & { hasShippingService?: boolean }) =>
+      deriveMissingReasons({ ...base, ...over }).find((r) => r.nodeType === "Organization")!;
+    expect(org({ hasShippingService: true }).emitted).toBe(true);
+    expect(org({}).emitted).toBe(false);
+    expect(org({}).reason).toContain("no delivery price or free-delivery threshold could be read");
+  });
 
   it("maps every recorded reason, and the map holds nothing the function cannot write", () => {
     const recorded = new Set<string>();

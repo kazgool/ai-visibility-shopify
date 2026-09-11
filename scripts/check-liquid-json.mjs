@@ -140,11 +140,13 @@ const SWITCHES = [
     on: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 } },
     off: { av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: null } },
   },
-  // The Offer's shippingDetails (CC-PROMPT-AI-READABILITY-4 item 2): each part
-  // is optional behind the type, one country is an object and several an
-  // array, and the whole object can be absent.
-  { probe: "av_offer_ship", on: { av_offer_ship: true }, off: { av_offer_ship: false } },
-  { probe: "av_offer_rate", on: { av_offer_rate: true }, off: { av_offer_rate: false } },
+  // Delivery (CC-PROMPT-AI-READABILITY-4 items 2 and 3): the shop-wide policy
+  // on the Organization node with its base condition, its free condition,
+  // both or neither; the Offer's reference to it, or its own destination and
+  // time; one country as an object and several as an array.
+  { probe: "av_ship_service", on: { av_ship_service: true }, off: { av_ship_service: false } },
+  { probe: "av_ship_rate_ok", on: { av_ship_rate_ok: true }, off: { av_ship_rate_ok: false } },
+  { probe: "av_ship_free", on: { av_ship_free: true }, off: { av_ship_free: false } },
   { probe: "av_offer_time", on: { av_offer_time: true }, off: { av_offer_time: false } },
   {
     probe: "av_ship_destination",
@@ -223,14 +225,17 @@ function baseContext(patch) {
     av_questions: [{ q: "Q1", a: "A1" }],
     av_c_criteria: ["Size"],
     av_c_questions: [{ q: "Q1", a: "A1" }],
-    av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30 },
+    av_business: { deliveryTime: "2 to 4 days", deliveryVaries: false, returnDays: 30, deliveryCost: "19,99 lei, gratuit peste 200 lei" },
     shop_url: "https://shop.example",
     av_hidden: [],
     av_ship: { rate: 19.99, currency: "RON", freeOverAmount: 200 },
     av_ship_countries: ["RO"],
     av_ship_destination: '{ "@type": "DefinedRegion", "addressCountry": "RO" }',
-    av_offer_ship: true,
-    av_offer_rate: true,
+    av_ship_service: true,
+    av_ship_rate_ok: true,
+    av_ship_free: true,
+    av_ship_free_below: 199.99,
+    av_ship_service_id: "https://shop.example/#shipping",
     av_offer_time: true,
     ...patch,
   };

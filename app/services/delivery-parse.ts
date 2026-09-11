@@ -214,16 +214,26 @@ export type DeliveryFields = {
 };
 
 /**
- * Whether the Offer carries shippingDetails for this record, by the same rule
- * ai-visibility.liquid applies (item 2d): a publishable rate (read from the
- * text, starting price box not ticked), or a delivery time that does not vary.
- * The visitor's currency, which the block also checks, is not known here; B6
- * reads this as "the record gives the Offer something to publish".
+ * Whether the Organization node carries the shop-wide delivery policy
+ * (ai-visibility.liquid, item 3): a publishable rate (read from the text,
+ * starting price box not ticked) or a free-delivery threshold. The same rule
+ * as the block, in TypeScript, for B6.
+ */
+export function shippingServicePublished(b: DeliveryFields): boolean {
+  const rate = b.deliveryCostParsed?.rate != null && b.deliveryCostIsFrom !== true;
+  const free = b.deliveryCostParsed?.freeOverAmount != null;
+  return rate || free;
+}
+
+/**
+ * Whether the Offer carries shippingDetails for this record, by the rule
+ * ai-visibility.liquid applies: a reference to the shop-wide policy when there
+ * is one (item 3), else a delivery time that does not vary (item 2d). B6 reads
+ * this as "the record gives the Offer something to publish".
  */
 export function offerShippingPublished(b: DeliveryFields): boolean {
-  const rate = b.deliveryCostParsed?.rate != null && b.deliveryCostIsFrom !== true;
   const time = (b.deliveryTime ?? "").trim() !== "" && b.deliveryVaries !== true;
-  return rate || time;
+  return shippingServicePublished(b) || time;
 }
 
 /** 19.99 as "19.99", 25 as "25". */

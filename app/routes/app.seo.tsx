@@ -83,7 +83,7 @@ import {
 } from "../services/seo-page.server";
 import { conflictSentence, organizationPairIsInformational } from "../services/conflicts";
 import { businessFor } from "../services/business.server";
-import { offerShippingPublished } from "../services/delivery-parse";
+import { offerShippingPublished, shippingServicePublished } from "../services/delivery-parse";
 import type { SeoKey, SeoQueue } from "../services/seo.server";
 import type { SeoApplyReport } from "../services/seo-bulk.server";
 import { isQueueStale, isQueueUsable, seoFieldMetric } from "../services/seo-queue-metrics";
@@ -565,6 +565,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     hasFitFor: Boolean(fitFor),
     hasReturnDays: Boolean(business?.returnDays),
     hasShippingDetails: offerShippingPublished(business ?? {}),
+    hasShippingService: shippingServicePublished(business ?? {}),
     hasRating: result.passwordProtected ? null : Boolean(result.hasAggregateRating),
     // Read off the scan's own node lists, not inferred from the module being
     // enabled: WebSite lives on the home page, BreadcrumbList on the product
@@ -711,7 +712,7 @@ function buildFindings(result: ThemeScanResult | undefined): Finding[] {
         findings.push({
           key: `conflict-${label}-${c.type}`,
           severity: "info",
-          text: `Organization appears ${c.count} times on the ${label}. The theme's node has no identifier we can attach to, so ours carries your official profiles alongside it; consumers merge or pick between the two. Adding an @id to the theme's node would merge them.`,
+          text: `Organization appears ${c.count} times on the ${label}. The theme's node has no identifier we can attach to, so ours carries what this app publishes about your business - your official profiles, your delivery policy - alongside it; consumers merge or pick between the two. Adding an @id to the theme's node would merge them.`,
           fixHref: null,
         });
         continue;

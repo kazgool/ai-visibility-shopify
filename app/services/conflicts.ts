@@ -47,8 +47,9 @@ export const WEBSITE_BEFORE_SCAN_SENTENCE =
 export function conflictSentence(conflict: ConflictLike): string {
   if (organizationPairIsInformational(conflict)) {
     return (
-      "Informational: the theme's node has no identifier we can attach to, so ours carries your " +
-      "official profiles alongside it; adding an @id to the theme's node would merge them."
+      "Informational: the theme's node has no identifier we can attach to, so ours carries what this " +
+      "app publishes about your business (your official profiles, your delivery policy) alongside it; " +
+      "adding an @id to the theme's node would merge them."
     );
   }
   if (conflict.type === "WebSite") {
