@@ -56,6 +56,16 @@ const BOUND_PATTERN = new RegExp(
   "iu",
 );
 
+/**
+ * `normalize()` deliberately removes punctuation for dictionary matching. That
+ * is normally right, but it meant the five symbolic bounds above disappeared
+ * before rule 1 saw them: `< 2 kg` was emitted as the false exact claim
+ * `2 kg`. Keep this small detector beside the rule instead of weakening the
+ * global normalizer for every other engine path.
+ */
+const SYMBOLIC_BOUND_PATTERN = /(?<![\p{L}\p{N}])(<|>|≤|≥|~)\s*$/u;
+const SYMBOLIC_BOUNDS = new Set(["<", ">", "≤", "≥", "~"]);
+
 /** How much text to read back for a bound. Longer than the longest bound. */
 const BOUND_LOOKBACK = 18;
 
@@ -77,6 +87,9 @@ export function boundBefore(text: string, index: number): string {
     const space = before.search(/\s/u);
     before = space === -1 ? "" : before.slice(space);
   }
+  // Do this before normalize(): normalize intentionally removes operators.
+  const symbolic = SYMBOLIC_BOUND_PATTERN.exec(before);
+  if (symbolic) return symbolic[1]!;
   const m = BOUND_PATTERN.exec(normalize(before));
   return m ? m[1] : "";
 }
@@ -84,6 +97,18 @@ export function boundBefore(text: string, index: number): string {
 /** The value with its bound restored, or unchanged when there was none. */
 export function withBound(text: string, index: number, value: string): string {
   const bound = boundBefore(text, index);
+  return bound === "" ? value : `${bound} ${value}`;
+}
+
+/**
+ * A word bound can be represented truthfully in a value. Symbolic operators
+ * cannot: our output schema has no comparator field, and publishing their
+ * number alone changes a limit into an exact fact. Return null so callers
+ * withhold it rather than silently stripping the operator.
+ */
+export function withPublishableBound(text: string, index: number, value: string): string | null {
+  const bound = boundBefore(text, index);
+  if (SYMBOLIC_BOUNDS.has(bound)) return null;
   return bound === "" ? value : `${bound} ${value}`;
 }
 

@@ -134,6 +134,10 @@ describe("counted", () => {
   it("still reads a plain count", () => {
     expect(counted("60 capsule", "capsule")).toEqual(["60 capsule"]);
   });
+
+  it.each(["<", ">", "≤", "≥", "~"])("withholds symbolic bounded count %s", (operator) => {
+    expect(counted(`pachet ${operator} 250 g`, "g")).toEqual([]);
+  });
 });
 
 describe("extractProduct measurements case preservation", () => {

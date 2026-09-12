@@ -10,6 +10,7 @@ import {
   safetyAllows,
   safetyTermIsWhole,
   withBound,
+  withPublishableBound,
   withoutMergedDimensions,
 } from "../delimit";
 import { extractFromText } from "../extract";
@@ -53,6 +54,18 @@ describe("rule 1: a bound or an operator is kept, never dropped", () => {
 
   it("reaches the measurement path, so #size publishes the bound", () => {
     expect(measurements("inaltime maxim 79 cm")).toEqual(["maxim 79 cm"]);
+  });
+
+  it.each(["<", ">", "≤", "≥", "~"])("observes symbolic bound %s before normalization", (operator) => {
+    const text = `greutate ${operator} 2 kg`;
+    const index = text.indexOf("2 kg");
+    expect(boundBefore(text, index)).toBe(operator);
+    expect(withBound(text, index, "2 kg")).toBe(`${operator} 2 kg`);
+    expect(withPublishableBound(text, index, "2 kg")).toBeNull();
+  });
+
+  it.each(["<", ">", "≤", "≥", "~"])("withholds symbolic measurement %s instead of publishing a bare value", (operator) => {
+    expect(measurements(`greutate ${operator} 2 kg`)).toEqual([]);
   });
 
   // Batch 6 item 1. The pattern had no left word boundary, so it read a bound

@@ -2,7 +2,7 @@
 // is where a count always sits: "6 scaune", "4 persoane".
 
 import { diacriticPattern } from "./normalize";
-import { withBound } from "./delimit";
+import { withPublishableBound } from "./delimit";
 
 export function counted(text: string, base: string): string[] {
   // The number may carry separators the merchant wrote: "29,7 g", "7.000 mg".
@@ -22,7 +22,8 @@ export function counted(text: string, base: string): string[] {
   for (const m of text.matchAll(pattern)) {
     // Batch 5 item 6, rule 1: a bound in front of the figure is part of the
     // figure. "de la 2 kg" published as "2 kg" states a limit as a fact.
-    hits.push(withBound(text, m.index!, `${m[1]} ${base}`));
+    const value = withPublishableBound(text, m.index!, `${m[1]} ${base}`);
+    if (value) hits.push(value);
   }
   return hits;
 }

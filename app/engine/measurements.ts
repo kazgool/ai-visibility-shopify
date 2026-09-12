@@ -5,7 +5,7 @@
 // "l 80, L 130, h 79 cm" or "80x200 cm", where the meaning sits in the numbers
 // and the unit, not in the surrounding words.
 
-import { atMostOneBareMeasurement, withBound, withoutMergedDimensions } from "./delimit";
+import { atMostOneBareMeasurement, withPublishableBound, withoutMergedDimensions } from "./delimit";
 
 const CHAIN = /\b\d+(?:[.,]\d+)?(?:\s*[x×]\s*\d+(?:[.,]\d+)?){1,2}\s*(?:cm|mm|m|inch|in|")\b/giu;
 
@@ -23,13 +23,17 @@ export function measurements(text: string): string[] {
   // figure. "up to 20,000 Hz" published as "20,000 Hz" states a limit as a
   // fact, which is 92 of the 110 Screen errors in the corpus.
   const chain: string[] = [];
-  for (const m of text.matchAll(CHAIN)) chain.push(withBound(text, m.index!, m[0]));
+  for (const m of text.matchAll(CHAIN)) {
+    const value = withPublishableBound(text, m.index!, m[0]);
+    if (value) chain.push(value);
+  }
 
   const named: string[] = [];
   for (const m of text.matchAll(NAMED)) {
     const label = m[1].length === 1 ? m[1] : m[1].toLowerCase();
     const unit = m[3] ? ` ${m[3]}` : "";
-    named.push(withBound(text, m.index!, `${label} ${m[2]}${unit}`.trim()));
+    const value = withPublishableBound(text, m.index!, `${label} ${m[2]}${unit}`.trim());
+    if (value) named.push(value);
   }
 
   // Batch 5 item 6, rule 3, IMPLEMENTED AND NOT ENABLED. Two figures for one
@@ -58,6 +62,9 @@ export function measurements(text: string): string[] {
   // a bare figure has no dimension name, so more than one of them is a puzzle
   // rather than a size ("16cm, 8cm, 15cm" on a bed frame).
   const bare: string[] = [];
-  for (const m of text.matchAll(BARE)) bare.push(withBound(text, m.index!, m[0]));
+  for (const m of text.matchAll(BARE)) {
+    const value = withPublishableBound(text, m.index!, m[0]);
+    if (value) bare.push(value);
+  }
   return atMostOneBareMeasurement(bare);
 }
