@@ -184,3 +184,41 @@ describe("state helpers", () => {
     expect(readFacts(null)).toEqual([]);
   });
 });
+
+// SPEC-EXTRACTION-QUALITY success criterion 4, and batch 5 item 6: the
+// abstention path never removes a value a person wrote. Asserted here rather
+// than in delimit.test.ts because the rules do not know about people at all -
+// they change what the ENGINE produces, and this is the merge that decides
+// what that is allowed to do to a stored row.
+describe("a rule that makes the engine abstain cannot remove a human row", () => {
+  // The shape the item 6 rules produce: a value the engine used to extract and
+  // now refuses to. "Alergeni" is the real case - "poate contine urme" is no
+  // longer published, because the merchant's sentence carries on into
+  // "de soia" - and the merchant has written his own allergen line by hand.
+  const stored = [
+    { k: "Alergeni", v: "contine soia si lapte" },
+    { k: "Material", v: "bumbac" },
+  ];
+  // withFactsHuman mutates and returns void, so the state is built and then
+  // handed over, not assigned from the call.
+  const state: Record<string, unknown> = { facts: { source: "auto" } };
+  withFactsHuman(state, human("Alergeni", "contine soia si lapte"));
+
+  it("keeps the person's row when the engine now produces nothing at all", () => {
+    const merged = humanMerge(state, stored, [], AT, ENGINE);
+    expect(merged.facts).toContainEqual({ k: "Alergeni", v: "contine soia si lapte" });
+    expect(humanRowCount(merged.human)).toBe(1);
+  });
+
+  it("keeps the person's row when the engine now produces a different value", () => {
+    const merged = humanMerge(state, stored, [{ k: "Alergeni", v: "poate contine urme" }], AT, ENGINE);
+    expect(merged.facts).toContainEqual({ k: "Alergeni", v: "contine soia si lapte" });
+  });
+
+  // The other half of the promise: a row nobody wrote by hand IS withdrawn
+  // when the engine abstains, which is what makes abstention work at all.
+  it("withdraws the engine's own value when it abstains, and only that one", () => {
+    const merged = humanMerge(state, stored, [], AT, ENGINE);
+    expect(merged.facts.find((f) => f.k === "Material")).toBeUndefined();
+  });
+});

@@ -1,12 +1,103 @@
 # STATUS — where this project stands
 
-Last updated 11 September 2026. Read this first in a new session, then
-`HANDOFF-2026-09-11.md`, then `PRD-AI-READABILITY.md` and the Unreleased
-section of `CHANGELOG.md`.
+Last updated 12 September 2026. Read this first in a new session, then the
+Unreleased section of `CHANGELOG.md`, then
+`_shopify/DECISIONS-FOR-MARIUS-2026-09-12.md`, then
+`HANDOFF-2026-09-11.md` and `PRD-AI-READABILITY.md`.
 
 ---
 
-## Where things stand, 11 September 2026
+## Where things stand, 12 September 2026
+
+The app is live on the App Store (approved 7 August) and has its first paying
+store, Republica BIO (Standard plan, since 8 September, 189 published
+products, Shella theme). **Batches one to four are deployed** - Fly v89, at
+`210c1d5`, extension released. The fifth batch is committed, not pushed, not
+deployed.
+
+### The fifth batch, 12 September 2026 (`CC-PROMPT-BATCH-5.md`)
+
+Fourteen items, one commit each. Full detail in the Unreleased section of
+`CHANGELOG.md`; the short version:
+
+- **Live truth on the screens.** A store already in Full mode is told to keep
+  it rather than to switch to it. Every count on the dashboard, the
+  collections screen and the products list carries its denominator; two
+  sentences that stated something nobody measured are gone.
+- **One real bug, found and fixed, with two symptoms.** Three product pages on
+  Republica BIO carry no Product node, because our own block raises
+  `comparison of String with 0 failed` inside its JSON-LD when a review app
+  writes `reviews.rating_count` as text. The same error, on the one page the
+  theme scan happens to read, switched `additionalProperty` off for all 189
+  products. Both are fixed in the extension and **need a deploy and then a
+  theme-scan re-run, in that order**, before anything changes on the store.
+- **The catalogue pass has a card of its own**, always on the dashboard, with
+  live progress from the JobRun row and what the last pass wrote.
+- **Extraction quality was classified before anything was written, measured
+  after, and the bar is not met.** Five of six mechanical rules are enabled:
+  hold-out errors 49.0% to 42.4%, for 25 correct values lost. The bar is 1%
+  per group and the best mechanical setting reaches 38.8%, because the largest
+  error class is a value that is in the text, whole and uncut, under a label
+  it does not answer, which no delimiter rule touches.
+- **Both switched-off question sources stay off**, and both briefs for them
+  turned out to be wrong: merchant questions are 7.89%, not 2.19%, and the
+  garbled heading is not their main fault; section intents are 6.68%, and one
+  of the two classes named for them does not occur in the corpus at all.
+- **Republica BIO's buyer questions are 92.3% shipping policy.** 565 of 612.
+  Not one of the 612 is about what a product is.
+
+### Decisions that block work, in the order they matter
+
+1. **WordPress fixture C.** The merged-dimensions rule (item 6, rule 3) is
+   implemented and tested and switched off, because fixture C asserts we
+   publish a table and its chairs merged into one Dimensions value, which is
+   the defect the rule stops. Amend the fixture and document the port as
+   deliberately diverging, or drop the rule. One line either way.
+2. **The abstention setting**, with the table in
+   `_shopify/corpus/facts-abstention-thresholds.md`. My reading: take none of
+   them. Setting 1 buys 1.5 points on the hold-out for 0.31 values per product
+   on Republica BIO, and setting 3 makes that store worse on both counts at
+   once.
+3. **What the 1% bar is for**, given item 10. A source that meets it publishes
+   the shipping policy 189 times; the two that would answer questions about
+   the products are the ones held back by it.
+4. **When the catalogue pass runs on Republica BIO after the item 6 deploy.**
+   `SPEC-EXTRACTION-QUALITY.md` open question 2: the pass removes values that
+   now abstain, so attributes disappear from pages the client has seen.
+5. **The three in `DECISIONS-FOR-MARIUS-2026-09-12.md`** (item 13): the phrase
+   table as client-facing wording, the refund answer and the price conflict
+   six lines below it, and the FAQ cap.
+6. **`ourProductNode` from one page or from the aggregate.** Reported, not
+   worked around, as item 12 instructed.
+
+### Owed on the store, and each needs Marius
+
+- The facts migration real run. Dry run today: 4 products, 51 rows become
+  rows a person wrote, 3 become rows a person deleted. Before: 65 human rows,
+  digest `0e7f372b62451dc9` (`npx tsx scripts/read-human-facts.ts
+  republicabio.myshopify.com`). There is no enqueue script; it is the Fill
+  catalogue button, and the second dry run afterwards must read 0 to convert
+  while the digest is unchanged.
+- After the deploy: re-run the theme scan on the SEO screen, then
+  `npx tsx scripts/read-product-ld.ts republicabio.myshopify.com
+  m31-true-collagen-creamer-...-natural` and confirm `additionalProperty` is
+  present with one entry per visible fact, still one Product node, still with
+  a name.
+- Still not observed on a store, from batch 4 and earlier: the App embeds
+  toggle for "AI Visibility content" on Republica BIO, the Romanian strings on
+  its product pages, the store language the app reads, the rewrite job after a
+  language change, the nightly page read that fills B34,
+  `npx tsx scripts/read-ld-visible.ts republicabio.myshopify.com 20`,
+  `npx tsx scripts/read-llms-txt.ts republicabio.myshopify.com`, and the
+  Gemini test in the PRD's success metrics.
+
+**Still open from the handoff**: the four-context table in `extract.ts`, the
+llms.txt request path reading every mirror body, alt-text provenance,
+post-lapse webhooks, and the sales-folder payout correction.
+
+---
+
+## Where things stood, 11 September 2026
 
 The app is live on the App Store (approved 7 August) and has its first paying
 store, Republica BIO (Standard plan, since 8 September, 189 published

@@ -16,6 +16,308 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+The fifth batch, 12 September 2026, built from `CC-PROMPT-BATCH-5.md`, one
+commit per item, in the order of the prompt. Not pushed and not deployed.
+
+Final run after the last code commit: typecheck clean, 102 test files, 1,960
+tests, both builds, Liquid syntax, and the JSON check at 8 nodes and 8,472
+combinations, all green; the full suite also 102 files and 1,960 tests with
+`.env` renamed away, which is what CI sees. Nothing in it has been observed on a store except the
+read-only reads listed below, which were run against Republica BIO today.
+
+**Two decisions are open and block nothing else:** whether WordPress fixture C
+is amended so the merged-dimensions rule can be switched on (item 6), and
+which abstention setting to take, if any (item 7). Both are laid out with
+their numbers in `_shopify/corpus/facts-abstention-thresholds.md`.
+
+### A store already in Full mode is told to keep it (item 1)
+
+`themeNodeAdvice` recommended "switch the app embed to Full mode" whenever the
+theme emitted no Product node, without looking at whether the app was already
+emitting one. On Republica BIO, which is in Full mode, the Structured data
+card carried an Attention badge telling the merchant to do what was already
+done. The single "full" verdict splits in two: `full-active` when `theme` is 0
+and `appOnly` is above 0 - keep Full mode, badge success - and `full-needed`
+when nothing at all emits a node, which is the case the old advice was written
+for. Read live afterwards: 182 pages, theme 0, ours on 179, verdict
+`full-active`. Callers of `themeNodeAdvice`: 3 production, 1 test file.
+
+### The three product pages with no Product node: our own Liquid error (item 2)
+
+182 pages read on Republica BIO, 3 with no Product node at all. All three
+answer 200, are real product pages, carry our app embed and our Organization
+and FAQPage nodes. The cause is ours: each carries
+
+    Liquid error (shopify://apps/mrdigital-ai-visibility-aio/blocks/
+    ai-visibility/... line 397): comparison of String with 0 failed
+
+Line 397 was the aggregateRating guard. The review app on this store wrote
+`reviews.rating_count` as text on those three products, Liquid refuses to
+compare a String with 0, and Shopify renders the error as an HTML comment
+exactly where the failing tag stood - inside our own JSON-LD script - so the
+whole Product node became unparseable and every consumer dropped it silently.
+
+The block now forces both review values to numbers with `plus: 0` before
+anything compares them, and emits `aggregateRating` only when both are above
+zero; a non-numeric value publishes no rating, which is the safe direction,
+instead of failing the node. The class is closed: 2 numeric comparisons
+against a metafield value exist in the whole extension, and the other is a
+counter the snippet computes itself.
+
+The page read also records `ourLiquidError` on the B1 finding, and B1's
+sentence now says "this app's own block did not finish rendering here ... it
+is ours to fix", so a merchant is not sent to look at his theme. Matched on
+our own block path, so a theme's or another app's Liquid error is never
+reported as ours.
+
+`scripts/read-product-ld.ts` and `scripts/read-node-gaps.ts` are new and read
+only.
+
+### Every count on the merchant screens carries its denominator (item 3)
+
+A read of every sentence on the merchant screens, asking of each whether it
+states what is true of this store now and whether every count carries the
+number it is out of. Ten changed; the screens that had already had this pass -
+the merchant SEO dashboard, the Report screen, the product editor, Business,
+Dictionary, Plans, Diagnostics - were read and left, with the reason recorded
+per screen in the handover.
+
+Two were not denominators but claims. The dashboard's alt text line printed
+"all products checked" when the pass recorded no total, and nobody measured
+"all". The shared-media banner printed the length of a list the worker caps at
+50 as a total, so a pass with 300 shared images reported 50; the worker now
+writes `sharedTotal` beside the capped list. And the ladder told a shop with a
+step that did not apply "All six steps are finished", crediting work never
+done; it now says "5 of 6 steps are finished and 1 did not apply to this
+shop".
+
+`productsWithFinding` returns `scanned`, so "12 products carry finding B1"
+became "12 of the 182 products read". Grep of that function across app,
+worker, scripts and every `__tests__` directory: 4 hits, 1 production caller,
+1 `vi.fn()` mock.
+
+### The catalogue pass gets a card of its own (item 4)
+
+"Fill catalogue" existed only inside step four of the ladder, and a finished
+step collapses to one line, so a merchant who had completed the checklist had
+no obvious way to run the pass again and no way at all to watch it run. The
+card is always present, above the ladder: what the pass does in one sentence,
+when it last ran, what it wrote, and both buttons, with the dry run beside the
+pass rather than behind a disclosure. It reads the write pass alone, not
+whichever of the two ran last.
+
+While a pass runs it shows the JobRun row's own progress - "Product 128 of
+189", a bar, the elapsed time - through Remix's own revalidation, no new
+dependency. The poll now also stops while the tab is hidden and reads once on
+return: a background tab used to poll every two seconds all night, and Neon's
+compute time is the bill.
+
+On finish it says what the pass did to the store, in products: written,
+already identical and left alone, kept because a person wrote them, withdrawn.
+"Unchanged" is stated rather than hidden - it is the largest figure on a
+second pass, it reads as failure if it is not explained, and it is the rule
+that stops this app writing a value it just wrote and feeding its own
+webhooks. A report written before this measurement says it did not record,
+never zeros. `runBulkExtract` counts the write outcomes per product into
+`report.wrote` for it.
+
+One action, two entry points: step four's button stays and posts the same
+`mode=write` through the same `runJob` to the same route action, and the
+one-job-at-a-time guard and the entitlement check are untouched. Every site
+posting a catalogue-pass mode: 4, all through one handler. When the pass
+itself holds the queue the card says "This pass is running now" rather than
+reporting the app as waiting on itself. 24 tests: idle, running, a queued row
+with no total, finished, a finished pass predating the measurement, failed,
+refused, the guard, no subscription, and elapsed time including a clock skew.
+
+### Extraction quality: classified, measured, and the bar not met (items 5 to 7)
+
+**Classified first (item 5).** `scripts/facts-error-classes.ts` reads every
+facts verdict on disk, de-duplicated by pair id, and groups the errors into
+classes matched on the judge's own words - the vocabulary was read off the
+corpus before any pattern was written. 10,309 values judged, 4,091 errors,
+39.7%. Two findings changed what item 6 could be. The largest class, 1,195 of
+4,091, is a value that is in the text, whole and uncut, under a label it does
+not answer ("Format: oil" on a lip gloss made with cherry oil), which no
+delimiter rule reaches. And the classes the brief named as headline faults are
+small: a dropped bound 3.1%, a negation 1.8%, the unit's subject 2.6%. 23.9%
+matches no class and is reported as such rather than forced into one.
+
+**Six mechanical rules (item 6),** scoped by Marius to the mechanical ones
+only: they decide where a value ends and whether what was captured is whole,
+not whether a whole value belongs under its label. `app/engine/delimit.ts` is
+new and pure, one rule per class, every test fixture a real corpus string.
+
+1. A bound is kept, never dropped. "up to 20,000 Hz" went out as "Screen:
+   20,000 Hz" - 92 of that group's 110 errors. The bound is restored rather
+   than the value dropped: the one class where precision and coverage do not
+   trade.
+2. A negation inside the captured span kills the capture: "with no harsh
+   sulfates" was a key ingredient.
+3. Two different figures for one named dimension is a pack, not a product.
+   **Implemented, tested and NOT enabled** - see below.
+4. A capture ending on a figure that carries a unit has lost its noun
+   ("contains approximately 140mg"); bare measurements sharing one unit are
+   capped at one.
+5. A capture that used its whole three-word window while the sentence carried
+   on is not a value ("with our new nourishing").
+6. Safety is published whole or not at all, for plain terms as well as
+   captures. Republica BIO's own dictionary carries "poate contine urme" as a
+   term, so nothing was truncated by us and 39 of 54 Alergeni values went out
+   as a trace-allergen warning with the allergen removed. His dictionary is
+   not rewritten; under a safety label a term whose sentence carries on into
+   "de soia" now publishes nothing.
+
+Measured, not asserted. `scripts/facts-measure.ts` is new: it joins any corpus
+run to the verdicts on disk, so a rule is measured without spending a judge
+run. The baseline joins them exactly - 0 of 10,309 unjudged - which is what
+makes the comparison sound.
+
+| Scope | Errors before | after | values/product before | after | correct lost per error removed |
+|---|---|---|---|---|---|
+| all | 39.7% (4091/10309) | 35.8% (3327/9295) | 1.72 | 1.64 | 0.33 |
+| dev | 37.4% | 34.1% (2514/7377) | 1.95 | 1.85 | 0.42 |
+| hold-out | 49.0% | 42.4% (813/1918) | 1.19 | 1.15 | 0.11 |
+| Republica BIO | 31.0% | 29.5% (719/2438) | 13.57 | 13.48 | 0.66 |
+
+517 emitted values have never been judged - mostly rule 1 restoring a bound,
+which makes a new string. They are reported as unjudged and are NOT counted as
+correct, so a rule that replaced wrong values with different wrong values
+could not read as an improvement.
+
+Rule 3 is off because it contradicts fixture C, a contract with the WordPress
+original. Fixture C's own text merges a table and its chairs - `h 79` and
+`h 94` - and asserts that we publish the merge, which is the defect the rule
+exists to stop. The rule cannot be narrowed to spare the fixture without also
+sparing the 309 corpus errors it is for. Amending a fixture is Marius's
+decision, not a patch, so the rule and its tests stay and one line enables it.
+
+Three narrowings the tests forced, each a filter removing noise and value
+together (DICTIONARY-PORT 10.1): rule 4 first dropped any capture ending in a
+number, which deleted "notificat de S.N.P.M.A.P.S. 1378"; its bare-measurement
+cap first fired on any two, which deleted a necklace's "45cm, 8mm"; and rule 6
+first refused any safety term the sentence continued from, which deleted
+"contine gluten" in "contine gluten si lactoza" - true but partial, which the
+rubric names explicitly as not an error.
+
+**The bar (item 7): not met, at any mechanical setting.**
+`ExtractOptions.abstain` is new, defaults to 0, is read from no setting and is
+not a merchant control; it exists so the cost of each setting can be measured.
+
+| Setting | Hold-out errors | Republica BIO errors | RB values/product |
+|---|---|---|---|
+| before item 6 | 49.0% | 31.0% | 13.57 |
+| 0, what runs | 42.4% (813/1918) | 29.5% (719/2438) | 13.48 |
+| 1 | 40.9% | 28.8% | 13.17 |
+| 2 | 39.2% | 28.8% | 13.16 |
+| 3 | 38.8% (688/1772) | 30.1% (598/1990) | 11.12 |
+
+Setting 3 is the strictest mechanical setting that exists - no prefix capture
+at all - and on Republica BIO it makes the store worse on both counts at once:
+the error rate rises while 2.36 values per product disappear, 1.91 correct
+values lost per error removed. The bar is 1% per group. The best mechanical
+setting is 38.8% on the hold-out. Per group on the hold-out at setting 0, 1 of
+11 groups with 30 or more values meets it. The bar was not loosened and no
+check was silenced.
+
+### The two question sources stay off, and their briefs were wrong (items 8 to 10)
+
+**Merchant questions (item 8).** Re-read over every merchant Q&A judged, not
+the 320 of batch 3: 71 errors of 900, 7.89%, and 61 of 830, 7.35%, on
+Republica BIO. Seven times the bar, not twice it. The brief says five of seven
+errors are the merchant's garbled heading; of the seventy-one it is 10, and
+the largest class - 29 - is a heading that is perfectly well formed and has no
+subject ("Ce contine?", "How does our product stand out?"), which cannot be
+read away from the page.
+
+The "well formed" test was derived from the corpus headings as asked. Every
+garbled heading in the corpus is a rare near-variant of a far commoner heading
+in the SAME shop: "ce continua?" on 5 products beside "ce contine?" on 178.
+That is a mechanical test and a shop-wide one; `faq.ts` is pure and sees one
+product, and nothing inside one product separates the two. No per-product test
+for this class is derivable from this corpus, and saying so is the finding. A
+fix could not have been measured either: a verdict is keyed by question and
+answer text, so any change makes every row unjudged.
+
+**Section intents (item 9).** 273 errors of 4,088, 6.68%. One store of
+thirteen with 50 or more Q&A meets the bar. Of the two classes the brief
+names, the dropped bound is 4 errors and a safety heading answered from an
+unrelated section is **zero** - it does not occur once in the corpus, and
+writing a rule for it would be writing one from memory. The real classes are
+an answer cut so it no longer answers (22.0%) and a multi-item pack answered
+with one item's data (17.6%). The dropped bound was read to the bottom: the
+outline carries "<5%" through intact and `cleanOutput` leaves it alone, both
+verified; what is lost is "-15" from a range inside the section answer's unit
+assembly. Recorded, not fixed - 4 of 273 on a source that is off.
+
+Both switches stay `false`. No engine behaviour changed for either; the
+comments above them now carry the measured figures and the real classes.
+
+**Questions per product (item 10).** Both sources stayed off, so before and
+after are the same figures and the report says so rather than printing two
+identical columns. 189 products, 612 live questions, 3.24 per product: 565 of
+them (92.3%) delivery, returns and payment, 46 "who makes it", one a variant.
+Not one is about what the product is, what is in it, who it suits or how to
+use it, although the store's own descriptions answer all of those and 644
+section and 291 merchant questions are switched off. 20 live Q&A in Romanian
+are in `_shopify/corpus/republicabio-questions-by-source.md`.
+
+### The verifications owed from batch 4 (items 11 and 12)
+
+**The facts migration (item 11), dry run only.** 189 products read; 4 to
+convert, 51 rows become rows a person wrote, 3 rows become rows a person
+deleted, 0 variants. `scripts/read-human-facts.ts` is new, because item 11
+also asks for a count confirming no human value changed and nothing on disk
+could produce one: it censuses every human-owned row and prints a digest of
+product id, key and a hash of the value, never a label and never a value, with
+the whole-table and per-row forms producing the same line on purpose. Before
+the pass: 65 rows a person owns, digest `0e7f372b62451dc9`.
+
+The real run is not done. The conversion happens inside a full Fill catalogue
+pass on deployed code and there is no enqueue script - it is the button. It
+writes to a live paying client's catalogue, and `SPEC-EXTRACTION-QUALITY.md`
+open question 2 is still open: after the item 6 rules deploy, the next pass
+removes the values that now abstain, so attributes disappear from pages the
+client has seen, and Marius decides when that happens. Running it today would
+have taken that decision.
+
+**The m31 page, read live (item 12).** One Product node, ours, carrying a
+name; `transitTimeLabel` absent from the whole page; Organization carries
+`hasShippingService`; the shipping conditions show `minValue 1, maxValue 2,
+unitCode DAY`. Four of the six as intended. `additionalProperty` is **absent**.
+
+The stop condition - two Product nodes, or a Product without a name - is not
+met, so the fragment did not fail to merge; it was never emitted. The content
+block emits it only when `theme_scan.ourProductNode` is true, and the live
+mirror says false. `themeScanMirror` writes that from ONE product page, the
+first published product the Admin API returns, and on this store that is
+`card-cadou-republica-bio` - one of the three pages whose Product node our own
+Liquid error destroys. One bug, two symptoms: the error found in item 2 did
+not only cost three pages their node, it switched `additionalProperty` off for
+all 189 products. The item 2 fix repairs both, after `shopify app deploy` and
+then a re-run of the theme scan, in that order.
+
+The fragility underneath is reported and not worked around, as the brief
+instructs: a whole catalogue's structured data hangs on one arbitrarily chosen
+product page, while the page scan already read 182 pages and found our node on
+179. Whether `ourProductNode` should come from that aggregate is a decision,
+not a patch.
+
+### The three decisions Marius owes (item 13)
+
+Printed, unchanged, in `_shopify/DECISIONS-FOR-MARIUS-2026-09-12.md`: the
+engine phrase table in English and Romanian side by side, 50 rows, rendered
+with a sample title by the new read-only `scripts/read-phrase-table.ts`; the
+refund answer in SUPPORT.md with the conflict it still carries, which is that
+the paragraph six lines below it names one price while BILLING-SPEC and
+CLAUDE.md carry two; and the FAQ cap - default 8, maximum 20 - with what it
+does and why it is the mechanism behind Republica BIO publishing its shipping
+policy 189 times.
+
+---
+
+## Deployed 12 September 2026 (Fly v89, at 210c1d5, extension released)
+
 The fourth batch of 11 September 2026, built from
 `CC-PROMPT-AI-READABILITY-4.md` for one deploy - items 1 to 4, then 4b and
 4c, which Marius added to the brief during the work, then item 5 - in the

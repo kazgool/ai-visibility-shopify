@@ -1,6 +1,30 @@
 # Spec: attribute extraction quality (batch 5)
 
-Status: draft for Marius to approve. Nothing is implemented until he does.
+Status: **approved, and implemented in part on 12 September 2026** (batch 5,
+items 4 to 7). What was built, and what was deliberately not:
+
+- **Built and running.** The classification (item 5), five of the six
+  mechanical delimitation rules (item 6, `app/engine/delimit.ts`), the
+  measurement harness that joins a corpus run to the verdicts on disk
+  (`scripts/facts-measure.ts`), and the catalogue pass card of the second
+  module below (item 4).
+- **Built and NOT enabled.** Rule 3, the merged-dimensions rule: it
+  contradicts WordPress fixture C, which is a contract with the original, and
+  amending a fixture is Marius's decision rather than a patch.
+- **Deliberately not built.** Any abstention beyond the mechanical rules.
+  Marius scoped this on 12 September: build the mechanical rules, measure
+  them, and bring the abstention threshold back as a table with its cost per
+  setting, which is `_shopify/corpus/facts-abstention-thresholds.md`. He
+  decides the threshold; nothing applies one until he does.
+
+**The success criterion in this document is NOT met, and was not loosened.**
+Every group at or below 1% on the hold-out and on Republica BIO: the best
+mechanical setting reaches 38.8% on the hold-out, and 1 of 11 groups with 30
+or more values judged meets the bar. The reason is in item 5's classification
+and is a fact about the errors rather than about the rules: 1,195 of 4,091
+errors, 29.2%, are a value that is in the text, whole and uncut, sitting under
+a label it does not answer, and no rule about where a value ENDS reaches any
+of them. Measured in `_shopify/corpus/facts-rules-measured.md`.
 
 ## Objective
 
