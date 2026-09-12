@@ -1,9 +1,10 @@
 # STATUS — where this project stands
 
-Last updated 12 September 2026. Read this first in a new session, then the
-Unreleased section of `CHANGELOG.md`, then
-`_shopify/DECISIONS-FOR-MARIUS-2026-09-12.md`, then
-`HANDOFF-2026-09-11.md` and `PRD-AI-READABILITY.md`.
+Last updated 12 September 2026, after batch 6. Read this first in a new
+session, then the Unreleased section of `CHANGELOG.md`, then
+`_shopify/DECISIONS-FOR-MARIUS-2026-09-12.md` (its section 4 is the whole
+open-decision list), then `HANDOFF-2026-09-11.md` and
+`PRD-AI-READABILITY.md`.
 
 ---
 
@@ -12,8 +13,37 @@ Unreleased section of `CHANGELOG.md`, then
 The app is live on the App Store (approved 7 August) and has its first paying
 store, Republica BIO (Standard plan, since 8 September, 189 published
 products, Shella theme). **Batches one to four are deployed** - Fly v89, at
-`210c1d5`, extension released. The fifth batch is committed, not pushed, not
-deployed.
+`210c1d5`, extension released. The fifth and sixth batches are committed, not
+pushed, not deployed.
+
+### The sixth batch, 12 September 2026 (`CC-PROMPT-BATCH-6.md`)
+
+The doubt-driven review of batch 5, seven items, one commit each, before any
+of batch 5 is pushed. Full detail in `CHANGELOG.md`; the short version:
+
+- **Three real defects in what batch 5 committed, all three fixed.** Rule 1
+  read a bound out of the tail of a merchant's own word ("Tetra Algumin
+  100 ml" published "min 100 ml", 7 occurrences). Rule 4 dropped every capture
+  ending in a figure, cut or not, which is also the shape of a whole sentence.
+  The Liquid rating coercion let a Romanian decimal comma through: "4,5"
+  published as 4, a wrong rating rather than none.
+- **None of the decision numbers moved.** The whole abstention sweep was
+  re-run on the corrected engine and every figure is identical to the value.
+  Item 1 changed 4 values in 5,998 products, item 2 changed 0. The decisions
+  are to be taken on the numbers already printed.
+- **The gift card page is not an uncovered path**, settled by reading the live
+  page: our block renders there, emits a Product node body, and our own Liquid
+  error lands inside its script. Deploy-then-rescan is trustworthy for it.
+- **The three pages are the same three**, reconciled page by page against the
+  aggregate scan and against a live read of each.
+- **No general staleness signal exists** and none was invented; the page and
+  the headers were checked live. The scan now says when our own block broke
+  the page it read, which is the one signal that does exist.
+- **Nine open decisions are in one list**, section 4 of
+  `DECISIONS-FOR-MARIUS-2026-09-12.md`, including four new ones: where
+  `ourProductNode` should come from, whether a re-scan should trigger itself,
+  whether the block should print a version marker, and whether allergens
+  should be held to a stricter bar than the general rubric.
 
 ### The fifth batch, 12 September 2026 (`CC-PROMPT-BATCH-5.md`)
 
@@ -47,6 +77,9 @@ Fourteen items, one commit each. Full detail in the Unreleased section of
   Not one of the 612 is about what a product is.
 
 ### Decisions that block work, in the order they matter
+
+All of these, plus the four raised by batch 6, are printed together in
+section 4 of `DECISIONS-FOR-MARIUS-2026-09-12.md`.
 
 1. **WordPress fixture C.** The merged-dimensions rule (item 6, rule 3) is
    implemented and tested and switched off, because fixture C asserts we

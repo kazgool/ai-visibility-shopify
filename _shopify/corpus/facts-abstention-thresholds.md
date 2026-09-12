@@ -37,6 +37,33 @@ on both counts at once.
 The bar is 1% per group. The best mechanical setting is 38.8% on the hold-out.
 **The bar is not met at any setting, and no mechanical setting reaches it.**
 
+## Re-measured after batch 6 items 1 and 2, and unchanged
+
+Batch 6 asked for this table to be reprinted after the two rule defects were
+fixed, because three of the decisions it feeds read numbers those fixes could
+move. The whole sweep was re-run on the corrected engine
+(`batch6`, `b6abstain1`, `b6abstain2`, `b6abstain3`) and **every figure in the
+headline table above is identical, to the value.** Not close - the same
+numerators and the same denominators at all four settings, on the hold-out and
+on Republica BIO alike.
+
+That is the expected result once both fixes are measured rather than assumed:
+
+- Item 1 changed 4 values in the whole corpus (2 Size on animax.ro, 2 Strength
+  on moleculesofyouth.com), none of them on Republica BIO and none in the
+  hold-out.
+- Item 2 changed 0 values, because no capture in 5,998 products reaches the
+  rule it corrects.
+
+So the decision is to be taken on the numbers already printed here. They did
+not move, and nothing is waiting on a re-measurement any more.
+
+```
+npx tsx scripts/faq-corpus-run.ts b6abstain1 --set all --abstain 1
+npx tsx scripts/facts-measure.ts b6abstain1 --set holdout --against base5
+npx tsx scripts/facts-measure.ts b6abstain1 --store republicabio.ro --against base5
+```
+
 ## Reproduce
 
 ```

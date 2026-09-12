@@ -16,6 +16,174 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+The sixth batch, 12 September 2026, built from `CC-PROMPT-BATCH-6.md`: the
+doubt-driven review of batch 5, one commit per item. On top of the fifth
+batch, below. Not pushed and not deployed.
+
+Final run after the last code commit: typecheck clean, 102 test files, 1,969
+tests, the build, Liquid syntax and the Liquid JSON check at 8 nodes and 8,472
+combinations, all green; the full suite also 102 files and 1,969 tests with
+`.env` renamed away, which is what CI sees.
+
+**The headline for the three decisions that read them: none of the numbers
+moved.** Items 1, 2 and 3 were all real defects and all three are fixed, but
+the whole abstention sweep was re-run on the corrected engine and every figure
+is identical to the value - hold-out 42.4% (813/1918), Republica BIO 29.5%
+(719/2438), at all four settings. Item 1 changed 4 values in 5,998 products;
+item 2 changed 0; item 3 cannot change a corpus figure at all, being Liquid.
+The decisions in `facts-abstention-thresholds.md` are to be taken on the
+numbers already printed there.
+
+### A bound must start where a word starts (item 1)
+
+Rule 1's pattern had no left word boundary, so it read a bound out of the tail
+of a merchant's own word and published a limit nobody stated. The corpus
+instance is real, not hypothetical: animax.ro sells "Solutie lichida Tetra
+Algumin 100 ml", "Algumin" ends in "min", and Size went out as
+`min 100 ml, 5 ml, 250ml, 500ml`. Seven occurrences in 5,998 products, on two
+products, every one "min". The pattern now requires a non-letter, non-digit or
+the start of the string in front of the bound, and `boundBefore` drops a half
+word left at the edge of its 18-character lookback, because to a lookbehind
+half a word is indistinguishable from the start of the string.
+
+Measured, `batch6` against `after6`: 4 fabricated bounds gone, 2 replaced by
+the same value without the bound. Hold-out unmoved at 42.4% (813/1918),
+Republica BIO unmoved at 29.5% (719/2438), every set 35.8% either side.
+
+**Reported, not fixed:** five of the listed bounds - `<`, `>`, the two
+inequality signs and `~` - can never match, because `normalize()` strips them
+before the pattern runs. Making them fire would add values nothing has
+measured, so it is a decision rather than a patch.
+
+### Rule 4 drops a figure only when the sentence carried on (item 2)
+
+`endsOnLooseFigure` discarded every multi-word capture ending in a figure with
+a short suffix, cut or not - a broader rule than the error class it was
+written for. The same shape is also what a whole sentence looks like when the
+merchant simply stopped: "contine 250g" is a net weight, "disponibila 5XL" is
+a size code whose suffix is not a unit at all. It now takes truncation
+evidence and drops only when the sentence provably carries on past the figure.
+
+**Measured reach, and it is zero.** Across all 5,998 corpus products no
+capture reaches that test with a figure-and-unit last word, before the change
+or after it, so the run is value-for-value identical either way. Two guards
+earlier in the same loop take them first: a capture whose first word is a
+digit is refused outright (762 of those - Valori nutritionale 535,
+Concentratie 188, Key ingredients 24, four smaller groups), and a stopword
+first word is refused too, which is what "contains approximately 140mg"
+actually hits. None of the 762 is in Gramaj, Cantitate pachet, Size, Marime or
+Format: on Republica BIO those are `* term` groups read by `counted()`, a path
+this rule never runs on. So no published value moves today; what it stops is a
+rule broader than its own description costing values the first time a
+dictionary does reach it.
+
+### A rating written with a decimal comma (item 3)
+
+Batch 5's coercion is safe against a Hash, an Array, nil and scientific
+notation - Shopify's `to_number` makes all of those 0, which publishes no
+rating. It is not safe against the shape most likely on a Romanian shop:
+`"4,5"` is not refused the way text is. Liquid reads the digits it
+understands and stops, so `"4,5"` became **4** - a wrong rating published,
+which is the opposite of the direction the fix's own comment promised. The
+comma is turned into a period before `plus: 0`, the way the engine already
+does it for measurements. The count deliberately does not get the same
+treatment: there a comma is a thousands separator, and "1,234" reviews would
+become 1.234.
+
+Same commit: `av_rating_count` now reads `.value.value` before `.value`, as
+`av_rating_value` always has. Nothing on Republica BIO needs it.
+
+Both are tested, and both tests were checked failing before the fix. The
+harness is liquidjs, which on `"4,5"` publishes nothing where Shopify
+publishes 4, so the test pins the outcome both engines must reach rather than
+the symptom.
+
+### Gift cards are not an uncovered path (item 4)
+
+`isOurNode()` reads one flag set from our emitter marker and knows nothing
+about product types, so it cannot treat a gift card differently. The question
+that mattered was whether our block renders on that page at all, and it was
+settled by reading the live page rather than by reasoning about templates.
+`https://republicabio.ro/products/card-cadou-republica-bio`, read 12 September
+2026: our block is present, it emitted a Product node body carrying name, url,
+image, brand and sku, and our own Liquid error at line 397 lands inside that
+script, so the JSON never parses. Four JSON-LD scripts on the page - our
+Organization, our FAQPage and the theme's BreadcrumbList all parse; the fourth
+is ours and does not.
+
+A gift card product's template suffix does not matter either: `template.name`
+carries the name without the suffix, so the block's guard
+`template.name == 'product'` holds. **The deploy-then-rescan plan is
+trustworthy for that exact page.**
+
+### The three pages reconciled, page by page (item 5)
+
+They are the same three, with one cause, and not a different set:
+
+| Page | Aggregate scan, 12 Sep 03:51 | Live read, 12 Sep 08:03 | Cause |
+|---|---|---|---|
+| miere-de-manuka-...-mgo-300-... | 200, app block present, Product nodes ours=0 theirs=0, 2 nodes (Organization, BreadcrumbList) | our Liquid error, line 397 | ours |
+| miere-de-manuka-...-mgo-525-... | 200, app block present, Product nodes ours=0 theirs=0, 2 nodes (Organization, BreadcrumbList) | our Liquid error, line 397 | ours |
+| card-cadou-republica-bio | 200, app block present, Product nodes ours=0 theirs=0, 2 nodes (Organization, BreadcrumbList) | our Liquid error, line 397 | ours |
+
+182 pages read, 3 with no Product node, and these are the 3. The single-page
+theme scan reads card-cadou-republica-bio, correctly saw no Product node of
+ours on it, and wrote `ourProductNode: false` - which is how one broken page
+switched `additionalProperty` off for all 189 products.
+
+`scripts/read-node-gaps.ts` now prints `ourLiquidError` per page, which was
+stored on the B1 finding's detail and readable nowhere. **Absent is printed as
+absent and never defaulted to false:** the detector shipped in batch 5, which
+is committed and not deployed, so every row the nightly scan wrote predates it
+and carries no such key. The first version of that line defaulted, and read
+"our block rendered cleanly" on exactly the three pages where it had not.
+
+### The one product that stands for the store is pinned (item 6)
+
+`sortKey: ID` is now explicit on every query that picks a single published
+product to represent the whole store. It was resting on an implicit default
+twice over: ID ascending is the connection's documented default, and a
+connection given a `query:` argument can sort by RELEVANCE instead. ID
+ascending is stable under normal catalogue growth - a new product gets a
+higher ID and never sorts first - so the chosen page changes only when the
+current lowest-ID published product is unpublished or deleted.
+
+The class is closed rather than the one instance named. Five such queries
+exist and all five are pinned: `app.diagnostics.tsx:69`, `app.seo.tsx:117`
+(the theme scan, which writes `ourProductNode`),
+`webhooks.themes.publish.tsx:43`, `worker/tasks.ts:238` and
+`worker/tasks.ts:812`. The sixth `products(first: 1, ...)` in the repo,
+`app.plans.tsx:56`, is deliberately untouched: it sorts `UPDATED_AT` reverse
+on purpose, because it wants the most recently changed product rather than a
+representative one.
+
+### The rescan says when our own block broke the page (item 7)
+
+**There is no general staleness signal, and none was invented.** Checked live
+on 12 September 2026: the page carries no app version marker of ours, and the
+response headers carry nothing usable either - `cdn-cache-control no-store`,
+`cf-cache-status DYNAMIC`, `server-timing` showing the page was rendered on
+the request, and an `etag` keyed on Shopify's internal page cache and on
+nothing we control. A general marker would have to be printed by the block
+itself, which is a decision and is in the list below.
+
+What does exist is specific and was already computed one layer away.
+`ourLiquidError` is now recorded by the theme scan on the page it reads, and
+the scan result states it as a critical finding naming both readings, so
+nobody concludes from one scan that the deploy failed: if a fix was just
+deployed the page may still be the render the storefront was serving before,
+and if a second scan a minute later still says it, it is a live fault. The
+severity is critical because the cost is measured: this exact error, on the
+one page the scan reads, switched `additionalProperty` off for all 189
+products.
+
+`ourLiquidError` moved from `seo-page.server.ts` to `theme-scan.server.ts` so
+both readers share one regex; the old module re-exports it, so all four
+existing assertions and every import are untouched. Tested through `scanPage`
+with a stubbed fetch, on the markup the live gift card page actually carries.
+
+---
+
 The fifth batch, 12 September 2026, built from `CC-PROMPT-BATCH-5.md`, one
 commit per item, in the order of the prompt. Not pushed and not deployed.
 
