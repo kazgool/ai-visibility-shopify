@@ -166,16 +166,46 @@ export function isFigure(word: string): boolean {
 }
 
 /**
- * A capture that ends on a figure has lost the noun the figure measured:
- * "contains approximately 140mg" drops "of caffeine per 6oz serving", and
- * under Ingredients it no longer says 140 mg of what. 107 errors of 4,091.
+ * A capture that ends on a figure AND was cut short has lost the noun the
+ * figure measured: "contains approximately 140mg" drops "of caffeine per 6oz
+ * serving", and under Ingredients it no longer says 140 mg of what. 107
+ * errors of 4,091.
+ *
+ * `truncated` is batch 6 item 2, and it is the whole rule, not a refinement.
+ * As shipped in batch 5 this dropped every multi-word capture ending in a
+ * figure, cut or not, which is a different and much broader rule than the one
+ * the error class describes. Two shapes it removed with the noise:
+ *
+ *   "produsul contine 250g"     a net weight stated inside a whole sentence.
+ *                               Nothing is missing; the merchant said it and
+ *                               stopped. 250 g of the product is the answer.
+ *   "marime disponibila 5xl"    not a measurement at all. "5XL" is a size
+ *                               code, and "XL" is not a unit that leaves a
+ *                               noun dangling behind it.
+ *
+ * The loss is the silent kind DICTIONARY-PORT section 10.1 says to prefer the
+ * noise to, so the figure-ending shape alone no longer decides. What decides
+ * is evidence that the sentence carries on past the figure: the capture was
+ * cut at a connector, or the three-word window ran out mid-sentence.
+ *
+ * Measured reach, batch 6, and it is zero: across all 5,998 corpus products
+ * NO capture reaches this test with a figure-and-unit last word, before the
+ * change or after it. Two guards earlier in the same loop take them first - a
+ * capture whose first word is a digit is refused outright (762 of those, all
+ * in Valori nutritionale, Concentratie and the ingredient groups), and a
+ * stopword first word is refused too, which is what "contains approximately
+ * 140mg" actually hits. The groups where a pack weight really lives - Gramaj,
+ * Cantitate pachet - are `* term` groups read by counted(), a path that never
+ * runs this rule. So this correction moves no published value on the corpus
+ * today; it stops a rule that was broader than its own description from
+ * costing values the first time a dictionary does reach it.
  *
  * Only the END of the capture. A figure in the middle is a value with its
  * noun still attached ("2 kg bag"), and a capture that is only a figure is
  * already refused by isUsablePhrase.
  */
-export function endsOnLooseFigure(words: string[]): boolean {
-  return words.length > 1 && isFigure(words[words.length - 1]);
+export function endsOnLooseFigure(words: string[], truncated: boolean): boolean {
+  return truncated && words.length > 1 && isFigure(words[words.length - 1]);
 }
 
 /**

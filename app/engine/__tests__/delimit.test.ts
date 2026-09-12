@@ -135,18 +135,30 @@ describe("rule 4: a figure with nothing saying what it measures", () => {
   // deathwishcoffee.com, Ingredients: "contains approximately 140mg", cut
   // before "of caffeine per 6oz serving".
   it("refuses a capture that ends on a figure carrying a unit", () => {
-    expect(endsOnLooseFigure(["contains", "approximately", "140mg"])).toBe(true);
+    expect(endsOnLooseFigure(["contains", "approximately", "140mg"], true)).toBe(true);
   });
 
   // The narrowing abbreviations.test.ts forced: a plain integer at the end is
   // usually a number the merchant meant, and dropping those removed value
   // with the noise.
   it("leaves a notification number alone, because it has no unit", () => {
-    expect(endsOnLooseFigure(["notificat", "de", "snpmaps", "1378"])).toBe(false);
+    expect(endsOnLooseFigure(["notificat", "de", "snpmaps", "1378"], true)).toBe(false);
   });
 
   it("leaves a figure that still has its noun after it", () => {
-    expect(endsOnLooseFigure(["2kg", "bag"])).toBe(false);
+    expect(endsOnLooseFigure(["2kg", "bag"], true)).toBe(false);
+  });
+
+  // Batch 6 item 2. Truncation is the rule, not a refinement of it. As
+  // shipped in batch 5 the shape alone decided, and the shape alone is also
+  // what a whole sentence looks like when the merchant simply stopped there.
+  it("publishes a figure the merchant's own sentence ended on", () => {
+    // republicabio.ro, Gramaj and Cantitate pachet: a net weight stated and
+    // finished, with nothing cut off after it.
+    expect(endsOnLooseFigure(["contine", "250g"], false)).toBe(false);
+    // A size code, where the short suffix is not a unit and no noun is
+    // missing behind it.
+    expect(endsOnLooseFigure(["disponibila", "5xl"], false)).toBe(false);
   });
 
   // rusticart.ro, Dimensions: "16cm, 8cm, 15cm" - the mattress offset, the

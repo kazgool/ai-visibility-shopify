@@ -333,17 +333,26 @@ function prefixCapture(
     // went out as a key ingredient, which is the opposite of an ingredient.
     if (containsNegator(kept, negators)) continue;
 
-    // Batch 5 item 6, rule 4. A capture that ends on a figure has lost the
-    // noun the figure measured: "contains approximately 140mg" drops "of
-    // caffeine per 6oz serving" and no longer says 140 mg of what.
-    if (endsOnLooseFigure(kept)) continue;
-
     // Batch 5 item 6, rule 5. The window is three words. When all three were
     // taken and the sentence carries straight on, this is not a value, it is
     // the first three words of a phrase: "with our new nourishing", "for
     // ladies could". A capture that ended at punctuation, at a connector or
     // at the end of the sentence ended where the merchant ended it.
     const window = cutByWindow(text, match.index! + match[0].length, kept.length === words.length);
+
+    // The two ways this capture can be the first half of something longer:
+    // a connector stopped it short of what the regex matched, or the window
+    // ran out while the sentence carried on. Rule 4 reads it; rule 5 is the
+    // second half of it on its own.
+    const truncated = kept.length < words.length || window;
+
+    // Batch 5 item 6, rule 4, corrected in batch 6 item 2. A capture that
+    // ends on a figure AND was cut short has lost the noun the figure
+    // measured: "contains approximately 140mg" drops "of caffeine per 6oz
+    // serving" and no longer says 140 mg of what. Uncut, it is the merchant's
+    // own whole statement - "produsul contine 250g" - and is published.
+    if (endsOnLooseFigure(kept, truncated)) continue;
+
     if (window) continue;
 
     // Batch 5 item 6, rule 6. Under a safety label a fragment is not a
