@@ -135,12 +135,22 @@ export const ALL_FAQ_SOURCES: readonly FaqSource[] = [
 
 /**
  * Section intents (b) on the live site, safety included: off, behind this one
- * switch (CC-PROMPT-AI-READABILITY-4 item 4c). Hold-out run 4 judged them at
- * 9.76% (section) and 9.86% (section:safety) against a 1% bar. Turned on only
- * once they pass the hold-out bar on their own; the corpus runs ask for them
- * whatever this says. While off, rubric rule 6 (a safety section with no
- * safety question) does not apply to the live list: it is not the page's
- * safety surface.
+ * switch (CC-PROMPT-AI-READABILITY-4 item 4c). Turned on only once they pass
+ * the bar on their own; the corpus runs ask for them whatever this says.
+ * While off, rubric rule 6 (a safety section with no safety question) does not
+ * apply to the live list: it is not the page's safety surface.
+ *
+ * Re-read over every section Q&A judged (batch 5 item 9): 273 errors of
+ * 4,088, 6.68%. The bar is 1% per store with 50 or more Q&A, and one store of
+ * thirteen meets it (e-ring.ro, 0/52). Worst: deathwishcoffee.com 43.86%,
+ * jlab.com 42.19%, herbaris.ro 11.89%. By intent, composition 18.50%.
+ *
+ * The two classes batch 5 expected to find are 4 errors and 0 errors
+ * respectively: the dropped bound is four rows of one store, and a safety
+ * heading answered from an unrelated section does not occur once in the
+ * corpus. The real classes are an answer cut so it no longer answers (22.0%)
+ * and a multi-item pack answered with one item's data (17.6%). Full working
+ * in _shopify/corpus/section-intents-classified.md.
  */
 export const FAQ_SECTION_INTENTS_LIVE = false;
 
