@@ -217,9 +217,13 @@ export const extract_product: Task = async (payload, helpers) => {
   );
 };
 
+// `sortKey: ID` is explicit for the reason written out in full over
+// FIRST_PRODUCT in app/routes/app.diagnostics.tsx (batch 6 item 6): this picks
+// the ONE product that stands for the store, and it was resting on an implicit
+// default that a `query:` argument can change to RELEVANCE.
 const FIRST_ONLINE_PRODUCT = `#graphql
   query FirstOnlineProduct {
-    products(first: 1, query: "published_status:published") {
+    products(first: 1, sortKey: ID, query: "published_status:published") {
       nodes { onlineStoreUrl }
     }
   }
@@ -790,9 +794,10 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
   }
 };
 
+// Same as FIRST_ONLINE_PRODUCT above, and pinned for the same reason.
 const FIRST_ONLINE_PRODUCT_SEO = `#graphql
   query FirstOnlineProductSeoWatch {
-    products(first: 1, query: "published_status:published") {
+    products(first: 1, sortKey: ID, query: "published_status:published") {
       nodes { onlineStoreUrl }
     }
   }

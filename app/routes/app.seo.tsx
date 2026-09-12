@@ -96,9 +96,13 @@ import { isQueueStale, isQueueUsable, seoFieldMetric } from "../services/seo-que
 // screen's primary structure - three earlier versions led with tabs and were
 // rejected for exactly that reason.
 
+// `sortKey: ID` is explicit for the reason written out in full over
+// FIRST_PRODUCT in app/routes/app.diagnostics.tsx (batch 6 item 6): this picks
+// the ONE product that stands for the store, and it was resting on an implicit
+// default that a `query:` argument can change to RELEVANCE.
 const FIRST_PRODUCT = `#graphql
   query FirstOnlineProductSeo {
-    products(first: 1, query: "published_status:published") {
+    products(first: 1, sortKey: ID, query: "published_status:published") {
       nodes {
         id
         handle

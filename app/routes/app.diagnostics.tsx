@@ -48,9 +48,25 @@ import type { DiagnosticsHitRow } from "../services/crawler-hits.server";
 // not, why. Status codes alone are useless to a non-technical reader, so every
 // result carries a plain-language cause.
 
+// Batch 6 item 6. `sortKey: ID` is explicit, and it has to be. Every one of
+// these queries picks ONE product to stand for the store, so which product it
+// is decides what a whole catalogue is told about itself - on Republica BIO
+// the choice landed on card-cadou-republica-bio and switched additionalProperty
+// off for all 189 products. ID ascending is the documented default and is
+// stable under normal catalogue growth: a new product gets a higher ID and
+// never sorts first, so the page only changes when the current lowest-ID
+// published product is unpublished or deleted. It was resting on an implicit
+// default twice over, because a connection given a `query:` argument can
+// default to RELEVANCE rather than to the connection's own default. Relying on
+// either without saying so is the kind of dependency that changes underneath a
+// release and looks like our bug.
+//
+// This pins the choice; it does not defend it. Whether one arbitrary page
+// should decide this at all is the open decision in the batch 6 handover,
+// section D.
 const FIRST_PRODUCT = `#graphql
   query FirstOnlineProduct {
-    products(first: 1, query: "published_status:published") {
+    products(first: 1, sortKey: ID, query: "published_status:published") {
       nodes { onlineStoreUrl handle title }
     }
   }

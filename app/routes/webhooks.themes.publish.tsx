@@ -22,9 +22,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const themeId = String((payload as { id?: number })?.id ?? "current");
 
   // One product page is enough to tell what the theme emits.
+  // `sortKey: ID` is explicit for the reason written out in full over
+  // FIRST_PRODUCT in app/routes/app.diagnostics.tsx (batch 6 item 6): this picks
+  // the ONE product that stands for the store, and it was resting on an implicit
+  // default that a `query:` argument can change to RELEVANCE.
   const res = await admin.graphql(`#graphql
     query FirstOnlineProduct {
-      products(first: 1, query: "published_status:published") {
+      products(first: 1, sortKey: ID, query: "published_status:published") {
         nodes { onlineStoreUrl }
       }
     }
