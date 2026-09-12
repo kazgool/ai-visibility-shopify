@@ -143,6 +143,25 @@ published. What you typed is saved; it is published the next time this screen
 can read your currency." The shop id is still required - there is nothing to
 write the metafield to without it.
 
+### The Google listings card's delivery row counts what is published
+
+The card keeps only what this app publishes (batch 3 addendum item 14), and
+the delivery row was the one that did not: it counted whether the Business
+screen's delivery fields had text in them. Since item 2, text and published
+figures are two different things - "call us", a price per kilogram, a text
+mixing two currencies are all filled in and all publish nothing - so the row
+read "in place" over product pages carrying no shipping data at all. It now
+counts `offerShippingPublished`, the same rule the storefront block applies:
+a rate or a free-delivery threshold on the shop's policy, or a delivery time
+read into days. A shop that typed something we cannot read gets a row at zero
+and a note saying the line under the field on the Business screen explains
+which part and why, because a row that only says no is an alarm, not an
+answer. The shop-wide item is unchanged and still asks the other question -
+whether the field was filled in at all. `BusinessReadiness` is now a named
+exported type carrying both (`deliveryStated`, `deliveryPublished`,
+`returnsStated`): 29 hits in 8 files, 13 of them object literals that had to
+gain the field, all but one in tests.
+
 ## Pushed and tagged 11 September 2026 (deploy-2026-09-11-2, at e357304)
 
 The version number the Developer Dashboard shows for this deploy goes in

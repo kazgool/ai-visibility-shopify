@@ -19,7 +19,8 @@ import { presentJob } from "./job-stale";
 import type { CollectionSeoQueue } from "./seo-collections.server";
 import type { FactsRow } from "./seo-since";
 import type { FindingsAggregate, ThemeNodeAggregate } from "./seo-aggregate";
-import type { Readiness } from "./seo-readiness";
+import type { BusinessReadiness, Readiness } from "./seo-readiness";
+import { offerShippingPublished } from "./delivery-parse";
 
 const PRIMARY_DOMAIN = `#graphql
   query PrimaryDomainSeoDashboard {
@@ -35,7 +36,7 @@ export type SeoDashboardSource = {
   budget: number;
   blockedBy: string | null;
   since: { before: FactsRow | null; today: FactsRow | null };
-  business: { deliveryStated: boolean; returnsStated: boolean } | null;
+  business: BusinessReadiness | null;
   blogPosts: { read: number; withoutLinks: number } | null;
   collections: CollectionSeoQueue | null;
   /**
@@ -125,6 +126,11 @@ export async function readSeoDashboardSource(
           deliveryStated: Boolean(
             (business.deliveryTime ?? "").trim() || (business.deliveryCost ?? "").trim(),
           ),
+          // What the storefront block actually publishes from this record, by
+          // the same rule the block applies (delivery-parse.ts). Text typed
+          // and text published are two different facts and the two screens
+          // ask different ones of them.
+          deliveryPublished: offerShippingPublished(business),
           returnsStated: typeof business.returnDays === "number" && business.returnDays > 0,
         }
       : null,

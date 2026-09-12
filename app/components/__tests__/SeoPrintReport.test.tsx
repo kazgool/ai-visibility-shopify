@@ -177,7 +177,7 @@ const STORES: [string, Extract<SeoDashboardData, { unlocked: true }>][] = [
   [
     "189 products",
     data(oneEightyNine(), {
-      business: { deliveryStated: false, returnsStated: false },
+      business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
       since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current", withBarcode: 4 }) },
       published: {
         at: DAY,
@@ -471,7 +471,7 @@ const TWELVE: [string, Extract<SeoDashboardData, { unlocked: true }>][] = [
   [
     "every code at once",
     data(everyCode(), {
-      business: { deliveryStated: false, returnsStated: false },
+      business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
       since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current" }) },
       published: {
         at: DAY,
@@ -509,7 +509,7 @@ const TWELVE: [string, Extract<SeoDashboardData, { unlocked: true }>][] = [
     data(fiftyProducts(), {
       collections: collectionsQueue(),
       blogPosts: { read: 9, withoutLinks: 2 },
-      business: { deliveryStated: true, returnsStated: true },
+      business: { deliveryStated: true, deliveryPublished: true, returnsStated: true },
       since: {
         before: facts({ products: 50, findingsByCode: { B17: 12 } }),
         today: facts({
@@ -708,7 +708,7 @@ describe("the printed page, read on paper", () => {
     return rows;
   };
   const shopWideValue = data(shopWide(), {
-    business: { deliveryStated: true, returnsStated: true },
+    business: { deliveryStated: true, deliveryPublished: true, returnsStated: true },
     since: {
       before: null,
       today: facts({

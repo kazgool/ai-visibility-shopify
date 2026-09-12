@@ -445,7 +445,7 @@ describe("Google's free product listings", () => {
   it("counts what was measured, labels brand as recommended, and has no barcode or condition row", () => {
     const listing = listingReadiness(
       { products: 189, withVendor: 189, withImage: 171, withBarcode: 0 },
-      { deliveryStated: false, returnsStated: false },
+      { deliveryStated: false, deliveryPublished: false, returnsStated: false },
       189,
     );
     const by = new Map(listing.properties.map((p) => [p.key, p]));
@@ -456,6 +456,39 @@ describe("Google's free product listings", () => {
     expect(by.get("condition")).toBeUndefined();
     expect(listing.inPlace).toBe(5);
     expect(listing.total).toBe(8);
+  });
+
+  // The row is about what reaches Google, not about the field being typed in.
+  it("counts the delivery row as published, not as filled in", () => {
+    const facts = { products: 10, withVendor: 10, withImage: 10, withBarcode: 0 };
+    const typedAndPublished = listingReadiness(
+      facts,
+      { deliveryStated: true, deliveryPublished: true, returnsStated: false },
+      10,
+    );
+    expect(typedAndPublished.properties.find((p) => p.key === "delivery")).toMatchObject({
+      have: 10,
+      of: 10,
+    });
+    expect(typedAndPublished.properties.find((p) => p.key === "delivery")!.note).toBeUndefined();
+
+    // "Call us", a price per kilogram, two currencies: typed, unreadable.
+    const typedOnly = listingReadiness(
+      facts,
+      { deliveryStated: true, deliveryPublished: false, returnsStated: false },
+      10,
+    );
+    const row = typedOnly.properties.find((p) => p.key === "delivery")!;
+    expect(row).toMatchObject({ have: 0, of: 10 });
+    expect(row.note).toMatch(/Filled in on the Business screen/);
+    expect(row.note).not.toMatch(/Not filled in yet/);
+
+    const empty = listingReadiness(
+      facts,
+      { deliveryStated: false, deliveryPublished: false, returnsStated: false },
+      10,
+    );
+    expect(empty.properties.find((p) => p.key === "delivery")!.note).toMatch(/Not filled in yet/);
   });
 
   it("says the catalogue has not been read rather than showing ten zeros", () => {
@@ -558,7 +591,7 @@ describe("the Google listing card answers from the same source as the rest of th
   it("keeps the headline count and the method line from ever disagreeing", () => {
     const listing = listingReadiness(
       { products: 189, withVendor: 189, withImage: 171, withBarcode: 0 },
-      { deliveryStated: false, returnsStated: false },
+      { deliveryStated: false, deliveryPublished: false, returnsStated: false },
       189,
     );
     const method = listingMethod(listing, SCREEN);
@@ -1048,7 +1081,7 @@ describe("the language rule of the merchant dashboard", () => {
       listingMethod(
         listingReadiness(
           { products: 189, withVendor: 189, withImage: 171, withBarcode: 0 },
-          { deliveryStated: false, returnsStated: false },
+          { deliveryStated: false, deliveryPublished: false, returnsStated: false },
           189,
         ),
         SCREEN,

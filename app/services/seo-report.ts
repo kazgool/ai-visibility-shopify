@@ -40,6 +40,7 @@ import {
   shopWideMethod,
   shopWideScope,
   unreadSentence,
+  type BusinessReadiness,
   type ListingBasis,
   type ListingReadiness,
   type Readiness,
@@ -70,7 +71,7 @@ export type DashboardSource = {
    */
   blockedBy: string | null;
   since: { before: FactsRow | null; today: FactsRow | null };
-  business: { deliveryStated: boolean; returnsStated: boolean } | null;
+  business: BusinessReadiness | null;
   published: {
     at: string | null;
     reasons: { nodeType: string; emitted: boolean; reason: string | null }[];

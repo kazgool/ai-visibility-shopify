@@ -1240,6 +1240,24 @@ export type ListingReadiness = {
   unmeasured: boolean;
 };
 
+/**
+ * What the Business screen gives the two screens that read it. The delivery
+ * answer is two different questions and they are asked in two places, so both
+ * are carried rather than one standing in for the other:
+ *
+ * - `deliveryStated` is whether the merchant typed anything. The shop-wide
+ *   item says "not filled in yet", which is about the field.
+ * - `deliveryPublished` is whether what they typed reaches Google - a rate or
+ *   a free-delivery threshold on the shop's policy, or a delivery time read
+ *   into days (`offerShippingPublished`). The Google listings card counts
+ *   only what this app publishes, so that row is this one.
+ */
+export type BusinessReadiness = {
+  deliveryStated: boolean;
+  deliveryPublished: boolean;
+  returnsStated: boolean;
+};
+
 export function listingReadiness(
   facts: {
     products: number;
@@ -1247,7 +1265,7 @@ export function listingReadiness(
     withImage: number;
     withBarcode: number;
   } | null,
-  business: { deliveryStated: boolean; returnsStated: boolean } | null,
+  business: BusinessReadiness | null,
   /** Products source A has read, from the same source as the rest of the screen. */
   catalogueRead: number,
 ): ListingReadiness {
@@ -1328,14 +1346,30 @@ export function listingReadiness(
       ...(of === null ? { note: "Your products have not been read yet." } : {}),
     },
     {
+      // This row counts what actually reaches Google, not what was typed. The
+      // card is a list of the details this app publishes, so a delivery text
+      // we could not read into a price or a number of days - "call us", a
+      // price per kilogram, two currencies - is not this row in place; it is
+      // a row that reads "in place" beside a product page carrying no
+      // shipping data at all. The Business screen's own line says which part
+      // of the text is published and why the rest is not, so the merchant has
+      // somewhere to go from here (CC-PROMPT-AI-READABILITY-4 items 2b, 4).
       key: "delivery",
       label: "Delivery cost and time",
       requirement: "recommended",
       basis: "fromBusiness",
-      have: fromBusiness(business ? business.deliveryStated : null),
+      have: fromBusiness(business ? business.deliveryPublished : null),
       of,
       ...(business && of !== null
-        ? {}
+        ? business.deliveryPublished
+          ? {}
+          : business.deliveryStated
+            ? {
+                note:
+                  "Filled in on the Business screen, but nothing in it can be published: the line " +
+                  "under the field there says why, and rewording the text is enough to fix it.",
+              }
+            : { note: "Not filled in yet on the Business screen in this app." }
         : { note: "Not filled in yet on the Business screen in this app." }),
     },
     {

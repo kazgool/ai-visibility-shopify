@@ -205,7 +205,7 @@ describe("a 189-product shop with one problem on every product", () => {
   const text = render(
     data(rows, {
       since: { before: facts(), today: facts({ takenAt: DAY, metaTitleSet: 189, pagesRead: 189 }) },
-      business: { deliveryStated: false, returnsStated: false },
+      business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
     }),
   );
 
@@ -394,7 +394,7 @@ describe("the layout the admin iframe has room for", () => {
   // in this screen are lg and not md.
   const stores: [string, SeoDashboardData][] = [
     ["50 products", data(fiftyProducts())],
-    ["189 products", data(oneEightyNine(), { business: { deliveryStated: false, returnsStated: false } })],
+    ["189 products", data(oneEightyNine(), { business: { deliveryStated: false, deliveryPublished: false, returnsStated: false } })],
     ["20,000 products", data(twentyThousand())],
     ["empty", data([])],
     ["page read never ran", data(pageReadNeverRan())],

@@ -167,7 +167,7 @@ const STORES: [string, DashboardSource][] = [
   [
     "189 products",
     source(oneEightyNine(), {
-      business: { deliveryStated: false, returnsStated: false },
+      business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
       since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current", withBarcode: 4 }) },
     }),
   ],
@@ -454,7 +454,7 @@ describe("no spreadsheet points at anything (root cause A, R2-03, R2-05)", () =>
     /\bthe line above\b/,
   ];
   const withSnapshot = source(oneEightyNine(), {
-    business: { deliveryStated: false, returnsStated: false },
+    business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
     since: { before: facts(), today: facts({ takenAt: DAY, takenBy: "current", withBarcode: 4 }) },
   });
   const all: [string, DashboardSource, ScanRowLike[]][] = [
@@ -504,7 +504,7 @@ describe("the vocabulary guard covers all five merchant files (R1 4.2)", () => {
     rows.push(row(i, i === 0 ? codes : ["B6", ...codes.filter((_, n) => n % 3 === i % 3)]));
   }
   const data = source(rows, {
-    business: { deliveryStated: false, returnsStated: false },
+    business: { deliveryStated: false, deliveryPublished: false, returnsStated: false },
     since: {
       before: facts({ findingsByCode: { A1: 12, B17: 4 } }),
       today: facts({ takenAt: DAY, takenBy: "current", findingsByCode: { A1: 12, B17: 2 } }),
@@ -567,7 +567,7 @@ describe("the shop-wide export", () => {
     const rows: ScanRowLike[] = [];
     for (let i = 0; i < 12; i += 1) rows.push(row(i, ["B6"]));
     const data = source(rows, {
-      business: { deliveryStated: true, returnsStated: false },
+      business: { deliveryStated: true, deliveryPublished: true, returnsStated: false },
       since: { before: null, today: facts({ products: 50, withBarcode: 0 }) },
     });
     const derived = dashboardDerived(data);

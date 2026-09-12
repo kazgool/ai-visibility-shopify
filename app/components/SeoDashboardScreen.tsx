@@ -69,6 +69,7 @@ import {
   shopWideCrossReference,
   shopWideMethod,
   unreadSentence,
+  type BusinessReadiness,
   type GroupView,
   type ListingProperty,
   type Readiness,
@@ -112,7 +113,7 @@ export type SeoDashboardData =
       budget: number;
       blockedBy: string | null;
       since: { before: FactsRow | null; today: FactsRow | null };
-      business: { deliveryStated: boolean; returnsStated: boolean } | null;
+      business: BusinessReadiness | null;
       blogPosts: { read: number; withoutLinks: number } | null;
       collections: CollectionSeoQueue | null;
       published: {
