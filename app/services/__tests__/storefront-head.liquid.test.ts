@@ -245,4 +245,53 @@ describe("a review app's metafields, whatever type it wrote them as", () => {
     );
     expect(ourNodes(html, "Product")[0].aggregateRating).toBeUndefined();
   });
+
+  // Batch 6 item 3. The gap batch 5's coercion left open. A Romanian review
+  // app writes the rating with a decimal comma, and `plus: 0` does not refuse
+  // it the way it refuses text: Shopify's Liquid reads the digits it
+  // understands and stops, so "4,5" became 4. That publishes a WRONG rating
+  // instead of none, which is the opposite direction from the one the fix
+  // claimed to fail in.
+  //
+  // The harness is liquidjs, not Ruby Liquid, and on this input the two
+  // disagree about the SYMPTOM: liquidjs makes "4,5" NaN and publishes no
+  // rating, where Shopify publishes 4. So this test cannot show the wrong
+  // rating a shopper would have seen; what it pins is the outcome both
+  // engines must reach after the fix, and it fails on both without it
+  // (checked by reverting the filter chain: "expected undefined to match
+  // object { ratingValue: 4.5 }").
+  it("reads a rating written with a decimal comma as the number it states", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({
+        settings,
+        data: DATA,
+        themeScan: noTheme,
+        reviews: { rating: { value: { value: "4,5" } }, rating_count: { value: "12" } },
+      }),
+    );
+    expect(ourNodes(html, "Product")[0].aggregateRating).toMatchObject({
+      ratingValue: 4.5,
+      reviewCount: 12,
+    });
+  });
+
+  // Same item, the symmetry half: the count now reads .value.value before
+  // .value, as the rating value always has, because a review app is free to
+  // define either metafield as a composite type.
+  it("reads a count a review app nested one level deeper", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({
+        settings,
+        data: DATA,
+        themeScan: noTheme,
+        reviews: { rating: { value: { value: "4.7" } }, rating_count: { value: { value: 12 } } },
+      }),
+    );
+    expect(ourNodes(html, "Product")[0].aggregateRating).toMatchObject({
+      ratingValue: 4.7,
+      reviewCount: 12,
+    });
+  });
 });
