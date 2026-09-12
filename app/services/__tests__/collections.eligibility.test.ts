@@ -90,10 +90,7 @@ describe("buildForCollection", () => {
   });
 });
 
-describe("writeCollections withdraws a table the pass no longer produces", () => {
-  // QA of 3 September 2026, wave fix 1. End of season: every member of a
-  // collection goes draft. The pass builds no table, and before this the old
-  // one stayed in the metafield with a link to a 404 per row, for ever.
+describe("writeCollections preserves omissions for review", () => {
   function calls() {
     const seen: { mutation: string; vars: any }[] = [];
     const graphql = async (query: string, vars: any) => {
@@ -111,7 +108,7 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
     rows: [{ handle: "gone", title: "gone", values: ["oak"] }],
   });
 
-  it("deletes an auto-written table when every member has left the store", async () => {
+  it("keeps an auto-written table when every member has left and reports it", async () => {
     const c = collection([member("gone", { status: "DRAFT" })]);
     c.metafields = [
       { key: "table", value: oldTable },
@@ -121,26 +118,17 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
 
     const [outcome] = await writeCollections(graphql as any, [c], DEFAULT_PREFS);
 
-    expect(outcome.removed).toEqual(["table"]);
+    expect(outcome.removed).toEqual([]);
+    expect(outcome.wouldRemove).toEqual([
+      expect.objectContaining({ field: "table", previousValue: oldTable }),
+    ]);
     expect(outcome.empty).toBe(true);
     const del = seen.find((s) => s.mutation === "delete");
-    expect(del?.vars.metafields).toEqual([
-      { ownerId: c.id, namespace: expect.any(String), key: "table" },
-    ]);
-    // The state entry goes with it, so the next pass does not read a marker
-    // for a value that no longer exists.
-    const state = seen
-      .filter((s) => s.mutation === "set")
-      .flatMap((s) => s.vars.metafields)
-      .find((m: any) => m.key === "state");
-    expect(JSON.parse(state.value).table).toBeUndefined();
+    expect(del).toBeUndefined();
+    expect(seen).toEqual([]);
   });
 
-  it("withdraws every auto field of an empty collection, and writes none", async () => {
-    // 10 September 2026, Republica BIO. The pass read 2,491 collections and
-    // wrote "X has 0 products" as the summary of thirty empty ones, some of
-    // them live pages. The withdrawal above covered the table alone; the
-    // other three fields leaked the same way.
+  it("keeps every auto field of an empty collection and proposes each for review", async () => {
     const c = collection([member("gone", { status: "DRAFT" })]);
     c.metafields = [
       { key: "summary", value: "gone has 0 products." },
@@ -161,12 +149,13 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
 
     expect(outcome.members).toBe(0);
     expect(outcome.written).toEqual([]);
-    expect(outcome.removed.sort()).toEqual(["questions", "summary", "table"]);
+    expect(outcome.removed).toEqual([]);
+    expect(outcome.wouldRemove.map((removal) => removal.field).sort()).toEqual(["questions", "summary", "table"]);
     const setKeys = seen
       .filter((s) => s.mutation === "set")
       .flatMap((s) => s.vars.metafields)
       .map((m: any) => m.key);
-    expect(setKeys).toEqual(["state"]);
+    expect(setKeys).toEqual([]);
   });
 
   it("never deletes a table a human wrote", async () => {
@@ -180,6 +169,7 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
     const [outcome] = await writeCollections(graphql as any, [c], DEFAULT_PREFS);
 
     expect(outcome.removed).toEqual([]);
+    expect(outcome.wouldRemove).toEqual([]);
     expect(outcome.skipped).toContain("table");
     expect(seen.find((s) => s.mutation === "delete")).toBeUndefined();
   });
@@ -191,6 +181,22 @@ describe("writeCollections withdraws a table the pass no longer produces", () =>
     const [outcome] = await writeCollections(graphql as any, [c], DEFAULT_PREFS);
 
     expect(outcome.removed).toEqual([]);
+    expect(outcome.wouldRemove).toEqual([]);
     expect(seen.find((s) => s.mutation === "delete")).toBeUndefined();
+  });
+
+  it("updates an automatic field when the collection has a new concrete capsule", async () => {
+    const c = collection([member("live")]);
+    c.metafields = [
+      { key: "summary", value: "Old automatic summary." },
+      { key: "state", value: JSON.stringify({ summary: { source: "auto", at: "x", engine: "y" } }) },
+    ];
+    const { graphql, seen } = calls();
+
+    const [outcome] = await writeCollections(graphql as any, [c], DEFAULT_PREFS);
+
+    expect(outcome.written).toContain("summary");
+    expect(outcome.wouldRemove).toEqual([]);
+    expect(seen.some((call) => call.mutation === "delete")).toBe(false);
   });
 });

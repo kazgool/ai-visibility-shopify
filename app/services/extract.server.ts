@@ -10,13 +10,23 @@ import {
   buildSummary,
   buildFitFor,
   splitFactsByLevel,
-  type Fact,
 } from "../engine";
+import type { BusinessInfo, Fact, Language } from "../engine";
+
 import { faqSettingsFor } from "./faq-settings.server";
 import { effectivePresetId } from "./faq-settings";
 import { fieldsToWrite, liveQuestions, type LiveQuestionContext } from "./live-questions";
 import { persistedShopName } from "./llms-txt.server";
-import type { FieldValue } from "./facts.server";
+import {
+  ENGINE_VERSION,
+  parseState,
+  preserveDerivedFields,
+  variantWritePlan,
+  writeFacts,
+  writeVariantFacts,
+  hasWithdrawableAutoValues,
+} from "./facts.server";
+import type { FieldValue, ProposedRemoval, ProductInput } from "./facts.server";
 
 import { adminGraphql } from "./admin.server";
 import { beatingGraphql } from "./job-heartbeat";
@@ -28,14 +38,6 @@ import {
   saveShopInfo,
   type ShopInfo,
 } from "./catalogue.server";
-import {
-  ENGINE_VERSION,
-  parseState,
-  writeFacts,
-  writeVariantFacts,
-  hasWithdrawableAutoValues,
-  type ProductInput,
-} from "./facts.server";
 import { humanMerge, humanRowCount, readFacts, type HumanMerge } from "./facts-human";
 import { catalogueQuery, eligibility } from "./eligibility";
 import { prefsFor } from "./eligibility.server";
@@ -51,7 +53,7 @@ import {
 } from "./business.server";
 import { fetchShopLocale } from "./content-language";
 import { formatPrice } from "./price.server";
-import type { BusinessInfo, Language } from "../engine";
+
 
 /**
  * The three companion fields, built from the same facts. Each is written only
@@ -106,6 +108,7 @@ async function cacheMirror(
   business: BusinessRecord | null = null,
   shopInfo: ShopInfo | null = null,
   language: Language = "en",
+  effectiveFields: FieldValue[] = [],
 ) {
   const handle = product.handle;
   if (!handle) return;
@@ -135,15 +138,29 @@ async function cacheMirror(
   // only the fallback for a shop that has never completed a pass.
   const publicBase = shopInfo?.url ?? `https://${domain}`;
 
+  // These fields passed through preserveDerivedFields before this function.
+  // Use the same final values Shopify retains, rather than recomputing an
+  // empty derived value and accidentally serving a different mirror.
+  const field = (key: string, fallback: string) =>
+    effectiveFields.find((candidate) => candidate.key === key)?.value ?? fallback;
+
   const body = renderMirror({
     handle,
     language,
     title: product.title,
     url: product.onlineStoreUrl ?? `${publicBase}/products/${handle}`,
     description: product.descriptionHtml ?? "",
-    summary: buildSummary(capsuleInput),
-    questions: liveQuestions(product, facts, faq),
-    fitFor: buildFitFor(capsuleInput),
+    summary: field("summary", buildSummary(capsuleInput)),
+    questions: (() => {
+      const value = field("questions", JSON.stringify(liveQuestions(product, facts, faq)));
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
+    fitFor: field("fit_for", buildFitFor(capsuleInput)),
     business,
     facts,
     price,
@@ -368,6 +385,8 @@ export type DryRunReport = {
    * looking at the pass working, not at it failing.
    */
   wrote?: { written: number; unchanged: number; protectedRows: number; withdrawn: number };
+  /** Exact automatic values retained by preserve mode for operator review. */
+  wouldRemove?: ProposedRemoval[];
 };
 
 export async function runBulkExtract(
@@ -431,6 +450,7 @@ export async function runBulkExtract(
     complete: catalogue.complete,
     expected: catalogue.expected,
     read: catalogue.read,
+    wouldRemove: [],
     ...(options.dryRun ? {} : { wrote: { written: 0, unchanged: 0, protectedRows: 0, withdrawn: 0 } }),
   };
 
@@ -462,6 +482,7 @@ export async function runBulkExtract(
         if (o.skipped.length > 0) report.wrote.protectedRows += 1;
         if (o.removed.length > 0) report.wrote.withdrawn += 1;
       }
+      report.wouldRemove?.push(...o.wouldRemove);
     }
   };
 
@@ -479,9 +500,9 @@ export async function runBulkExtract(
 
     // Fix: previously guarded by `facts.length > 0` alone, so a full re-run
     // over a product whose description no longer yields anything skipped
-    // writeFacts entirely and never withdrew stale auto values - the same
-    // bug already fixed on the webhook path (extractOneProduct). Widened to
-    // also enter when this product has something written to withdraw,
+    // writeFacts entirely and never reported stale automatic values - the
+    // same hole existed on the webhook path (extractOneProduct). Widened to
+    // also enter when this product has something written to review,
     // checked from metafields already in hand (hasWithdrawableAutoValues),
     // so a product with genuinely nothing ever written and nothing found
     // now still costs nothing extra.
@@ -505,6 +526,35 @@ export async function runBulkExtract(
       ENGINE_VERSION,
     );
     if (humanRowCount(merge.human) > 0) report.wouldSkip += 1;
+    const generatedFields = capsuleFields(product, merge.facts, faqCtx);
+    const effectiveFields = preserveDerivedFields(product, generatedFields);
+
+    // A dry run is the removal preview: it follows the exact same merge and
+    // derived-field policy, but does not call Shopify or alter MirrorCache.
+    if (options.dryRun) {
+      report.wouldRemove?.push(
+        ...merge.wouldRemove.map((removal) => ({
+          ownerId: product.id,
+          ownerType: "product" as const,
+          field: "facts",
+          ...removal,
+        })),
+        ...effectiveFields.wouldRemove,
+      );
+      for (const [variantId, variantFacts] of split.perVariant) {
+        const variant = (product.variants ?? []).find((candidate) => candidate.id === variantId);
+        if (!variant) continue;
+        const plan = variantWritePlan(variant, variantFacts, new Date().toISOString());
+        report.wouldRemove?.push(
+          ...plan.merge.wouldRemove.map((removal) => ({
+            ownerId: variant.id,
+            ownerType: "variant" as const,
+            field: "facts",
+            ...removal,
+          })),
+        );
+      }
+    }
 
     // Every product enters since CC-PROMPT-AI-READABILITY-4 item 4c: its
     // options, its brand and the business record answer buyer questions with
@@ -512,15 +562,15 @@ export async function runBulkExtract(
     // write". fieldsToWrite keeps the rest as it was.
     if (!options.dryRun) {
       // Push into the product-level write when there is something to write
-      // (productFacts) OR something already written to withdraw. The old
+      // (productFacts) OR something already written to review. The old
       // `facts.length === 0` form missed the all-variant-level case: a
       // product whose facts all moved to variants has empty productFacts
       // but nonempty facts, so writeFacts never ran, stale product-level
-      // auto values were never withdrawn, and cacheMirror below (which did
+      // auto values were never reviewed, and cacheMirror below (which did
       // run) diverged from the metafields. A product with empty
       // productFacts and nothing withdrawable is still never pushed - the
       // no-op stays free.
-      const fields = fieldsToWrite(capsuleFields(product, merge.facts, faqCtx), {
+      const fields = fieldsToWrite(generatedFields, {
         facts: merge.facts.length,
         migrated: merge.migrated,
         withdrawable: hasWithdrawableAutoValues(product),
@@ -531,13 +581,14 @@ export async function runBulkExtract(
       }
       if (split.perVariant.size > 0) {
         const variantById = new Map((product.variants ?? []).map((v) => [v.id, v]));
-        await writeVariantFacts(
+        const variantWouldRemove = await writeVariantFacts(
           graphql,
           [...split.perVariant.entries()].map(([id, vFacts]) => ({
             variant: variantById.get(id)!,
             facts: vFacts,
           })),
         );
+        report.wouldRemove?.push(...variantWouldRemove);
       }
     }
 
@@ -558,7 +609,17 @@ export async function runBulkExtract(
     // row one Admin round trip at a time - hundreds of jobs on a large store
     // to produce what the pass had in memory.
     if (!options.dryRun && eligibility(product, prefs) === "eligible") {
-      await cacheMirror(shopId, shop.domain, product, merge.facts, faqCtx, business, shopInfo, language);
+      await cacheMirror(
+        shopId,
+        shop.domain,
+        product,
+        merge.facts,
+        faqCtx,
+        business,
+        shopInfo,
+        language,
+        effectiveFields.fields,
+      );
     }
 
     done += 1;
@@ -663,14 +724,10 @@ export async function extractOneProduct(shopId: string, productGid: string) {
     );
   }
 
-  // The write always happens, even when this pass found nothing to say.
-  // That emptiness is exactly what writeFacts's withdrawal branch is for:
-  // a merchant who rewrites a description to remove the extractable content
-  // must have the stale facts, summary, questions and fit_for retracted,
-  // not left publishing forever because this path returned early before
-  // ever calling writeFacts (the bug). Human-written values are never
-  // touched - writeFacts guards every field on its own provenance, and the
-  // facts row by row (CC-PROMPT-AI-READABILITY-4 item 4b).
+  // The write always happens, even when this pass found nothing to say. That
+  // lets the shared policy record every automatic value a stricter engine no
+  // longer produces, while preserving it until explicit review. Human-written
+  // values remain protected row by row.
   const merge = humanMerge(
     parseState(product),
     readFacts(product.metafields?.find((m) => m.key === "facts")?.value),
@@ -688,7 +745,18 @@ export async function extractOneProduct(shopId: string, productGid: string) {
   ]);
 
   if (isPublished) {
-    await cacheMirror(shopId, shop.domain, product, merge.facts, faqCtx, business, shopInfo, language);
+    const effectiveFields = preserveDerivedFields(product, capsuleFields(product, merge.facts, faqCtx));
+    await cacheMirror(
+      shopId,
+      shop.domain,
+      product,
+      merge.facts,
+      faqCtx,
+      business,
+      shopInfo,
+      language,
+      effectiveFields.fields,
+    );
     if (outcome.written.length > 0 && product.handle) {
       await pingProducts(shopId, shop.domain, [product.handle]);
     }

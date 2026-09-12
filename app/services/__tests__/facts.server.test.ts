@@ -34,8 +34,8 @@ function productWithAutoFacts(overrides: Partial<ProductInput> = {}): ProductInp
   };
 }
 
-describe("writeFacts withdrawal", () => {
-  it("withdraws an auto value when recomputation comes back empty", async () => {
+describe("writeFacts preserve policy", () => {
+  it("keeps auto values when recomputation comes back empty and reports the proposed removal", async () => {
     const product = productWithAutoFacts();
     const { fn } = graphqlMock();
 
@@ -47,10 +47,13 @@ describe("writeFacts withdrawal", () => {
       },
     ]);
 
-    // "facts" itself is always a candidate (JSON.stringify([]) === "[]"),
-    // and the "summary" field was passed explicitly empty - both are
-    // previously-auto values with real existing content, so both withdraw.
-    expect(outcome.removed).toEqual(expect.arrayContaining(["facts", "summary"]));
+    // Both values are automatic and the new engine produced neither, but
+    // preserve mode records that difference instead of issuing a delete.
+    expect(outcome.removed).toEqual([]);
+    expect(outcome.wouldRemove).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "facts", rowKey: "material", previousValue: "lemn" }),
+      expect.objectContaining({ field: "summary", previousValue: "Set masa din lemn." }),
+    ]));
     expect(outcome.written).toEqual([]);
   });
 
@@ -67,7 +70,7 @@ describe("writeFacts withdrawal", () => {
       { product, facts: [], fields: [{ key: "summary", type: "multi_line_text_field", value: "" }] },
     ]);
 
-    expect(outcome.removed).not.toContain("summary");
+    expect(outcome.wouldRemove.find((removal) => removal.field === "summary")).toBeUndefined();
     expect(outcome.skipped).toContain("summary");
   });
 
@@ -163,7 +166,38 @@ describe("writeFacts: protection per row", () => {
     });
     const { fn } = graphqlMock();
     const [outcome] = await writeFacts(fn as any, [{ product, facts: [{ k: "Forma", v: "pulbere" }] }]);
-    expect(outcome.skipped).toContain("facts");
+    // The final writer runs the same safe merge even when a caller forgot to
+    // prepare one, so a direct write cannot restore replacement semantics.
+    expect(outcome.skipped).not.toContain("facts");
+    expect(outcome.unchanged).toContain("facts");
+  });
+
+  it("keeps an omitted auto row while applying concrete updates and additions", async () => {
+    const stored = [
+      { k: "Material", v: "lemn" },
+      { k: "Culoare", v: "gri" },
+    ];
+    const product = productWithAutoFacts({
+      metafields: [
+        { key: "facts", value: JSON.stringify(stored) },
+        { key: "state", value: JSON.stringify({ facts: { source: "auto", at: now } }) },
+      ],
+    });
+    const merge = humanMerge(parseState(product), stored, [
+      { k: "Culoare", v: "negru" },
+      { k: "Dimensiune", v: "120 cm" },
+    ], now, "1.0.0");
+    const { fn, calls } = graphqlMock();
+    const [outcome] = await writeFacts(fn as any, [{ product, facts: merge.facts, human: merge }]);
+
+    expect(factsOf(calls)).toEqual([
+      { k: "Material", v: "lemn" },
+      { k: "Culoare", v: "negru" },
+      { k: "Dimensiune", v: "120 cm" },
+    ]);
+    expect(outcome.wouldRemove).toEqual([
+      expect.objectContaining({ field: "facts", rowKey: "material", previousValue: "lemn" }),
+    ]);
   });
 });
 
@@ -240,5 +274,25 @@ describe("writeVariantFacts: protection per row, the same as products", () => {
       { variant: variant([{ k: "Marime", v: "M" }], { facts: { source: "auto", at: now } }), facts: [{ k: "Marime", v: "M" }] },
     ]);
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("keeps an omitted automatic variant row and reports it for review", async () => {
+    const { fn, calls } = graphqlMock();
+    const removals = await writeVariantFacts(fn as any, [
+      {
+        variant: variant([{ k: "Culoare", v: "gri" }, { k: "Marime", v: "M" }], {
+          facts: { source: "auto", at: now },
+        }),
+        facts: [{ k: "Marime", v: "L" }],
+      },
+    ]);
+
+    expect(written(calls, "facts")).toEqual([
+      { k: "Culoare", v: "gri" },
+      { k: "Marime", v: "L" },
+    ]);
+    expect(removals).toEqual([
+      expect.objectContaining({ ownerType: "variant", rowKey: "culoare", previousValue: "gri" }),
+    ]);
   });
 });

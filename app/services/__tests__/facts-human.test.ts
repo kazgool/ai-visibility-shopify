@@ -53,14 +53,16 @@ describe("mergeFacts: the person's rows over the fresh ones", () => {
   it("keeps a row the person added, which the engine never finds", () => {
     const merged = mergeFacts([{ k: "Gramaj", v: "105 g" }], stored, human("Tara", "Romania"));
     expect(merged).toEqual([
+      { k: "Forma", v: "capsule" },
       { k: "Gramaj", v: "105 g" },
       { k: "Tara", v: "Romania" },
     ]);
   });
 
-  it("drops an automatic row the engine no longer finds, and adds a new one after the stored rows", () => {
+  it("keeps an omitted automatic row and adds a new one after the stored rows", () => {
     const merged = mergeFacts([{ k: "Gramaj", v: "105 g" }, { k: "Ambalaj", v: "cutie" }], stored, {});
     expect(merged).toEqual([
+      { k: "Forma", v: "capsule" },
       { k: "Gramaj", v: "105 g" },
       { k: "Ambalaj", v: "cutie" },
     ]);
@@ -74,10 +76,13 @@ describe("mergeFacts: the person's rows over the fresh ones", () => {
     expect(mergeFacts(fresh, stored, {}).map((f) => f.k)).toEqual(["Forma", "Gramaj"]);
   });
 
-  it("a per-row reset hands the row back to the engine on the next pass", () => {
+  it("a per-row reset accepts a concrete engine correction while preserving other omitted rows", () => {
     const rows = human("Forma", "capsule");
     delete rows[factKey("Forma")];
-    expect(mergeFacts([{ k: "Forma", v: "pulbere" }], stored, rows)).toEqual([{ k: "Forma", v: "pulbere" }]);
+    expect(mergeFacts([{ k: "Forma", v: "pulbere" }], stored, rows)).toEqual([
+      { k: "Forma", v: "pulbere" },
+      { k: "Gramaj", v: "105 g" },
+    ]);
   });
 });
 
@@ -215,10 +220,14 @@ describe("a rule that makes the engine abstain cannot remove a human row", () =>
     expect(merged.facts).toContainEqual({ k: "Alergeni", v: "contine soia si lapte" });
   });
 
-  // The other half of the promise: a row nobody wrote by hand IS withdrawn
-  // when the engine abstains, which is what makes abstention work at all.
-  it("withdraws the engine's own value when it abstains, and only that one", () => {
+  // An automatic row the current engine no longer produces remains visible
+  // until an operator reviews it. The merge exposes it through wouldRemove
+  // rather than treating an omission as a delete instruction.
+  it("keeps the engine's own value when it abstains and proposes it for review", () => {
     const merged = humanMerge(state, stored, [], AT, ENGINE);
-    expect(merged.facts.find((f) => f.k === "Material")).toBeUndefined();
+    expect(merged.facts).toContainEqual({ k: "Material", v: "bumbac" });
+    expect(merged.wouldRemove).toEqual([
+      { rowKey: "material", previousValue: "bumbac", reason: "not-produced-by-new-engine" },
+    ]);
   });
 });

@@ -91,11 +91,11 @@ export function parseState(product: ProductInput): ProductState {
 }
 
 // A product whose description no longer yields anything must still flow
-// through writeFacts, because writeFacts's withdrawal branch is what retracts
-// stale auto-written facts/summary/questions/fit_for. This check is only about
-// cost - deciding whether a zero-fact product is worth pushing into the batch
-// write path at all - answered from `product.metafields`, already fetched, so
-// it adds no new Admin API reads. It lives here rather than in
+// through writeFacts: preserve mode records the values the current engine
+// would remove, without removing them. This check is only about cost -
+// deciding whether a zero-fact product is worth pushing into the batch write
+// path at all - answered from `product.metafields`, already fetched, so it
+// adds no new Admin API reads. It lives here rather than in
 // extract.server.ts so a test can reach it without loading db.server and
 // admin.server, which need environment variables CI does not have.
 const WITHDRAWABLE_KEYS = ["facts", "summary", "questions", "fit_for"] as const;
@@ -136,15 +136,7 @@ const METAFIELDS_SET = `#graphql
   }
 `;
 
-const METAFIELDS_DELETE = `#graphql
-  mutation DeleteFacts($metafields: [MetafieldIdentifierInput!]!) {
-    metafieldsDelete(metafields: $metafields) {
-      userErrors { field message }
-    }
-  }
-`;
-
-/** The metafieldsSet / metafieldsDelete limit per call. */
+/** The metafieldsSet limit per call. */
 const METAFIELDS_PER_CALL = 24;
 
 /**
@@ -218,11 +210,88 @@ export type WriteOutcome = {
   skipped: string[];
   /** Already identical - not written, which is what stops the feedback loop. */
   unchanged: string[];
-  /** Auto-written values whose recomputation came back empty - withdrawn. */
+  /** Kept for report compatibility; safe writer never removes content. */
   removed: string[];
+  /** Values the engine no longer produces, retained until an operator reviews them. */
+  wouldRemove: ProposedRemoval[];
 };
 
 export type FieldValue = { key: string; type: string; value: string };
+
+export type ProposedRemoval = {
+  ownerId: string;
+  ownerType: "product" | "variant";
+  field: string;
+  rowKey?: string;
+  previousValue: string;
+  reason: "not-produced-by-new-engine" | "empty-derived-field";
+};
+
+/** The variant equivalent of the product writer's fact preparation. */
+export function variantWritePlan(
+  variant: VariantInput,
+  facts: Fact[],
+  now: string,
+): { state: ProductState; stored: Fact[]; merge: HumanMerge } {
+  const rawState = variant.metafields?.find((metafield) => metafield.key === "state")?.value;
+  let state: ProductState = {};
+  if (rawState) {
+    try {
+      state = JSON.parse(rawState) as ProductState;
+    } catch {
+      state = {};
+    }
+  }
+  const stored = readFacts(valueOf(variant, "facts"));
+  return { state, stored, merge: humanMerge(state, stored, facts, now, ENGINE_VERSION) };
+}
+
+function isEmpty(value: string): boolean {
+  return value === "" || value === "[]" || value === "{}";
+}
+
+function valueOf(owner: { metafields?: { key: string; value: string }[] }, key: string): string | undefined {
+  return owner.metafields?.find((metafield) => metafield.key === key)?.value;
+}
+
+/**
+ * Resolve derived fields for the public mirror and for the shared writer.
+ *
+ * An absent computation is never a deletion signal. When the existing field
+ * is automatic, the previous value remains the effective value and is put in
+ * `wouldRemove`; a human field likewise remains effective, but does not need
+ * review because it was never ours to remove. This makes the mirror consume
+ * the same final content as Shopify rather than the engine's raw output.
+ */
+export function preserveDerivedFields(
+  product: ProductInput,
+  fields: FieldValue[],
+): { fields: FieldValue[]; wouldRemove: ProposedRemoval[] } {
+  const state = parseState(product);
+  const wouldRemove: ProposedRemoval[] = [];
+  const effective = fields.map((field) => {
+    const current = valueOf(product, field.key);
+    if (isEmpty(field.value) && current && !isEmpty(current)) {
+      if (state[field.key]?.source === "auto") {
+        wouldRemove.push({
+          ownerId: product.id,
+          ownerType: "product",
+          field: field.key,
+          previousValue: current,
+          reason: "empty-derived-field",
+        });
+      }
+      return { ...field, value: current };
+    }
+    // A person owns this one-field value. Rendering their existing text in
+    // the mirror is as important as refusing to overwrite it in Shopify.
+    if (!mayWrite(product, field.key, state) && current && !isEmpty(current)) {
+      return { ...field, value: current };
+    }
+    return field;
+  });
+  return { fields: effective, wouldRemove };
+}
 
 /**
  * Write facts (and refresh state) for a batch of products. metafieldsSet
@@ -249,23 +318,41 @@ export async function writeFacts(
   const outcomes: WriteOutcome[] = [];
   // ownerId is stated in the type because the slicing below groups on it.
   const metafields: { ownerId: string; [key: string]: unknown }[] = [];
-  const deletions: { ownerId: string; [key: string]: unknown }[] = [];
-
-  for (const { product, facts, fields = [], human } of entries) {
+  for (const entry of entries) {
+    const { product, fields = [] } = entry;
     const outcome: WriteOutcome = {
       productId: product.id,
       written: [],
       skipped: [],
       unchanged: [],
       removed: [],
+      wouldRemove: [],
     };
     const state = parseState(product);
     const now = new Date().toISOString();
 
+    // Every caller reaches this choke point. Callers normally supply the
+    // merge so summaries and mirrors can use its final facts too, but the
+    // fallback makes a direct write safe instead of silently restoring the
+    // old replace-the-table behaviour.
+    const storedFacts = readFacts(valueOf(product, "facts"));
+    const merge = entry.human ?? humanMerge(state, storedFacts, entry.facts, now, ENGINE_VERSION);
+    const derived = preserveDerivedFields(product, fields);
+    const facts = merge.facts;
+    outcome.wouldRemove.push(
+      ...merge.wouldRemove.map((removal) => ({
+        ownerId: product.id,
+        ownerType: "product" as const,
+        field: "facts",
+        ...removal,
+      })),
+      ...derived.wouldRemove,
+    );
+
     let touched = false;
-    if (human) {
-      withFactsHuman(state, human.human);
-      if (human.migrated) {
+    if (merge) {
+      withFactsHuman(state, merge.human);
+      if (merge.migrated) {
         // The facts field is the app's to write from here on; the rows a
         // person wrote are protected one by one in factsHuman.
         state.facts = { source: "auto", at: now, engine: ENGINE_VERSION };
@@ -275,7 +362,7 @@ export async function writeFacts(
 
     const candidates: FieldValue[] = [
       { key: "facts", type: "json", value: JSON.stringify(facts) },
-      ...fields,
+      ...derived.fields,
     ];
 
     for (const field of candidates) {
@@ -286,19 +373,21 @@ export async function writeFacts(
         continue;
       }
 
-      const empty = field.value === "" || field.value === "[]" || field.value === "{}";
+      const empty = isEmpty(field.value);
       if (empty) {
-        // A fact that stopped being supported must be withdrawn, not merely
-        // left un-renewed. "Suits: 6 scaune" survived a semantics fix for
-        // weeks this way: the new computation was empty, so nothing was
-        // written, and the stale claim kept publishing. Only auto values are
-        // withdrawn; human text is never deleted.
-        const existing = product.metafields?.find((m) => m.key === field.key)?.value;
+        // Preserve is intentionally enforced at the final writer, rather
+        // than relying on bulk/webhook callers to remember it. `facts` only
+        // stays empty when there was nothing stored; derived fields reach this
+        // branch only when no prior usable value exists.
+        const existing = valueOf(product, field.key);
         if (existing && existing !== "" && state[field.key]?.source === "auto") {
-          deletions.push({ ownerId: product.id, namespace: NAMESPACE, key: field.key });
-          delete state[field.key];
-          outcome.removed.push(field.key);
-          touched = true;
+          outcome.wouldRemove.push({
+            ownerId: product.id,
+            ownerType: "product",
+            field: field.key,
+            previousValue: existing,
+            reason: "empty-derived-field",
+          });
         }
         continue;
       }
@@ -307,7 +396,7 @@ export async function writeFacts(
       // products/update, which queues another extraction, which writes again.
       // Without this check the app feeds itself for ever. Identical output
       // means there is nothing to say, so we say nothing.
-      const current = product.metafields?.find((m) => m.key === field.key)?.value;
+      const current = valueOf(product, field.key);
       if (current === field.value) {
         outcome.unchanged.push(field.key);
         continue;
@@ -346,14 +435,6 @@ export async function writeFacts(
     }
   }
 
-  for (const slice of sliceByOwner(deletions)) {
-    const data = await graphql<any>(METAFIELDS_DELETE, { metafields: slice });
-    const errors = data?.metafieldsDelete?.userErrors ?? [];
-    if (errors.length) {
-      throw new Error(`metafieldsDelete: ${JSON.stringify(errors)}`);
-    }
-  }
-
   return outcomes;
 }
 
@@ -373,23 +454,21 @@ export async function writeFacts(
 export async function writeVariantFacts(
   graphql: GraphqlFn,
   variants: { variant: VariantInput; facts: Fact[] }[],
-): Promise<void> {
+): Promise<ProposedRemoval[]> {
   const metafields: Record<string, unknown>[] = [];
+  const wouldRemove: ProposedRemoval[] = [];
   const now = new Date().toISOString();
 
   for (const { variant, facts } of variants) {
-    const rawState = variant.metafields?.find((m) => m.key === "state")?.value;
-    let state: ProductState = {};
-    if (rawState) {
-      try {
-        state = JSON.parse(rawState) as ProductState;
-      } catch {
-        state = {};
-      }
-    }
-
-    const stored = readFacts(variant.metafields?.find((m) => m.key === "facts")?.value);
-    const merge = humanMerge(state, stored, facts, now, ENGINE_VERSION);
+    const { state, stored, merge } = variantWritePlan(variant, facts, now);
+    wouldRemove.push(
+      ...merge.wouldRemove.map((removal) => ({
+        ownerId: variant.id,
+        ownerType: "variant" as const,
+        field: "facts",
+        ...removal,
+      })),
+    );
     if (merge.facts.length === 0 && !merge.migrated) continue;
 
     withFactsHuman(state, merge.human);
@@ -412,4 +491,5 @@ export async function writeVariantFacts(
       throw new Error(`metafieldsSet (variants): ${JSON.stringify(errors)}`);
     }
   }
+  return wouldRemove;
 }

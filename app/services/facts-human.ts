@@ -129,7 +129,15 @@ export function mergeFacts(fresh: Fact[], stored: Fact[], human: FactsHuman): Fa
       return;
     }
     const fact = freshByKey.get(key);
+    // Preserve mode is deliberately the default for every automatic path.
+    // A rule becoming stricter means it no longer produces a row; it is not
+    // permission to take an already-published row away. Fresh output with the
+    // same key is still a concrete correction and replaces the old value.
     if (fact) out.push(fact);
+    else {
+      const storedFact = stored.find((row) => factKey(row.k) === key);
+      if (storedFact) out.push(storedFact);
+    }
   };
   for (const fact of stored) take(factKey(fact.k));
   for (const fact of fresh) take(factKey(fact.k));
@@ -144,6 +152,12 @@ export type HumanMerge = {
   human: FactsHuman;
   /** The state was the old whole-table form and was converted here. */
   migrated: boolean;
+  /**
+   * Automatic rows the current engine no longer produces. They remain in
+   * `facts` while the shop uses the safe default, but a caller can expose
+   * them for explicit review.
+   */
+  wouldRemove: { rowKey: string; previousValue: string; reason: "not-produced-by-new-engine" }[];
 };
 
 /** One call for every writer: the person's rows (migrated when the state is the old form) over the fresh rows. */
@@ -156,10 +170,23 @@ export function humanMerge(
 ): HumanMerge {
   if (isWholeTableHuman(state, stored)) {
     const human = migrateWholeTable(stored, fresh, at, engine);
-    return { facts: mergeFacts(fresh, stored, human), human, migrated: true };
+    return { facts: mergeFacts(fresh, stored, human), human, migrated: true, wouldRemove: [] };
   }
   const human = factsHumanOf(state);
-  return { facts: mergeFacts(fresh, stored, human), human, migrated: false };
+  const freshKeys = new Set(fresh.map((fact) => factKey(fact.k)));
+  const wouldRemove = (state.facts as { source?: string } | undefined)?.source === "auto"
+    ? stored
+        .filter((fact) => {
+          const key = factKey(fact.k);
+          return !freshKeys.has(key) && !human[key];
+        })
+        .map((fact) => ({
+          rowKey: factKey(fact.k),
+          previousValue: fact.v,
+          reason: "not-produced-by-new-engine" as const,
+        }))
+    : [];
+  return { facts: mergeFacts(fresh, stored, human), human, migrated: false, wouldRemove };
 }
 
 /**

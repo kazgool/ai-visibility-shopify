@@ -171,19 +171,21 @@ export type CollectionOutcome = {
   written: string[];
   skipped: string[];
   unchanged: string[];
-  /** Auto-written fields withdrawn because this pass produced nothing for them. */
+  /** Kept for compatibility; preserve mode never automatically deletes content. */
   removed: string[];
+  /** Automatic values the current pass no longer produces, retained for review. */
+  wouldRemove: CollectionProposedRemoval[];
   /** Nothing comparable in this collection - said plainly, not hidden. */
   empty: boolean;
 };
 
-const METAFIELDS_DELETE = `#graphql
-  mutation DeleteCollectionFields($metafields: [MetafieldIdentifierInput!]!) {
-    metafieldsDelete(metafields: $metafields) {
-      userErrors { field message }
-    }
-  }
-`;
+export type CollectionProposedRemoval = {
+  ownerId: string;
+  ownerType: "collection";
+  field: string;
+  previousValue: string;
+  reason: "empty-derived-field";
+};
 
 /**
  * The members a comparison table may show. Every row links to
@@ -243,7 +245,6 @@ export async function writeCollections(
 ): Promise<CollectionOutcome[]> {
   const outcomes: CollectionOutcome[] = [];
   const metafields: Record<string, unknown>[] = [];
-  const deletions: Record<string, unknown>[] = [];
 
   for (const collection of collections) {
     const capsule = buildForCollection(collection, prefs, language);
@@ -261,14 +262,14 @@ export async function writeCollections(
       skipped: [],
       unchanged: [],
       removed: [],
+      wouldRemove: [],
       empty: capsule.table.columns.length === 0,
     };
 
-    // A collection with no eligible member has nothing to say about a range:
-    // the capsule for it read "X has 0 products", and that went out as a
-    // summary on thirty empty collections of one store. Every field is
-    // treated as empty, so the withdrawal below retracts what an earlier
-    // pass wrote, and nothing is written until a member appears.
+    // A collection with no eligible member has nothing new to say about a
+    // range. Empty values reach the shared preserve decision below: existing
+    // automatic text stays published and becomes a review item, while a
+    // future concrete capsule may update it.
     const candidates = members === 0
       ? [
           { key: "summary", type: "multi_line_text_field", value: "" },
@@ -298,20 +299,20 @@ export async function writeCollections(
         field.value === "{}" ||
         (field.key === "table" && capsule.table.columns.length === 0);
       if (empty) {
-        // The pass produced nothing for this field. If a previous pass wrote
-        // one, it still sits in the metafield: a table with a row per member
-        // it had then, each a link to /products/{handle} that may now 404, or
-        // a summary describing a range that has since emptied. Left in place
-        // it is a claim nobody supports any more, so an auto-written value is
-        // withdrawn, the way writeFacts withdraws a fact the engine no longer
-        // produces. This once covered the table alone; the other three fields
-        // leaked the same way. mayWrite above already refused a human one.
+        // Omission is never a delete instruction. Preserve the latest
+        // automatic collection content and make the exact value reviewable;
+        // mayWrite above already refused a human value altogether.
         const current = collection.metafields?.find((m) => m.key === field.key)?.value;
         if (current && current !== "" && current !== "{}" && current !== "[]") {
-          deletions.push({ ownerId: collection.id, namespace: NAMESPACE, key: field.key });
-          delete state[field.key];
-          outcome.removed.push(field.key);
-          touched = true;
+          if (state[field.key]?.source === "auto") {
+            outcome.wouldRemove.push({
+              ownerId: collection.id,
+              ownerType: "collection",
+              field: field.key,
+              previousValue: current,
+              reason: "empty-derived-field",
+            });
+          }
         }
         continue;
       }
@@ -355,15 +356,6 @@ export async function writeCollections(
     const errors = data?.metafieldsSet?.userErrors ?? [];
     if (errors.length) {
       throw new Error(`metafieldsSet (collections): ${JSON.stringify(errors)}`);
-    }
-  }
-
-  for (let i = 0; i < deletions.length; i += 24) {
-    const slice = deletions.slice(i, i + 24);
-    const data = await graphql<any>(METAFIELDS_DELETE, { metafields: slice });
-    const errors = data?.metafieldsDelete?.userErrors ?? [];
-    if (errors.length) {
-      throw new Error(`metafieldsDelete (collections): ${JSON.stringify(errors)}`);
     }
   }
 
