@@ -24,6 +24,12 @@ if errorlevel 1 (
 echo.
 echo === tests ===
 call npm test
+if errorlevel 1 (
+  echo.
+  echo TESTS FAILED - do not push.
+  pause
+  exit /b 1
+)
 
 REM The build is not optional here. A route that imports a .server module
 REM outside its loader or action type-checks cleanly and passes every test,
