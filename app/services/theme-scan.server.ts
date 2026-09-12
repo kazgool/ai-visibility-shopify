@@ -50,6 +50,12 @@ export type PageScan = {
   canonical?: string | null;
   /** True when a robots meta tag on the page contains "noindex". */
   noindex?: boolean;
+  /**
+   * True when THIS APP's own block raised a Liquid error on the page we read
+   * (batch 6 item 7). Key omitted when the page was not read, so a scan
+   * stored before this shipped keeps the shape it had.
+   */
+  ourLiquidError?: boolean;
 };
 
 export type RobotsCheck = {
@@ -412,6 +418,26 @@ async function fetchWithPasswordUnlock(
   return res.text();
 }
 
+/**
+ * Did one of this app's own storefront blocks raise a Liquid error on this
+ * page? Shopify renders such an error as an HTML comment exactly where the
+ * failing tag stood, so an error inside one of our JSON-LD scripts turns that
+ * node into unparseable JSON and every consumer drops the whole node without
+ * a word. Republica BIO, 12 September 2026: 3 of 182 product pages carried no
+ * Product node for this reason, and B1 could say the node was missing but not
+ * that we were the ones who broke it.
+ *
+ * Matched on the app's own block path, so a Liquid error raised by the theme
+ * or by another app is not reported as ours.
+ *
+ * Lived in seo-page.server.ts until batch 6 item 7, which needed it on the
+ * theme scan's single page too; that module re-exports it, so every existing
+ * import still reads the one implementation.
+ */
+export function ourLiquidError(html: string): boolean {
+  return /Liquid error \(shopify:\/\/apps\/mrdigital-ai-visibility-aio\//.test(html);
+}
+
 /** Fetch one page as a plain client and report every JSON-LD node found. */
 export async function scanPage(
   url: string,
@@ -430,6 +456,7 @@ export async function scanPage(
     passwordProtected: false,
     canonical: extractCanonical(html),
     noindex: extractNoindex(html),
+    ourLiquidError: ourLiquidError(html),
   };
 }
 

@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   extractLdNodes,
+  ourLiquidError,
+  scanPage,
   detectConflicts,
   isOurNode,
   OUR_NODE_MARKER,
@@ -654,5 +656,54 @@ describe("every reason deriveMissingReasons can record has a merchant sentence",
         "The SEO module is enabled but the last scan did not find this node on the page - check that the app embed is active in the current theme.",
       ),
     ).toContain("recorded before 5 September 2026");
+  });
+});
+
+// Batch 6 item 7. The theme scan reads ONE page and writes what a whole
+// catalogue then believes about itself, so "our own block broke on this page"
+// has to survive that read - it is the difference between a fault of ours and
+// a theme that emits nothing, and it is the only signal this scan has that
+// the page it fetched might predate a deploy that fixed exactly that.
+describe("our own Liquid error, on the page the theme scan reads", () => {
+  const OURS =
+    "<!-- Liquid error (shopify://apps/mrdigital-ai-visibility-aio/blocks/ai-visibility/019f line 397): comparison of String with 0 failed -->";
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function servePage(html: string) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(html, { status: 200, headers: { "content-type": "text/html" } })),
+    );
+  }
+
+  it("records the error the live gift card page actually carries", async () => {
+    // The shape read live from republicabio.ro on 12 September 2026: our
+    // block emits a Product node and the error lands inside its own script,
+    // so the JSON never parses and the node is not there at all.
+    servePage(
+      `<html><head><script type="application/ld+json">{"@type":"Product","name":"Card cadou",${OURS}"offers":{}}</script></head><body></body></html>`,
+    );
+    const page = await scanPage("https://example.test/products/card-cadou");
+    expect(page.ourLiquidError).toBe(true);
+    // And the point of recording it: the node is gone, so nothing else on the
+    // page says whose fault that was.
+    expect(page.nodes).toEqual([]);
+  });
+
+  it("says nothing about a page that rendered cleanly", async () => {
+    servePage(withScript('{"@type":"Product","name":"Oak chair"}'));
+    const page = await scanPage("https://example.test/products/oak-chair");
+    expect(page.ourLiquidError).toBe(false);
+    expect(page.nodes).toHaveLength(1);
+  });
+
+  it("does not claim a theme's or another app's Liquid error as ours", () => {
+    expect(ourLiquidError("<!-- Liquid error (sections/main-product line 12): divided by 0 -->")).toBe(false);
+    expect(
+      ourLiquidError("<!-- Liquid error (shopify://apps/some-review-app/blocks/widget/abc line 4): x -->"),
+    ).toBe(false);
   });
 });

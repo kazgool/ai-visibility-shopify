@@ -45,6 +45,7 @@ import {
   extractLdObjects,
   extractNoindex,
   isOurNode,
+  ourLiquidError,
   storefrontCookie,
   type LdNode,
 } from "./theme-scan.server";
@@ -1451,21 +1452,11 @@ export type PageRow = {
  * A node without the marker is the theme's, and the finding is then phrased
  * about the page repeating a node rather than about our output.
  */
-/**
- * Did one of this app's own storefront blocks raise a Liquid error on this
- * page? Shopify renders such an error as an HTML comment exactly where the
- * failing tag stood, so an error inside one of our JSON-LD scripts turns that
- * node into unparseable JSON and every consumer drops the whole node without
- * a word. Republica BIO, 12 September 2026: 3 of 182 product pages carried no
- * Product node for this reason, and B1 could say the node was missing but not
- * that we were the ones who broke it.
- *
- * Matched on the app's own block path, so a Liquid error raised by the theme
- * or by another app is not reported as ours.
- */
-export function ourLiquidError(html: string): boolean {
-  return /Liquid error \(shopify:\/\/apps\/mrdigital-ai-visibility-aio\//.test(html);
-}
+// ourLiquidError moved to theme-scan.server.ts in batch 6 item 7, so the
+// theme scan can read it on the one page it fetches without this module and
+// that one duplicating the same regex. Re-exported here because this is where
+// it has been imported from since batch 5.
+export { ourLiquidError };
 
 export function duplicateNodes(nodes: LdNode[]): {
   type: string;

@@ -679,6 +679,36 @@ function buildFindings(result: ThemeScanResult | undefined): Finding[] {
     { label: "product page", page: result.product },
     { label: "home page", page: result.home },
   ];
+
+  // Batch 6 item 7. The failure this names is specific and it has happened:
+  // our own block raised a Liquid error inside its JSON-LD, Shopify printed
+  // the error where the tag stood, the node became unparseable, and the scan
+  // recorded "no Product node of ours" - which is true of the page and says
+  // nothing about the cause. On Republica BIO that reading, taken from the
+  // one page this scan reads, switched additionalProperty off for all 189
+  // products.
+  //
+  // It doubles as the only staleness signal this scan actually has. After a
+  // deploy that fixes such an error, a page still carrying it is either a
+  // pre-deploy render Shopify has not turned over yet or a new fault, and the
+  // merchant needs to be told which question to ask rather than concluding
+  // the deploy failed. It is NOT a general build marker: the page carries no
+  // app version, and the response headers carry none either (checked live on
+  // 12 September 2026 - cdn-cache-control no-store, cf-cache-status DYNAMIC,
+  // an etag keyed on Shopify's internal page cache and nothing of ours). What
+  // would give a general one is a version marker printed by the block itself,
+  // which is a decision in the handover, not something to invent here.
+  for (const { label, page } of pages) {
+    if (page && !page.passwordProtected && page.ourLiquidError) {
+      findings.push({
+        key: `our-liquid-error-${label}`,
+        severity: "critical",
+        text: `This app's own block did not finish rendering on the ${label} we read, so anything it had not yet written is missing from that page - including, on a product page, our Product node. This one is ours to fix, not your theme's. If you have just deployed a fix for it, the page we read may still be the version the storefront was serving before: scan again in a minute, and if it still says this, it is a live fault and not a stale page.`,
+        fixHref: null,
+      });
+    }
+  }
+
   for (const { label, page } of pages) {
     if (page && !page.passwordProtected && page.noindex) {
       findings.push({
