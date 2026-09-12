@@ -2008,16 +2008,18 @@ function StructuredDataCard({ aggregate }: { aggregate: ThemeNodeAggregate }) {
             tone={
               aggregate.verdict === "unknown"
                 ? undefined
-                : aggregate.verdict === "extend"
-                  ? "success"
-                  : "attention"
+                : aggregate.verdict === "full-needed"
+                  ? "attention"
+                  : "success"
             }
           >
             {aggregate.verdict === "unknown"
               ? "No pages read yet"
               : aggregate.verdict === "extend"
                 ? "Extend mode"
-                : "Full mode"}
+                : aggregate.verdict === "full-active"
+                  ? "Full mode"
+                  : "No Product node yet"}
           </Badge>
           <Text as="span" variant="bodySm">
             {themeNodeSentence(aggregate)}

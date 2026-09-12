@@ -513,16 +513,18 @@ export default function Diagnostics() {
                     tone={
                       scan.verdict === "unknown"
                         ? undefined
-                        : scan.verdict === "extend"
-                          ? "success"
-                          : "attention"
+                        : scan.verdict === "full-needed"
+                          ? "attention"
+                          : "success"
                     }
                   >
                     {scan.verdict === "unknown"
                       ? "No product pages read yet"
                       : scan.verdict === "extend"
                         ? "Keep Extend mode"
-                        : "Switch to Full mode"}
+                        : scan.verdict === "full-active"
+                          ? "Keep Full mode"
+                          : "Switch to Full mode"}
                   </Badge>
                   <Text as="p" variant="bodySm">
                     {themeNodeSentence(scan)}

@@ -397,16 +397,49 @@ describe("the B1 aggregate behind the Structured data card", () => {
     );
   });
 
-  it("recommends Full only when no scanned page has one, and says how many", () => {
+  // The four combinations the card has to tell apart. Republica BIO is the
+  // third: in Full mode, theme 0, ours on every page, and the card told it to
+  // switch to Full mode with an Attention badge over the advice.
+  it("has no verdict at all while no page has been read", () => {
+    const nodes = themeNodeAggregate([row(1), row(2)]);
+    expect(nodes).toMatchObject({ pagesRead: 0, theme: 0, appOnly: 0, verdict: "unknown" });
+    expect(themeNodeAdvice(nodes)).toContain("Leave the app embed as it is");
+  });
+
+  it("asks for Full mode when neither the theme nor this app emits a node", () => {
     const rows = [
       row(1, { scannedAt: SCAN, status: "ok", nodes: [], findings: [b1(0)] }),
-      row(2, { scannedAt: SCAN, status: "ok", nodes: [OUR_NODE] }),
+      row(2, { scannedAt: SCAN, status: "ok", nodes: [], findings: [b1(0)] }),
       // Never scanned, so it is not part of the verdict either way.
       row(3),
     ];
     const nodes = themeNodeAggregate(rows);
-    expect(nodes).toMatchObject({ pagesRead: 2, theme: 0, appOnly: 1, verdict: "full" });
+    expect(nodes).toMatchObject({ pagesRead: 2, theme: 0, appOnly: 0, verdict: "full-needed" });
+    expect(themeNodeAdvice(nodes)).toContain("switch the app embed to Full mode");
     expect(themeNodeAdvice(nodes)).toContain("any of the 2 pages read");
+  });
+
+  it("tells a store already in Full mode to keep it, and never to switch to it", () => {
+    const rows = [
+      row(1, { scannedAt: SCAN, status: "ok", nodes: [OUR_NODE] }),
+      row(2, { scannedAt: SCAN, status: "ok", nodes: [OUR_NODE] }),
+      row(3),
+    ];
+    const nodes = themeNodeAggregate(rows);
+    expect(nodes).toMatchObject({ pagesRead: 2, theme: 0, appOnly: 2, verdict: "full-active" });
+    const advice = themeNodeAdvice(nodes);
+    expect(advice).toContain("Keep the app embed in Full mode");
+    expect(advice).toContain("ours is on 2 of them");
+    expect(advice).not.toContain("switch");
+  });
+
+  it("keeps Extend when the theme emits a node on any page read", () => {
+    const nodes = themeNodeAggregate([
+      row(1, { scannedAt: SCAN, status: "ok", nodes: [THEME_NODE] }),
+      row(2, { scannedAt: SCAN, status: "ok", nodes: [OUR_NODE] }),
+    ]);
+    expect(nodes).toMatchObject({ pagesRead: 2, theme: 1, appOnly: 1, verdict: "extend" });
+    expect(themeNodeAdvice(nodes)).toContain("Keep the app embed in Extend mode");
   });
 
   it("reads extend mode's shared @id as one node and not as two", () => {

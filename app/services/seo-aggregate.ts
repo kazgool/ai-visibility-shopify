@@ -685,10 +685,16 @@ export type ThemeNodeAggregate = {
   /** Pages where the only Product node is ours. */
   appOnly: number;
   /**
-   * "extend" when any scanned page has a theme node, "full" only when none
-   * does, "unknown" while no page has been read.
+   * "extend" when any scanned page has a theme node. When none does, the
+   * store is already in Full mode if our own node is on those pages
+   * ("full-active") and is not if nothing emitted one ("full-needed").
+   * "unknown" while no page has been read.
+   *
+   * The two full states used to be one, so a store already in Full mode was
+   * told to switch to Full mode, with an Attention badge over it. Republica
+   * BIO, 12 September 2026: theme 0, appOnly 189.
    */
-  verdict: "extend" | "full" | "unknown";
+  verdict: "extend" | "full-active" | "full-needed" | "unknown";
 };
 
 type NodeLike = { types?: unknown; id?: unknown };
@@ -785,7 +791,14 @@ export function buildThemeNodeAggregate(counters: ThemeNodeCounters): ThemeNodeA
     none,
     two,
     appOnly,
-    verdict: pagesRead === 0 ? "unknown" : theme === 0 ? "full" : "extend",
+    verdict:
+      pagesRead === 0
+        ? "unknown"
+        : theme > 0
+          ? "extend"
+          : appOnly > 0
+            ? "full-active"
+            : "full-needed",
   };
 }
 
@@ -814,8 +827,11 @@ export function themeNodeAdvice(aggregate: ThemeNodeAggregate): string {
   if (aggregate.verdict === "unknown") {
     return "Leave the app embed as it is until pages have been read. Recommending a mode from nothing is how this card used to report the storefront password page as a missing Product node.";
   }
-  if (aggregate.verdict === "full") {
-    return `No Product node from the theme on any of the ${aggregate.pagesRead} ${pageWord(aggregate.pagesRead)} read, so switch the app embed to Full mode and this store publishes complete product data.`;
+  if (aggregate.verdict === "full-active") {
+    return `Keep the app embed in Full mode. No Product node from the theme on any of the ${aggregate.pagesRead} ${pageWord(aggregate.pagesRead)} read, and ours is on ${aggregate.appOnly} of them, so this store already publishes complete product data.`;
+  }
+  if (aggregate.verdict === "full-needed") {
+    return `No Product node at all on any of the ${aggregate.pagesRead} ${pageWord(aggregate.pagesRead)} read, neither the theme's nor ours, so switch the app embed to Full mode and this store publishes complete product data.`;
   }
   return `Keep the app embed in Extend mode. We add only what the theme omits, referenced to its node, so assistants read one product rather than two. ${aggregate.none > 0 ? `The ${aggregate.none} ${pageWord(aggregate.none)} with no node of their own still get a complete one from us.` : ""}`.trim();
 }
