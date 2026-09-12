@@ -22,6 +22,7 @@
 {% endcomment %}
 
 {%- if block.settings.enabled -%}
+  <!-- mrdigital-ai-visibility version:2026.09.12.1 -->
   {%- assign av_business = shop.metafields['$app'].business.value -%}
   {%- assign av_org_id = shop.metafields['$app'].theme_scan.value.organizationId -%}
   {%- assign av_theme_product_id = shop.metafields['$app'].theme_scan.value.productId -%}
@@ -62,43 +63,110 @@
     real reviews exist - a shop without reviews gets no rating markup at all.
   {%- endcomment -%}
   {%- comment -%}
-    Both are forced to numbers with `plus: 0` before anything compares them.
-    A metafield is whatever the review app defined it as, and a shop where
-    reviews.rating_count is a text field made `av_rating_count > 0` raise
-    "comparison of String with 0 failed". Liquid renders that error as an
-    HTML comment where the tag was - inside this JSON-LD script - so the
-    whole Product node became unparseable JSON and every consumer dropped it
-    silently. Republica BIO, 12 September 2026: 3 of 182 product pages had no
-    Product node at all for this reason, and the Structured data card counted
-    them without being able to say why.
+    Review apps do not agree on metafield types. Never compare a raw value to
+    a number: Shopify Liquid raises on some text/object combinations and puts
+    the error inside this JSON-LD script. We validate the captured text before
+    using `plus`, so malformed values simply suppress aggregateRating.
 
-    `plus: 0` turns nil, a non-numeric string and an unexpected object into
-    0, which publishes no rating - the safe direction. A numeric string
-    becomes the number it states.
-
-    One shape is not safe in that direction, and it is the likely one on a
-    Romanian shop (batch 6 item 3). A decimal comma, "4,5", is not refused by
-    `plus: 0`: Liquid reads the digits it understands and stops, so "4,5"
-    becomes 4 - not 4.5, and not 0. That publishes a WRONG rating rather than
-    no rating, which is the opposite of what the paragraph above promises.
-    The comma is turned into a period first, the way the engine already does
-    it for measurements (m[2].replace(",", ".") in app/engine/delimit.ts).
-    `replace` calls to_s on whatever it is given, so nil, a Hash and an Array
-    still arrive at `plus: 0` as 0.
-
-    The count deliberately does NOT get the same treatment. There a comma is
-    a thousands separator, not a decimal point: "1,234" reviews would become
-    1.234 reviews, which is a worse answer than the 1 that Liquid's own
-    truncation gives.
+    Ratings accept an integer or one decimal separator (dot or Romanian
+    comma) with at most two fractional digits, and must be in (0, 5]. Counts
+    accept integers or unambiguous groups of three digits separated by commas
+    or dots. In particular, "1,234" becomes 1234 rather than 1.234 or 1.
   {%- endcomment -%}
-  {%- assign av_rating_value = product.metafields.reviews.rating.value.value | default: product.metafields.reviews.rating.value | replace: ",", "." | plus: 0 -%}
-  {%- comment -%}
-    The count reads .value.value before .value for the same reason the value
-    above does: a review app is free to define the metafield as a composite
-    type, and only the value chain says which. It had no such fallback until
-    batch 6 item 3 (one line, and nothing on Republica BIO needed it).
-  {%- endcomment -%}
-  {%- assign av_rating_count = product.metafields.reviews.rating_count.value.value | default: product.metafields.reviews.rating_count.value | default: 0 | plus: 0 -%}
+  {%- assign av_rating_source = product.metafields.reviews.rating.value.value | default: product.metafields.reviews.rating.value -%}
+  {%- assign av_rating_count_source = product.metafields.reviews.rating_count.value.value | default: product.metafields.reviews.rating_count.value -%}
+  {%- capture av_rating_text -%}{{- av_rating_source -}}{%- endcapture -%}
+  {%- capture av_rating_count_text -%}{{- av_rating_count_source -}}{%- endcapture -%}
+  {%- assign av_rating_text = av_rating_text | strip -%}
+  {%- assign av_rating_count_text = av_rating_count_text | strip -%}
+  {%- assign av_rating_value_valid = false -%}
+  {%- assign av_rating_count_valid = false -%}
+  {%- assign av_rating_value = 0 -%}
+  {%- assign av_rating_count = 0 -%}
+
+  {%- assign av_rating_digits = av_rating_text -%}
+  {%- for av_digit in (0..9) -%}
+    {%- assign av_rating_digits = av_rating_digits | remove: av_digit -%}
+  {%- endfor -%}
+  {%- assign av_rating_comma_parts = av_rating_text | split: "," -%}
+  {%- assign av_rating_dot_parts = av_rating_text | split: "." -%}
+  {%- assign av_rating_shape_ok = false -%}
+  {%- if av_rating_text != blank and av_rating_digits == blank -%}
+    {%- assign av_rating_shape_ok = true -%}
+  {%- elsif av_rating_comma_parts.size == 2 and av_rating_dot_parts.size == 1 -%}
+    {%- assign av_rating_integer = av_rating_comma_parts.first -%}
+    {%- assign av_rating_fraction = av_rating_comma_parts.last -%}
+    {%- assign av_rating_integer_digits = av_rating_integer -%}
+    {%- assign av_rating_fraction_digits = av_rating_fraction -%}
+    {%- for av_digit in (0..9) -%}
+      {%- assign av_rating_integer_digits = av_rating_integer_digits | remove: av_digit -%}
+      {%- assign av_rating_fraction_digits = av_rating_fraction_digits | remove: av_digit -%}
+    {%- endfor -%}
+    {%- if av_rating_integer != blank and av_rating_fraction != blank and av_rating_integer_digits == blank and av_rating_fraction_digits == blank and av_rating_fraction.size <= 2 -%}
+      {%- assign av_rating_shape_ok = true -%}
+    {%- endif -%}
+  {%- elsif av_rating_dot_parts.size == 2 and av_rating_comma_parts.size == 1 -%}
+    {%- assign av_rating_integer = av_rating_dot_parts.first -%}
+    {%- assign av_rating_fraction = av_rating_dot_parts.last -%}
+    {%- assign av_rating_integer_digits = av_rating_integer -%}
+    {%- assign av_rating_fraction_digits = av_rating_fraction -%}
+    {%- for av_digit in (0..9) -%}
+      {%- assign av_rating_integer_digits = av_rating_integer_digits | remove: av_digit -%}
+      {%- assign av_rating_fraction_digits = av_rating_fraction_digits | remove: av_digit -%}
+    {%- endfor -%}
+    {%- if av_rating_integer != blank and av_rating_fraction != blank and av_rating_integer_digits == blank and av_rating_fraction_digits == blank and av_rating_fraction.size <= 2 -%}
+      {%- assign av_rating_shape_ok = true -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if av_rating_shape_ok -%}
+    {%- assign av_rating_value = av_rating_text | replace: ",", "." | plus: 0 -%}
+    {%- if av_rating_value > 0 and av_rating_value <= 5 -%}
+      {%- assign av_rating_value_valid = true -%}
+    {%- endif -%}
+  {%- endif -%}
+
+  {%- assign av_rating_count_digits = av_rating_count_text -%}
+  {%- for av_digit in (0..9) -%}
+    {%- assign av_rating_count_digits = av_rating_count_digits | remove: av_digit -%}
+  {%- endfor -%}
+  {%- assign av_count_comma_parts = av_rating_count_text | split: "," -%}
+  {%- assign av_count_dot_parts = av_rating_count_text | split: "." -%}
+  {%- assign av_count_shape_ok = false -%}
+  {%- assign av_count_normalized = av_rating_count_text -%}
+  {%- if av_rating_count_text != blank and av_rating_count_digits == blank -%}
+    {%- assign av_count_shape_ok = true -%}
+  {%- elsif av_count_comma_parts.size > 1 and av_count_dot_parts.size == 1 -%}
+    {%- assign av_count_parts = av_count_comma_parts -%}
+    {%- assign av_count_separator = "," -%}
+    {%- assign av_count_shape_ok = true -%}
+  {%- elsif av_count_dot_parts.size > 1 and av_count_comma_parts.size == 1 -%}
+    {%- assign av_count_parts = av_count_dot_parts -%}
+    {%- assign av_count_separator = "." -%}
+    {%- assign av_count_shape_ok = true -%}
+  {%- endif -%}
+  {%- if av_count_parts != blank -%}
+    {%- if av_count_parts.first.size < 1 or av_count_parts.first.size > 3 -%}
+      {%- assign av_count_shape_ok = false -%}
+    {%- endif -%}
+    {%- for av_count_part in av_count_parts -%}
+      {%- assign av_count_part_digits = av_count_part -%}
+      {%- for av_digit in (0..9) -%}
+        {%- assign av_count_part_digits = av_count_part_digits | remove: av_digit -%}
+      {%- endfor -%}
+      {%- if av_count_part == blank or av_count_part_digits != blank -%}
+        {%- assign av_count_shape_ok = false -%}
+      {%- elsif forloop.index > 1 and av_count_part.size != 3 -%}
+        {%- assign av_count_shape_ok = false -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- assign av_count_normalized = av_rating_count_text | remove: "," | remove: "." -%}
+  {%- endif -%}
+  {%- if av_count_shape_ok -%}
+    {%- assign av_rating_count = av_count_normalized | plus: 0 -%}
+    {%- if av_rating_count > 0 -%}
+      {%- assign av_rating_count_valid = true -%}
+    {%- endif -%}
+  {%- endif -%}
 
   {%- comment -%}
     Delivery, as numbers (CC-PROMPT-AI-READABILITY-4 item 2). The Business
@@ -430,7 +498,7 @@
           {%- if product.selected_or_first_available_variant.barcode != blank %}
           "gtin": {{ product.selected_or_first_available_variant.barcode | json }},
           {%- endif %}
-          {%- if av_rating_value > 0 and av_rating_count > 0 %}
+          {%- if av_rating_value_valid and av_rating_count_valid %}
           "aggregateRating": {
             "@type": "AggregateRating",
             "ratingValue": {{ av_rating_value | json }},

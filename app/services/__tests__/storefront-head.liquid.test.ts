@@ -17,6 +17,19 @@ const DATA = {
 const THEME_ID = `${SHOP_URL}/products/oak-chair#theme-product`;
 const OUR_ID = `${SHOP_URL}/products/oak-chair#product`;
 
+describe("extension release marker", () => {
+  it("prints an inert version marker outside JSON-LD when enabled", async () => {
+    const html = await renderBlock(FILE, storefront({ settings }));
+    expect(html).toContain("<!-- mrdigital-ai-visibility version:2026.09.12.1 -->");
+    expect(html).not.toContain('"mrdigital-ai-visibility version:2026.09.12.1"');
+  });
+
+  it("does not print the marker when the block is disabled", async () => {
+    const html = await renderBlock(FILE, storefront({ settings: { ...settings, enabled: false } }));
+    expect(html).not.toContain("mrdigital-ai-visibility version:2026.09.12.1");
+  });
+});
+
 describe("extend mode: which Product node the page gets (PRD-AI-READABILITY P0.5)", () => {
   it("defaults to extend mode", () => {
     expect(settings.mode).toBe("extend");
@@ -294,4 +307,58 @@ describe("a review app's metafields, whatever type it wrote them as", () => {
       reviewCount: 12,
     });
   });
+
+  it.each([
+    ["1,234", 1234],
+    ["1.234", 1234],
+    ["1,000,000", 1000000],
+  ])("reads an unambiguous formatted count %s as %s", async (count, expected) => {
+    const html = await renderBlock(
+      FILE,
+      storefront({
+        settings,
+        data: DATA,
+        themeScan: noTheme,
+        reviews: { rating: { value: { value: "4,5" } }, rating_count: { value: count } },
+      }),
+    );
+    expect(ourNodes(html, "Product")[0].aggregateRating).toMatchObject({
+      ratingValue: 4.5,
+      reviewCount: expected,
+    });
+  });
+
+  it.each(["1,23", "12.34", "1,234.567", "1 234", "reviews"])(
+    "omits aggregateRating for an invalid or ambiguous count %s",
+    async (count) => {
+      const html = await renderBlock(
+        FILE,
+        storefront({
+          settings,
+          data: DATA,
+          themeScan: noTheme,
+          reviews: { rating: { value: { value: "4.5" } }, rating_count: { value: count } },
+        }),
+      );
+      expect(ourNodes(html, "Product")[0]).toBeDefined();
+      expect(ourNodes(html, "Product")[0].aggregateRating).toBeUndefined();
+    },
+  );
+
+  it.each(["4,567", "6", "0", "4foo", "4.567"])(
+    "omits aggregateRating for an invalid or ambiguous rating %s",
+    async (rating) => {
+      const html = await renderBlock(
+        FILE,
+        storefront({
+          settings,
+          data: DATA,
+          themeScan: noTheme,
+          reviews: { rating: { value: { value: rating } }, rating_count: { value: "12" } },
+        }),
+      );
+      expect(ourNodes(html, "Product")[0]).toBeDefined();
+      expect(ourNodes(html, "Product")[0].aggregateRating).toBeUndefined();
+    },
+  );
 });
