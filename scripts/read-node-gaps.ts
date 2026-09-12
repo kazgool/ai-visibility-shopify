@@ -64,6 +64,26 @@ async function main() {
       console.log(`    ${(n?.types ?? []).join("+") || "(no @type)"}  id=${n?.id ?? "(no @id)"}`);
     }
     console.log(`  findings    ${findingsOf(r.findings).map((f) => f.code).join(", ") || "(none)"}`);
+    // Batch 6 item 5. Whether the page carries OUR own Liquid error is the
+    // whole difference between "the theme never emitted a node" and "we broke
+    // the node we emitted", and it decides whether a deploy can fix the page.
+    // It is recorded on the B1 finding's detail and was readable nowhere.
+    const b1 = findingsOf(r.findings).find((f) => f.code === "B1");
+    const detail = (b1 as { detail?: Record<string, unknown> } | undefined)?.detail;
+    // ABSENT is not false, and the difference is the whole point here. The
+    // detector shipped in batch 5, which is committed and not deployed, so
+    // every row scanned before that deploy simply has no such key. Printing a
+    // default would have read as "our block rendered cleanly" on exactly the
+    // pages the diagnosis says it did not.
+    console.log(
+      `  ourLiquidError ${
+        !detail
+          ? "(no B1 row)"
+          : "ourLiquidError" in detail
+            ? String(detail.ourLiquidError)
+            : "(absent - row predates the detector)"
+      }`,
+    );
     console.log("");
   }
   await db.$disconnect();
