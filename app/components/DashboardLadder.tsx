@@ -332,6 +332,11 @@ export function DashboardLadder(props: LadderProps) {
   const { ladder, everythingElse } = props;
   const [elseOpen, setElseOpen] = useState(false);
   const remaining = ladder.steps.filter((s) => s.status === "current" || s.status === "locked").length;
+  // A step that did not apply to this shop was never finished, and saying it
+  // was is the screen telling the merchant something he did not do (batch 5
+  // item 3). Counted apart so the summary can say which is which.
+  const notNeeded = ladder.steps.filter((s) => s.status === "not_needed").length;
+  const total = ladder.steps.length;
 
   return (
     <Card>
@@ -342,8 +347,10 @@ export function DashboardLadder(props: LadderProps) {
           </Text>
           <Text as="p" variant="bodySm" tone="subdued">
             {remaining === 0
-              ? "All six steps are finished. Nothing here needs you."
-              : `Six steps, in this order. ${remaining} still to do; each one says what it is for and only the next one is open.`}
+              ? notNeeded === 0
+                ? `All ${total} steps are finished. Nothing here needs you.`
+                : `${total - notNeeded} of ${total} steps are finished and ${notNeeded} did not apply to this shop. Nothing here needs you.`
+              : `${total} steps, in this order. ${remaining} of ${total} still to do; each one says what it is for and only the next one is open.`}
           </Text>
         </BlockStack>
 

@@ -515,7 +515,7 @@ export default function Dashboard() {
           {figures ? (
             <BlockStack gap="200">
               <Text as="p" variant="bodySm" tone="subdued">
-                {`${figures.sampled} products read, ${figures.none} without attributes, ${figures.wouldSkip ?? 0} protected.`}
+                {`${figures.sampled} products read; ${figures.none} of them without attributes, ${figures.wouldSkip ?? 0} of them protected.`}
               </Text>
               <InlineStack gap="100" wrap>
                 {figures.byAttr?.slice(0, 6).map(([label, n]: [string, number]) => (
@@ -524,8 +524,8 @@ export default function Dashboard() {
               </InlineStack>
               {figures.none > 0 ? (
                 <Text as="p" variant="bodySm" tone="subdued">
-                  {`${figures.none} ${
-                    figures.none === 1 ? "product states" : "products state"
+                  {`${figures.none} of the ${figures.sampled} ${
+                    figures.none === 1 ? "products read states" : "products read state"
                   } nothing an assistant could extract. That is what their descriptions say, not a fault to fix - though adding a material or a size to those descriptions would change it.`}
                 </Text>
               ) : null}
@@ -566,11 +566,18 @@ export default function Dashboard() {
           </InlineStack>
           {altReport ? (
             <Text as="p" tone="subdued" variant="bodySm">
-              {`Last pass: ${altReport.total ?? "all"} products checked, ${
-                altReport.written ?? 0
-              } ${altReport.written === 1 ? "description" : "descriptions"} written, ${
-                altReport.keptHuman ?? 0
-              } left as a person wrote them.`}
+              {typeof altReport.total === "number"
+                ? `Last pass: ${altReport.total} products checked; ${
+                    altReport.written ?? 0
+                  } of them had ${
+                    altReport.written === 1 ? "a description" : "descriptions"
+                  } written, ${altReport.keptHuman ?? 0} were left as a person wrote them.`
+                : // A pass that recorded no total. It used to print "all
+                  // products checked", which is a claim nobody measured: the
+                  // row simply does not say how many were read.
+                  `Last pass: ${altReport.written ?? 0} ${
+                    altReport.written === 1 ? "description" : "descriptions"
+                  } written, ${altReport.keptHuman ?? 0} left as a person wrote them. That pass did not record how many products it checked.`}
             </Text>
           ) : altProblemLine ? (
             <Text as="p" tone="subdued" variant="bodySm">
@@ -579,7 +586,11 @@ export default function Dashboard() {
           ) : null}
           {altReport?.shared?.length ? (
             <Banner tone="warning">
-              {`${altReport.shared.length} images are used by more than one product. We left their descriptions alone rather than describe one product as another.`}
+              {`Across the ${
+                typeof altReport.total === "number" ? `${altReport.total} products checked` : "products checked"
+              }, ${
+                altReport.sharedTotal ?? altReport.shared.length
+              } images are used by more than one product. We left their descriptions alone rather than describe one product as another.`}
             </Banner>
           ) : null}
         </BlockStack>

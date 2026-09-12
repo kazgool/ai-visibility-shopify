@@ -223,8 +223,13 @@ describe("a paid store with everything done", () => {
     expect(t).not.toContain("before anything we write can be read");
   });
 
-  it("says the path is finished", () => {
-    expect(t).toContain("All six steps are finished");
+  // This fixture has a "Not needed" step in it, and the summary used to say
+  // "All six steps are finished" over it - the screen crediting the merchant
+  // with something he never did (batch 5 item 3).
+  it("says the path is finished, and how many steps did not apply", () => {
+    expect(t).toContain("5 of 6 steps are finished and 1 did not apply to this shop");
+    expect(t).not.toContain("All six steps are finished");
+    expect(t).not.toContain("All 6 steps are finished");
   });
 
   it("keeps the paid shop's preview reachable even though the step is not needed", () => {

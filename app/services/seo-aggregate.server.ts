@@ -180,15 +180,20 @@ export async function productsWithFinding(
   shopId: string,
   code: string,
   cap = FINDING_LIST_CAP,
-): Promise<{ productIds: string[]; capped: boolean; total: number }> {
+): Promise<{ productIds: string[]; capped: boolean; total: number; scanned: number }> {
   const productIds: string[] = [];
   let total = 0;
+  // The denominator. "12 products carry finding B1" is a different sentence
+  // over 20 rows than over 2,000, and the screen used to print it without one
+  // (batch 5 item 3).
+  let scanned = 0;
   await forEachRow(shopId, false, (row) => {
+    scanned += 1;
     if (!findingsOf(row.findings).some((f) => f.code === code && merchantVisible(f))) return;
     total += 1;
     if (productIds.length < cap) productIds.push(row.productId);
   });
-  return { productIds, capped: total > productIds.length, total };
+  return { productIds, capped: total > productIds.length, total, scanned };
 }
 
 /** The rows for the products on one page of the Products list. */

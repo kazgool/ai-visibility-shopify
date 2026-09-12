@@ -217,8 +217,8 @@ export default function Collections() {
             <BlockStack gap="200">
               <InlineStack gap="600" wrap>
                 <Metric label="Collections" value={String(rows.length)} />
-                <Metric label="Described" value={String(done)} />
-                <Metric label="With a comparison table" value={String(withTable)} />
+                <Metric label="Described" value={`${done} of ${rows.length}`} />
+                <Metric label="With a comparison table" value={`${withTable} of ${rows.length}`} />
               </InlineStack>
               {job?.status === "done" && job.finishedAt ? (
                 <Text as="p" tone="subdued" variant="bodySm">

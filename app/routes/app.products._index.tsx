@@ -178,10 +178,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const finding = seoUnlocked ? (url.searchParams.get("finding") ?? "").trim() : "";
   const findingPage = Math.max(0, Number(url.searchParams.get("page") ?? 0) || 0);
 
-  let findingList: { total: number; capped: boolean; ids: string[] } | null = null;
+  let findingList: { total: number; capped: boolean; ids: string[]; scanned: number } | null = null;
   if (finding !== "" && shop) {
     const hits = await productsWithFinding(shop.id, finding);
-    findingList = { total: hits.total, capped: hits.capped, ids: hits.productIds };
+    findingList = { total: hits.total, capped: hits.capped, ids: hits.productIds, scanned: hits.scanned };
   }
 
   const [res, colRes] = await Promise.all([
@@ -300,6 +300,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     finding,
     findingLabel: finding ? (CHECK_LABEL[finding as keyof typeof CHECK_LABEL] ?? finding) : null,
     findingTotal: findingList?.total ?? 0,
+    findingScanned: findingList?.scanned ?? 0,
     findingCapped: findingList?.capped ?? false,
     findingPage,
     findingCap: FINDING_LIST_CAP,
@@ -483,6 +484,7 @@ export default function ProductsOverview() {
     finding,
     findingLabel,
     findingTotal,
+    findingScanned,
     findingCapped,
     findingPage,
     findingCap,
@@ -502,6 +504,7 @@ export default function ProductsOverview() {
     finding: string;
     findingLabel: string | null;
     findingTotal: number;
+    findingScanned: number;
     findingCapped: boolean;
     findingPage: number;
     findingCap: number;
@@ -600,7 +603,9 @@ export default function ProductsOverview() {
           >
             <BlockStack gap="100">
               <Text as="p">
-                {`${findingTotal} product${findingTotal === 1 ? "" : "s"} in this store carry finding ${finding}.`}
+                {`${findingTotal} of the ${findingScanned} product${
+                  findingScanned === 1 ? "" : "s"
+                } read in this store carry finding ${finding}.`}
                 {findingCapped
                   ? ` This list shows the first ${findingCap}; fix these and the next pass will show the rest.`
                   : ""}

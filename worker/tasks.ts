@@ -766,7 +766,11 @@ export const bulk_alt_text: Task = async (payload, helpers) => {
         status: "done",
         finishedAt: new Date(),
         progress: products.length,
-        report: { written, keptHuman, shared: shared.slice(0, 50) } as any,
+        // `shared` is capped so a job row stays a row rather than a file, and
+        // `sharedTotal` carries the real figure, because the screen used to
+        // print the capped list's length as the total: a pass with 300 shared
+        // images reported 50 (batch 5 item 3).
+        report: { written, keptHuman, sharedTotal: shared.length, shared: shared.slice(0, 50) } as any,
       },
     });
     helpers.logger.info(

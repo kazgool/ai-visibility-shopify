@@ -18,6 +18,8 @@ export type AltFigures = {
   written?: number;
   keptHuman?: number;
   shared?: unknown[];
+  /** The real number of shared-media warnings; `shared` is capped at 50. */
+  sharedTotal?: number;
 } | null;
 
 /** An alt text pass that ended in something other than a measurement. */
@@ -87,7 +89,7 @@ export function metricTiles(input: {
       value: percent === null ? "-" : `${percent}%`,
       hint:
         figures && percent !== null
-          ? `${figures.sampled - figures.none} produce attributes`
+          ? `${figures.sampled - figures.none} of ${figures.sampled} read produce attributes`
           : problem
             ? "the last pass is not a measurement"
             : pass.state === "running"
@@ -98,14 +100,18 @@ export function metricTiles(input: {
     {
       label: "Protected",
       value: figures ? String(figures.wouldSkip ?? 0) : "-",
-      hint: "written by a person, never overwritten",
+      hint: figures
+        ? `of ${figures.sampled} read, written by a person and never overwritten`
+        : "written by a person, never overwritten",
     },
     {
       label: "Alt text",
       value: alt && typeof alt.written === "number" ? String(alt.written) : "-",
       hint:
         alt && typeof alt.written === "number"
-          ? `${alt.keptHuman ?? 0} left as written`
+          ? typeof alt.total === "number"
+            ? `of ${alt.total} checked; ${alt.keptHuman ?? 0} left as written`
+            : `${alt.keptHuman ?? 0} left as written`
           : altFailed
             ? "the last pass is not a measurement"
             : "not run yet",

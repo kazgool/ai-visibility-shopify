@@ -109,7 +109,9 @@ describe("a done pass is the only source of figures", () => {
       altFailed: null,
     });
     expect(tiles.map((t) => t.value)).toEqual(["355", "99%", "12", "40"]);
-    expect(tiles[1].hint).toBe("352 produce attributes");
+    // Every count on a tile carries its denominator (batch 5 item 3).
+    expect(tiles[1].hint).toBe("352 of 355 read produce attributes");
+    expect(tiles[2].hint).toBe("of 355 read, written by a person and never overwritten");
     expect(tiles[1].tone).toBe("success");
     expect(passProblem(DONE)).toBeNull();
   });
@@ -167,6 +169,6 @@ describe("the alt text pass", () => {
       altFailed: null,
     });
     expect(tiles[3].value).toBe("0");
-    expect(tiles[3].hint).toBe("355 left as written");
+    expect(tiles[3].hint).toBe("of 355 checked; 355 left as written");
   });
 });
