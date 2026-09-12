@@ -36,6 +36,7 @@ import { readPass } from "../services/report-metrics";
 import { liveJobFilter, presentJob } from "../services/job-stale";
 import { altProblem, metricTiles, passProblem } from "../services/dashboard-metrics";
 import { resolveLadder } from "../services/dashboard-steps";
+import { cataloguePassCard, type CataloguePassCard } from "../services/catalogue-pass-card";
 import { saveShopLocale, shopLocaleFor } from "../services/business.server";
 import { fetchShopLocale, resolveContentLanguage } from "../services/content-language";
 import { DashboardLadder } from "../components/DashboardLadder";
@@ -307,6 +308,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     altFailed,
     // Progress only: nothing on this screen may read a report off these rows.
     lastRun: lastRun ? { status: lastRun.status, total: lastRun.total, progress: lastRun.progress } : null,
+    // The catalogue pass card (batch 5 item 4) reads the WRITE pass alone, not
+    // whichever of the dry run and the write pass ran last: "when it last ran
+    // and what it wrote" is a question about the pass that writes. Its
+    // progress row is separate from `lastRun` for the same reason - a dry run
+    // in progress must not drive the catalogue pass's bar.
+    cataloguePass: readPass(
+      lastBulk
+        ? {
+            status: lastBulk.status,
+            report: lastBulk.report,
+            startedAt: lastBulk.startedAt?.toISOString() ?? null,
+            finishedAt: lastBulk.finishedAt?.toISOString() ?? null,
+            kind: lastBulk.kind,
+          }
+        : null,
+    ),
+    cataloguePassRow: lastBulk
+      ? {
+          status: lastBulk.status,
+          progress: lastBulk.progress,
+          total: lastBulk.total,
+          startedAt: lastBulk.startedAt?.toISOString() ?? null,
+        }
+      : null,
+    // Null when the job holding the queue is this pass itself: the card says
+    // "This pass is running now", not "a catalogue pass is running, so this
+    // waits for it", which would read as the app waiting on itself.
+    blockingKind:
+      activeJob && activeJob.kind !== "bulk_extract" ? activeJob.kind : null,
     lastAlt: lastAlt ? { status: lastAlt.status, total: lastAlt.total, progress: lastAlt.progress } : null,
     crawlers: crawlerVerdicts,
     crawlerJob: crawlerJob ? { status: crawlerJob.status } : null,
@@ -423,6 +453,111 @@ function Metric({
   );
 }
 
+/**
+ * The catalogue pass, always on the screen (batch 5 item 4). Everything it
+ * says comes from `card`, which is built in catalogue-pass-card.ts and tested
+ * there; this function only lays it out.
+ *
+ * The two buttons post the same `mode` fields the ladder's step four posts, to
+ * the same route action, so the one-job-at-a-time guard and the entitlement
+ * check are the ones that were already there. There is no second code path.
+ */
+function CataloguePassPanel({
+  card,
+  busy,
+  onRun,
+}: {
+  card: CataloguePassCard;
+  busy: boolean;
+  onRun: (mode: string) => void;
+}) {
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <BlockStack gap="100">
+          <Text as="h2" variant="headingMd">
+            Fill your catalogue
+          </Text>
+          <Text as="p" tone="subdued" variant="bodySm">
+            {card.what}
+          </Text>
+        </BlockStack>
+
+        {card.state === "running" && card.progress ? (
+          <BlockStack gap="200">
+            <InlineStack gap="300" blockAlign="center">
+              <Spinner size="small" />
+              <BlockStack gap="050">
+                <Text as="p" variant="headingSm">
+                  {card.progress.label}
+                </Text>
+                {card.progress.elapsed ? (
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {card.progress.elapsed}
+                  </Text>
+                ) : null}
+              </BlockStack>
+            </InlineStack>
+            {card.progress.total > 0 ? (
+              <ProgressBar progress={card.progress.percent} size="small" tone="primary" />
+            ) : null}
+            <Text as="p" variant="bodySm" tone="subdued">
+              This runs on our servers. Close the tab, refresh, come back
+              tomorrow - the progress is saved, not in this window.
+            </Text>
+          </BlockStack>
+        ) : card.state === "never" ? (
+          <Text as="p" variant="bodySm" tone="subdued">
+            This pass has never run on this store.
+          </Text>
+        ) : (
+          <BlockStack gap="100">
+            {card.when ? (
+              <Text as="p" variant="bodySm" tone="subdued">
+                {`Last run ${card.when}.`}
+              </Text>
+            ) : null}
+            {card.wrote ? (
+              <Text as="p" variant="bodySm" tone="subdued">
+                {card.wrote}
+              </Text>
+            ) : null}
+          </BlockStack>
+        )}
+
+        {card.problem ? (
+          <Banner tone={card.state === "refused" ? "info" : "warning"}>
+            <Text as="p">{card.problem}</Text>
+          </Banner>
+        ) : null}
+
+        <InlineStack gap="200" wrap>
+          <Button
+            variant={card.run.primary ? "primary" : undefined}
+            loading={busy}
+            disabled={card.run.disabled}
+            onClick={() => onRun(card.run.mode)}
+          >
+            {card.run.label}
+          </Button>
+          <Button
+            loading={busy}
+            disabled={card.dry.disabled}
+            onClick={() => onRun(card.dry.mode)}
+          >
+            {card.dry.label}
+          </Button>
+        </InlineStack>
+        {card.run.disabledReason ?? card.dry.disabledReason ? (
+          <Text as="p" variant="bodySm" tone="subdued">
+            {card.run.disabledReason ?? card.dry.disabledReason}
+          </Text>
+        ) : null}
+      </BlockStack>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const {
     products,
@@ -441,6 +576,9 @@ export default function Dashboard() {
     hasAccess,
     freeProductsRemaining,
     crawlerHits,
+    cataloguePass,
+    cataloguePassRow,
+    blockingKind,
   } = useLoaderData<typeof loader>() as any;
   const actionData = useActionData<typeof action>() as
     | {
@@ -473,6 +611,17 @@ export default function Dashboard() {
   // Assembled in dashboard-metrics.ts, not here: arithmetic inside JSX is what
   // put NaN on this screen and could not be tested without a browser.
   const tiles = metricTiles({ totalProducts, pass, alt: altPass, altFailed });
+
+  // Assembled in catalogue-pass-card.ts for the same reason the tiles are:
+  // wording and arithmetic inside JSX cannot be asserted on without a browser.
+  // `now` is passed in so the elapsed time is a pure function of its inputs.
+  const passCard: CataloguePassCard = cataloguePassCard({
+    pass: cataloguePass,
+    running: cataloguePassRow,
+    blockingKind,
+    hasAccess,
+    now: new Date(),
+  });
   const problem = passProblem(pass);
   const altProblemLine = altProblem(altFailed);
 
@@ -485,10 +634,38 @@ export default function Dashboard() {
   const revalidator = useRevalidator();
   const stalled = typeof stalledFor === "number";
 
+  // Remix's own revalidation, no new dependency: it re-runs the loader, so the
+  // card's figures come from the JobRun row on the server and never from a
+  // counter in this window. It stops on three conditions - the job ended, the
+  // queue is not moving, and the tab is hidden. The last one is new with the
+  // catalogue pass card (batch 5 item 4): a tab left open in a background
+  // window used to poll every two seconds all night, which is a request per
+  // two seconds against a database whose compute time is the bill.
   useEffect(() => {
     if (!anyRunning || stalled) return;
-    const id = setInterval(() => revalidator.revalidate(), 2000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (id !== null) clearInterval(id);
+      id = null;
+    };
+    const start = () => {
+      if (id === null) id = setInterval(() => revalidator.revalidate(), 2000);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") stop();
+      else {
+        // One immediate read on return, so the card is current before the
+        // first interval elapses rather than up to two seconds stale.
+        revalidator.revalidate();
+        start();
+      }
+    };
+    if (document.visibilityState !== "hidden") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [anyRunning, stalled, revalidator]);
 
   // The ladder posts through this rather than through its own <Form>, so the
@@ -715,6 +892,8 @@ export default function Dashboard() {
             <Metric key={t.label} label={t.label} value={t.value} hint={t.hint} tone={t.tone} />
           ))}
         </InlineGrid>
+
+        <CataloguePassPanel card={passCard} busy={busy} onRun={runJob} />
 
         <DashboardLadder
           ladder={ladder}

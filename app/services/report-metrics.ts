@@ -58,6 +58,12 @@ export type PassFigures = {
   depth: number[];
   wouldSkip: number;
   weakest?: WeakProductLike[];
+  /**
+   * What a write pass did to the store, in products. Absent on a dry run and
+   * on any report written before batch 5 item 4; the catalogue pass card says
+   * "that pass did not record what it wrote" rather than showing zeros.
+   */
+  wrote?: { written: number; unchanged: number; protectedRows: number; withdrawn: number };
 };
 
 export type WeakProductLike = { title: string; families: string[]; id?: string };
@@ -177,6 +183,18 @@ export function readPass(job: PassJobLike): PassState {
       depth: Array.isArray(raw.depth) ? raw.depth : [],
       wouldSkip: raw.wouldSkip ?? 0,
       weakest: Array.isArray(raw.weakest) ? raw.weakest : undefined,
+      // Left undefined for the same reason weakest is: a dry run and an older
+      // pass both wrote nothing here, and zeros would read as "it wrote
+      // nothing", which is a different statement from "it did not record".
+      wrote:
+        raw.wrote && typeof (raw.wrote as any).written === "number"
+          ? {
+              written: (raw.wrote as any).written ?? 0,
+              unchanged: (raw.wrote as any).unchanged ?? 0,
+              protectedRows: (raw.wrote as any).protectedRows ?? 0,
+              withdrawn: (raw.wrote as any).withdrawn ?? 0,
+            }
+          : undefined,
     },
   };
 }

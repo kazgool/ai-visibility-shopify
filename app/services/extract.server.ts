@@ -357,6 +357,17 @@ export type DryRunReport = {
   /** Source A of the per-product SEO scan. Absent on a dry run, and null on
    * a shop without the SEO key, which gets no rows at all. */
   seoScan?: SourceAReport | null;
+  /**
+   * What the pass did to the store, counted in products, not in metafields.
+   * Absent on a dry run, which writes nothing, and absent on reports written
+   * before batch 5 item 4, which the card states rather than showing zeros.
+   *
+   * `unchanged` is the load-bearing one: a product whose values came out
+   * identical is deliberately not written, which is what stops the app
+   * feeding its own webhooks. A merchant who sees a large unchanged count is
+   * looking at the pass working, not at it failing.
+   */
+  wrote?: { written: number; unchanged: number; protectedRows: number; withdrawn: number };
 };
 
 export async function runBulkExtract(
@@ -420,6 +431,7 @@ export async function runBulkExtract(
     complete: catalogue.complete,
     expected: catalogue.expected,
     read: catalogue.read,
+    ...(options.dryRun ? {} : { wrote: { written: 0, unchanged: 0, protectedRows: 0, withdrawn: 0 } }),
   };
 
   // Collected across the whole pass and cut to ten at the end, so the list is
@@ -440,6 +452,15 @@ export async function runBulkExtract(
       if (o.written.length > 0) {
         const handle = handleById.get(o.productId);
         if (handle) changed.push(handle);
+      }
+      // Counted per product, so the card's figures add up to the products the
+      // pass touched. A product with something written counts as written even
+      // if one of its two metafields was already identical.
+      if (report.wrote) {
+        if (o.written.length > 0) report.wrote.written += 1;
+        else if (o.unchanged.length > 0) report.wrote.unchanged += 1;
+        if (o.skipped.length > 0) report.wrote.protectedRows += 1;
+        if (o.removed.length > 0) report.wrote.withdrawn += 1;
       }
     }
   };

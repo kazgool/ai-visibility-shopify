@@ -10,8 +10,9 @@
 //
 // The rules this file enforces, and the reason each is here:
 //
-//  - Five steps, fixed order. Each has one action, one done state and one
-//    sentence saying what it is for.
+//  - Six steps, fixed order (five until item 8 of CC-PROMPT-AI-READABILITY-2
+//    added "Show this app's content on your product pages"). Each has one
+//    action, one done state and one sentence saying what it is for.
 //  - Exactly one primary button on the screen: the action of the first
 //    unfinished step. Everything below it is visible but quiet - no primary,
 //    no colour, its action disabled with the reason in words rather than
@@ -66,7 +67,7 @@ export type SubLine = { label: string; done: boolean; to: string; hint: string }
 
 export type LadderStep = {
   key: StepKey;
-  /** 1 to 5, and it is the number shown. */
+  /** 1 to 6, and it is the number shown. */
   number: number;
   title: string;
   /** One sentence: what this step is for. Shown in every state. */
@@ -524,8 +525,11 @@ export function resolveLadder(input: LadderInput): Ladder {
     if (key === "everywhere") {
       return {
         ...base,
+        // The figures live on the catalogue pass card, which is always on the
+        // screen; this line says when and points at it, rather than repeating
+        // a tally that would then have two places to go stale (batch 5 item 4).
         result: everywhereDone
-          ? `Written ${formatDay(lastWrite?.finishedAt ?? null) ?? "already"}. New and edited products are picked up automatically from here on.`
+          ? `Written ${formatDay(lastWrite?.finishedAt ?? null) ?? "already"}. New and edited products are picked up automatically from here on. What the last pass wrote, and the button to run it again, are on the "Fill your catalogue" card above.`
           : null,
         problem: passProblem(fillPass),
         action: hasAccess
