@@ -145,13 +145,24 @@ export const ALL_FAQ_SOURCES: readonly FaqSource[] = [
 export const FAQ_SECTION_INTENTS_LIVE = false;
 
 /**
- * The merchant's own questions (a) on the live site: off. Judged with the
- * batch-3 rubric on every one on Republica BIO (291, dev run 13) and on every
- * hold-out store (29, hold-out run 4): 7 of 320 wrong, 2.19%, over the 1%
- * bar. Five of the seven are the merchant's heading published as the
- * question ("Ce continua?", "De ce alege produsul sau?"), which no rule can
- * repair without rewriting the merchant's words; with every other class
- * fixed the set would still not be under the bar on Republica BIO.
+ * The merchant's own questions (a) on the live site: off.
+ *
+ * The figure above this line used to read 7 of 320 wrong, 2.19%, from batch 3.
+ * Re-read over every merchant Q&A judged since (batch 5 item 8), it is 71 of
+ * 900, 7.89%, and 61 of 830, 7.35%, on Republica BIO. Seven times the bar.
+ *
+ * And the largest class is not the one batch 3 named. The garbled heading
+ * ("Ce continua?", "De ce alege produsul sau?") is 10 of the 71. 29 of the 71
+ * are a heading that is perfectly well formed and has no subject - "Ce
+ * contine?", "De ce sa alegi produsul?", "How does our product stand out?" -
+ * which cannot be read away from the page, and a published Q&A is read away
+ * from the page by definition.
+ *
+ * The garbled class has a real mechanical test and it is a shop-wide one:
+ * every instance in the corpus is a rare near-variant of a far commoner
+ * heading in the same shop ("ce continua?" on 5 products beside "ce contine?"
+ * on 178). This file is pure and sees one product, so it cannot apply it.
+ * Full working in _shopify/corpus/merchant-questions-classified.md.
  */
 export const FAQ_MERCHANT_QUESTIONS_LIVE = false;
 
