@@ -1,7 +1,7 @@
 // Runs app/engine/faq.ts over the FAQ corpus (CC-PROMPT-AI-READABILITY-3).
 //
 // Usage (from F:\ai-visibility-shopify):
-//   npx tsx scripts/faq-corpus-run.ts <run-name> [--set dev|holdout|all] [--store <name>]
+//   npx tsx scripts/faq-corpus-run.ts <run-name> [--set dev|holdout|all] [--store <name>] [--abstain 0|1|2|3]
 //
 // Writes _shopify/corpus/runs/<run-name>/<store>.json with every product's
 // outline (the description as the engine reads it), facts, options and FAQ,
@@ -33,6 +33,9 @@ const flag = (n: string) => { const i = args.indexOf(n); return i === -1 ? undef
 const run = args.find((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
 if (!run) throw new Error("usage: faq-corpus-run.ts <run-name> [--set dev|holdout|all] [--store name]");
 const set = flag("--set") ?? "dev";
+// Batch 5 item 7: sweep the abstention setting so its cost can be measured.
+// 0 is what the app runs with; the other levels exist only for the table.
+const abstain = Number(flag("--abstain") ?? 0) as 0 | 1 | 2 | 3;
 const only = flag("--store");
 const outDir = path.join("_shopify/corpus/runs", run);
 fs.mkdirSync(outDir, { recursive: true });
@@ -50,7 +53,7 @@ for (const store of stores) {
   let none = 0;
   const out = products.map((p) => {
     const html = p.body_html ?? "";
-    const facts = extractProduct({ title: p.title, descriptionHtml: html }, dictionary);
+    const facts = extractProduct({ title: p.title, descriptionHtml: html }, dictionary, { abstain });
     const faq: FaqItem[] = buildFaq({
       title: p.title,
       descriptionHtml: html,

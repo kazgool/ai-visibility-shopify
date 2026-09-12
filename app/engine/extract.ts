@@ -30,6 +30,23 @@ export type ExtractOptions = {
   casedText?: string;
   /** Negation words, when the caller has them already parsed. */
   negators?: string[];
+  /**
+   * How readily the engine abstains beyond the mechanical rules of batch 5
+   * item 6. Default 0 - the mechanical rules and nothing more, which is the
+   * only setting the app runs with until Marius picks one from the table in
+   * _shopify/corpus/facts-abstention-thresholds.md. It exists so the cost of
+   * each setting can be MEASURED rather than argued about; it is not a
+   * merchant control and is not read from any setting.
+   *
+   * 1  a prefix capture that was truncated at a connector publishes nothing.
+   *    A truncation is the engine guessing where the value ended.
+   * 2  also: a prefix capture whose value still reads as prose, because its
+   *    first word is a connector lead ("with x", "for y").
+   * 3  also: no prefix capture at all. Only the merchant's own plain terms,
+   *    counts and measurements - the paths where the value is a thing he
+   *    wrote rather than a span we chose.
+   */
+  abstain?: 0 | 1 | 2 | 3;
 };
 
 /**
@@ -274,7 +291,12 @@ function prefixCapture(
   groupTerms: Set<string>,
   /** The group's own label, for the safety rule (batch 5 item 6, rule 6). */
   label: string,
+  /** See ExtractOptions.abstain. 0 everywhere the app runs. */
+  abstain: 0 | 1 | 2 | 3,
 ): string[] {
+  // Level 3: the prefix path is where a value is a span we chose rather than
+  // a phrase the merchant wrote, and it is where the errors are.
+  if (abstain >= 3) return [];
   const pattern = new RegExp(
     `(?<![\\p{L}\\p{N}])${diacriticPattern(base)}\\s+((?:[\\p{L}\\p{N}-]+\\s+){0,2}[\\p{L}\\p{N}-]+)`,
     "gu",
@@ -328,6 +350,11 @@ function prefixCapture(
     // partial answer, it is a dangerous one: an allergen line cut at "urme"
     // states the opposite of what the merchant wrote. Whole or nothing.
     if (!safetyAllows(label, kept.length < words.length)) continue;
+
+    // Level 1: a truncation is the engine guessing where the value ended.
+    if (abstain >= 1 && kept.length < words.length) continue;
+    // Level 2: a value that still opens with a connector reads as prose.
+    if (abstain >= 2 && CONNECTOR_LEADS.has(normalize(kept[0] ?? ""))) continue;
 
     // Truncation keeps the part that is a value and drops the part that is
     // prose, but on one shape it keeps prose: "square neckline finished with
@@ -511,6 +538,7 @@ export function extractFromText(
         : DEFAULT_NEGATORS),
   );
   const maxValues = options.maxValues ?? 4;
+  const abstain = options.abstain ?? 0;
   const terms = termSet(groups);
 
   if (!text || text.trim() === "") return [];
@@ -542,7 +570,7 @@ export function extractFromText(
       }
 
       if (isPrefix) {
-        hits = hits.concat(prefixCapture(text, base, stops, negators, terms, ownTerms, group.label));
+        hits = hits.concat(prefixCapture(text, base, stops, negators, terms, ownTerms, group.label, abstain));
         continue;
       }
 
