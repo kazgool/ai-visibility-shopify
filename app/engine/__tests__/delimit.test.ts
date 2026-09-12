@@ -54,6 +54,41 @@ describe("rule 1: a bound or an operator is kept, never dropped", () => {
   it("reaches the measurement path, so #size publishes the bound", () => {
     expect(measurements("inaltime maxim 79 cm")).toEqual(["maxim 79 cm"]);
   });
+
+  // Batch 6 item 1. The pattern had no left word boundary, so it read a bound
+  // out of the TAIL of a merchant's own word and stated a limit nobody wrote.
+  //
+  // The corpus instance is real and is not hypothetical: animax.ro sells
+  // "Solutie lichida Tetra Algumin 100 ml" and "... 250 ml", and "Algumin"
+  // ends in "min". Seven occurrences across those two products, the only
+  // seven in 5,998 corpus products, every one of them "min".
+  it("does not read a bound out of the tail of a merchant's word", () => {
+    const real = "solutie lichida tetra algumin 100 ml";
+    expect(boundBefore(real, real.indexOf("100 ml"))).toBe("");
+    expect(withBound(real, real.indexOf("100 ml"), "100 ml")).toBe("100 ml");
+
+    const spice = "cumin 5g";
+    expect(boundBefore(spice, spice.indexOf("5g"))).toBe("");
+
+    const verb = "termin 5 minute";
+    expect(boundBefore(verb, verb.indexOf("5 minute"))).toBe("");
+  });
+
+  // The lookback is 18 characters, and half a word at the start of the window
+  // looks exactly like the start of the string. A word longer than the window
+  // must not get through the boundary check that way.
+  it("does not fabricate a bound from a word longer than the lookback", () => {
+    const long = "concentratorulmin 100 ml";
+    expect(boundBefore(long, long.indexOf("100 ml"))).toBe("");
+  });
+
+  // The boundary check must not cost a bound that is genuinely its own word,
+  // whichever punctuation the merchant put in front of it.
+  it("still finds a bound that opens its own word", () => {
+    expect(boundBefore("greutate: sub 5 kg", "greutate: sub ".length)).toBe("sub");
+    expect(boundBefore("max 5 kg", "max ".length)).toBe("max");
+    expect(boundBefore("(min 2 kg", "(min ".length)).toBe("min");
+  });
 });
 
 describe("rule 2: a negation inside the captured span kills the capture", () => {

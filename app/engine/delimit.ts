@@ -37,14 +37,27 @@ const BOUNDS = [
   "cel puțin", "cel mult", "aproximativ", "circa", "maxim", "minim",
 ];
 
-/** Longest first, so "cel putin" wins over "cel". */
+/**
+ * Longest first, so "cel putin" wins over "cel".
+ *
+ * The leading lookbehind is batch 6 item 1. Without it the pattern matched the
+ * TAIL of a longer word: "Tetra Algumin 100 ml" read "min" out of "Algumin"
+ * and published "min 100 ml" - a limit the merchant never stated, on a
+ * product whose volume is exact. Seven occurrences in the corpus, all "min",
+ * all on animax.ro's Tetra Algumin (100 ml and 250 ml); the same shape is
+ * open to every merchant word ending in a listed bound ("termin 5 minute"
+ * read "min" too). A bound has to start where a word starts.
+ */
 const BOUND_PATTERN = new RegExp(
-  `(${BOUNDS.slice()
+  `(?<![\\p{L}\\p{N}])(${BOUNDS.slice()
     .sort((a, b) => b.length - a.length)
     .map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|")})\\s*$`,
   "iu",
 );
+
+/** How much text to read back for a bound. Longer than the longest bound. */
+const BOUND_LOOKBACK = 18;
 
 /**
  * The bound standing immediately in front of `index`, or "".
@@ -53,8 +66,18 @@ const BOUND_PATTERN = new RegExp(
  * la 10 lei, greutate 2 kg" must not put "de la" on the weight.
  */
 export function boundBefore(text: string, index: number): string {
-  const before = normalize(text.slice(Math.max(0, index - 18), index));
-  const m = BOUND_PATTERN.exec(before);
+  const from = Math.max(0, index - BOUND_LOOKBACK);
+  let before = text.slice(from, index);
+  // The lookback can cut a word in half, and half a word looks exactly like
+  // the start of the string to the lookbehind above - which is how a word
+  // longer than the window would still fabricate a bound. When the character
+  // before the window is a letter or a digit, the first token in the window
+  // is that word's tail: drop it.
+  if (from > 0 && /[\p{L}\p{N}]/u.test(text[from - 1]!)) {
+    const space = before.search(/\s/u);
+    before = space === -1 ? "" : before.slice(space);
+  }
+  const m = BOUND_PATTERN.exec(normalize(before));
   return m ? m[1] : "";
 }
 
