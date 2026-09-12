@@ -1451,6 +1451,22 @@ export type PageRow = {
  * A node without the marker is the theme's, and the finding is then phrased
  * about the page repeating a node rather than about our output.
  */
+/**
+ * Did one of this app's own storefront blocks raise a Liquid error on this
+ * page? Shopify renders such an error as an HTML comment exactly where the
+ * failing tag stood, so an error inside one of our JSON-LD scripts turns that
+ * node into unparseable JSON and every consumer drops the whole node without
+ * a word. Republica BIO, 12 September 2026: 3 of 182 product pages carried no
+ * Product node for this reason, and B1 could say the node was missing but not
+ * that we were the ones who broke it.
+ *
+ * Matched on the app's own block path, so a Liquid error raised by the theme
+ * or by another app is not reported as ours.
+ */
+export function ourLiquidError(html: string): boolean {
+  return /Liquid error \(shopify:\/\/apps\/mrdigital-ai-visibility-aio\//.test(html);
+}
+
 export function duplicateNodes(nodes: LdNode[]): {
   type: string;
   count: number;
@@ -1595,6 +1611,7 @@ export function readingOf(
         // sentence, not a file listing.
         origins: origins.slice(0, 8),
         aggregateRatings: ratings,
+        ourLiquidError: ourLiquidError(page.html),
       },
     });
   }

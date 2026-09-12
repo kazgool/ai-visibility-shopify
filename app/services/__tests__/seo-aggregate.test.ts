@@ -612,6 +612,19 @@ describe("one product's findings, for the editor", () => {
     expect(
       describeFinding(f("A2", "A+B", { mismatch: "availability", pageSays: "InStock", everyVariantSoldOut: true })),
     ).toBe("The page says InStock while every variant is sold out.");
+    // Batch 5 item 2: when our own block failed to render, B1's sentence says
+    // so, because "No Product node on this page at all" sends the merchant
+    // looking at his theme for a fault that is ours.
+    expect(describeFinding(f("B1", "B", { productNodes: 0, emitters: [] }))).toBe(
+      "No Product node on this page at all.",
+    );
+    expect(
+      describeFinding(f("B1", "B", { productNodes: 0, emitters: [], ourLiquidError: true })),
+    ).toContain("this app's own block did not finish rendering here");
+    expect(
+      describeFinding(f("B1", "B", { productNodes: 0, emitters: [], ourLiquidError: true })),
+    ).toContain("it is ours to fix");
+
     expect(describeFinding(f("B5", "B", { reason: "robots", disallow: "/products/" }))).toBe(
       "robots.txt disallows /products/, so this page was never fetched.",
     );

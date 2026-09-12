@@ -721,7 +721,7 @@ type NodeLike = { types?: unknown; id?: unknown };
  * finding the page reader already stored; B1 fires whenever `distinct !== 1`,
  * so no B1 finding means exactly one node. QA of 3 September 2026.
  */
-function productNodesOf(
+export function productNodesOf(
   value: unknown,
   findings: Finding[],
 ): { ours: number; theirs: number; distinct: number } {
@@ -934,6 +934,14 @@ export function describeFinding(finding: Finding): string {
         );
       }
       const who = Array.isArray(d.emitters) && d.emitters.length > 0 ? ` (${d.emitters.join(" and ")})` : "";
+      // When our own block failed to render, say so. A merchant reading "No
+      // Product node on this page at all" would otherwise go looking at his
+      // theme for a fault that is ours.
+      if (d.ourLiquidError === true) {
+        return n === 0
+          ? "No Product node on this page at all: this app's own block did not finish rendering here, so the node it writes is not valid and every assistant drops it. Nothing for you to change; it is ours to fix."
+          : `${n} Product nodes on this page${who}, where there should be one. This app's own block also did not finish rendering here.`;
+      }
       return n === 0
         ? "No Product node on this page at all."
         : `${n} Product nodes on this page${who}, where there should be one.`;

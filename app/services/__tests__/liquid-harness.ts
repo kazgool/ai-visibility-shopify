@@ -108,6 +108,12 @@ export function storefront(options: {
   countryCode?: string | null;
   /** The visitor's currency (cart.currency.iso_code); "RON" unless given. */
   currency?: string;
+  /**
+   * product.metafields.reviews, exactly as a review app wrote it. Passed
+   * through untouched, including the string values some apps write where the
+   * block expects numbers: that is the shape that broke a live store.
+   */
+  reviews?: Record<string, unknown>;
 }): Record<string, unknown> {
   const data = options.data ?? {};
   const mf = (value: unknown) => (value === undefined || value === null ? undefined : { value });
@@ -147,7 +153,7 @@ export function storefront(options: {
           fit_for: mf(data.fitFor),
           questions: mf(data.questions),
         },
-        reviews: {},
+        reviews: options.reviews ?? {},
       },
     },
     collection: options.collection ?? null,

@@ -61,8 +61,23 @@
     others write reviews.rating / reviews.rating_count). Published only when
     real reviews exist - a shop without reviews gets no rating markup at all.
   {%- endcomment -%}
-  {%- assign av_rating = product.metafields.reviews.rating.value -%}
-  {%- assign av_rating_count = product.metafields.reviews.rating_count.value | default: 0 -%}
+  {%- comment -%}
+    Both are forced to numbers with `plus: 0` before anything compares them.
+    A metafield is whatever the review app defined it as, and a shop where
+    reviews.rating_count is a text field made `av_rating_count > 0` raise
+    "comparison of String with 0 failed". Liquid renders that error as an
+    HTML comment where the tag was - inside this JSON-LD script - so the
+    whole Product node became unparseable JSON and every consumer dropped it
+    silently. Republica BIO, 12 September 2026: 3 of 182 product pages had no
+    Product node at all for this reason, and the Structured data card counted
+    them without being able to say why.
+
+    `plus: 0` turns nil, a non-numeric string and an unexpected object into
+    0, which publishes no rating - the safe direction. A numeric string
+    becomes the number it states.
+  {%- endcomment -%}
+  {%- assign av_rating_value = product.metafields.reviews.rating.value.value | default: product.metafields.reviews.rating.value | plus: 0 -%}
+  {%- assign av_rating_count = product.metafields.reviews.rating_count.value | default: 0 | plus: 0 -%}
 
   {%- comment -%}
     Delivery, as numbers (CC-PROMPT-AI-READABILITY-4 item 2). The Business
@@ -394,10 +409,10 @@
           {%- if product.selected_or_first_available_variant.barcode != blank %}
           "gtin": {{ product.selected_or_first_available_variant.barcode | json }},
           {%- endif %}
-          {%- if av_rating and av_rating_count > 0 %}
+          {%- if av_rating_value > 0 and av_rating_count > 0 %}
           "aggregateRating": {
             "@type": "AggregateRating",
-            "ratingValue": {{ av_rating.value | default: av_rating | json }},
+            "ratingValue": {{ av_rating_value | json }},
             "reviewCount": {{ av_rating_count | json }}
           },
           {%- endif %}

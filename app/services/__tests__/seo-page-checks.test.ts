@@ -13,6 +13,7 @@ import {
   locsOf,
   productHandleOf,
   fetchSitemap,
+  ourLiquidError,
   type MarketsInfo,
 } from "../seo-page.server";
 
@@ -281,5 +282,34 @@ describe("fetching the sitemap", () => {
     }) as unknown as typeof fetch;
     const out = await fetchSitemap("https://x", impl);
     expect(out.read).toBeNull();
+  });
+});
+
+// Batch 5 item 2. A Liquid error inside one of our JSON-LD scripts makes the
+// whole node unparseable, and the only trace is the comment Shopify prints
+// where the failing tag stood. Read live from Republica BIO on 12 September
+// 2026, where it cost 3 of 182 product pages their Product node.
+describe("a Liquid error raised by this app's own block", () => {
+  const OURS =
+    '<!-- Liquid error (shopify://apps/mrdigital-ai-visibility-aio/blocks/ai-visibility/019fc7c8-03b7-7553-a37b-84b873e7cb96 line 397): comparison of String with 0 failed -->';
+
+  it("is recognised on a page that carries it", () => {
+    expect(ourLiquidError(`<script type="application/ld+json">{"sku":"X",${OURS}"offers":{}}</script>`)).toBe(true);
+  });
+
+  it("is not raised for a page with no Liquid error at all", () => {
+    expect(ourLiquidError("<html><body>A page that rendered.</body></html>")).toBe(false);
+  });
+
+  // The theme and other apps raise Liquid errors too, and blaming ourselves
+  // for one of those would send a merchant to us with a fault we cannot fix.
+  it("does not claim a theme's Liquid error as ours", () => {
+    expect(ourLiquidError("<!-- Liquid error (sections/main-product line 12): divided by 0 -->")).toBe(false);
+  });
+
+  it("does not claim another app's Liquid error as ours", () => {
+    expect(
+      ourLiquidError("<!-- Liquid error (shopify://apps/some-review-app/blocks/widget/abc line 4): x -->"),
+    ).toBe(false);
   });
 });

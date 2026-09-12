@@ -187,3 +187,62 @@ describe("the head marks up only what the page shows (PRD-AI-READABILITY P0.3)",
     expect(page.name).toBe("Chairs");
   });
 });
+
+// Batch 5 item 2. Republica BIO, 12 September 2026: 3 of 182 product pages
+// carried no Product node at all. The cause was ours - a review app had
+// written reviews.rating_count as text, `av_rating_count > 0` raised
+// "comparison of String with 0 failed" in Shopify's Liquid, and the error
+// comment Shopify printed in place of the tag landed inside this block's own
+// JSON-LD script, so the Product node was unparseable and every consumer
+// dropped it without a word.
+describe("a review app's metafields, whatever type it wrote them as", () => {
+  const noTheme = { productId: "", hasProductLd: false };
+
+  it("publishes no rating when the shop has no reviews at all", async () => {
+    const html = await renderBlock(FILE, storefront({ settings, data: DATA, themeScan: noTheme }));
+    const node = ourNodes(html, "Product")[0];
+    expect(node.aggregateRating).toBeUndefined();
+  });
+
+  it("still emits a parseable Product node when the count is text, not a number", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({
+        settings,
+        data: DATA,
+        themeScan: noTheme,
+        reviews: { rating: { value: { value: "4.7" } }, rating_count: { value: "12" } },
+      }),
+    );
+    // The whole point: the node is there and parses. ldObjects would have
+    // thrown, or found nothing, on the markup this replaces.
+    const node = ourNodes(html, "Product")[0];
+    expect(node).toBeDefined();
+    expect(node.name).toBe("Oak chair");
+    // And the numbers go out as numbers, which is what Google asks for.
+    expect(node.aggregateRating).toMatchObject({ ratingValue: 4.7, reviewCount: 12 });
+  });
+
+  it("publishes no rating when the count is text that states no number", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({
+        settings,
+        data: DATA,
+        themeScan: noTheme,
+        reviews: { rating: { value: { value: "4.7" } }, rating_count: { value: "" } },
+      }),
+    );
+    const node = ourNodes(html, "Product")[0];
+    expect(node).toBeDefined();
+    expect(node.aggregateRating).toBeUndefined();
+  });
+
+  it("publishes no rating when there are reviews but no rating value", async () => {
+    const html = await renderBlock(
+      FILE,
+      storefront({ settings, data: DATA, themeScan: noTheme, reviews: { rating_count: { value: 12 } } }),
+    );
+    expect(ourNodes(html, "Product")[0].aggregateRating).toBeUndefined();
+  });
+});
