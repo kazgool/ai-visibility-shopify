@@ -379,3 +379,37 @@ export function deliveryCostLine(costText: string, isFrom: boolean, shopCurrency
   const published = `Published for Google: ${parts.join(", ")}.`;
   return reason ? `${published} Not published: ${reason}.` : published;
 }
+
+/**
+ * What the screen says when the shop's currency could not be read. The save
+ * still stores the words (business.server.ts withParsedDelivery), and nothing
+ * about delivery is published until a save that can read the currency, so the
+ * line says both.
+ */
+export const DELIVERY_CURRENCY_UNKNOWN_LINE =
+  "Not published for Google: we could not read your store's currency, so neither a delivery price nor a delivery time is published. What you typed is saved; it is published the next time this screen can read your currency.";
+
+/**
+ * The whole line under the delivery fields (item 2b with item 4): the cost,
+ * then the time. Null when both fields are empty. `shopCurrency` null is the
+ * shop's currency having failed to read, and then one sentence covers both,
+ * because with no currency neither figure is published.
+ */
+export function deliveryLine(input: {
+  costText: string;
+  isFrom: boolean;
+  timeText: string;
+  varies: boolean;
+  shopCurrency: string | null;
+}): string | null {
+  const typed = input.costText.trim() !== "" || input.timeText.trim() !== "";
+  if (input.shopCurrency === null) return typed ? DELIVERY_CURRENCY_UNKNOWN_LINE : null;
+  return (
+    [
+      deliveryCostLine(input.costText, input.isFrom, input.shopCurrency),
+      deliveryTimeLine(input.timeText, input.varies),
+    ]
+      .filter((line): line is string => line !== null)
+      .join(" ") || null
+  );
+}

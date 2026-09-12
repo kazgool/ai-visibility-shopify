@@ -52,6 +52,22 @@ describe("withParsedDelivery", () => {
     expect(unreadable.deliveryTime).toBe("call us");
   });
 
+  it("keeps the words and publishes nothing when the shop's currency is unknown", () => {
+    const record = withParsedDelivery(
+      {
+        deliveryCost: "25 RON",
+        deliveryTime: "1-2 zile",
+        deliveryCostParsed: { rate: 9, currency: "RON", freeOverAmount: null },
+        deliveryTimeParsed: { minDays: 3, maxDays: 4 },
+      },
+      null,
+    );
+    expect(record.deliveryCost).toBe("25 RON");
+    expect(record.deliveryTime).toBe("1-2 zile");
+    expect(record.deliveryCostParsed).toBeUndefined();
+    expect(record.deliveryTimeParsed).toBeUndefined();
+  });
+
   it("recomputes a reading the text no longer says", () => {
     const record = withParsedDelivery(
       { deliveryCost: "call us", deliveryCostParsed: { rate: 9, currency: "RON", freeOverAmount: null } },
@@ -89,9 +105,31 @@ describe("saveBusiness", () => {
     expect(write.variables.metafields[0].key).toBe("business");
   });
 
-  it("writes nothing when the shop's currency cannot be read", async () => {
-    const { fn } = graphqlWith({ id: "gid://shopify/Shop/1" });
-    await expect(saveBusiness("shop1", fn as any, { deliveryCost: "25" })).rejects.toThrow(/currency/);
+  // A currency we cannot read costs the merchant the published figures, never
+  // the words they typed.
+  it("saves the text and publishes no delivery figures when the currency cannot be read", async () => {
+    const { fn, calls } = graphqlWith({ id: "gid://shopify/Shop/1" });
+    await saveBusiness("shop1", fn as any, {
+      deliveryCost: "25 RON",
+      deliveryTime: "1-2 zile",
+      deliveryCountries: ["RO"],
+    });
+
+    const stored = JSON.parse(mockUpsert.mock.calls[0][0].create.value);
+    expect(stored).toEqual({
+      deliveryCost: "25 RON",
+      deliveryTime: "1-2 zile",
+      deliveryCountries: ["RO"],
+    });
+    expect(stored.deliveryCostParsed).toBeUndefined();
+    expect(stored.deliveryTimeParsed).toBeUndefined();
+    const write = calls.find((c) => c.query.includes("metafieldsSet"))!;
+    expect(JSON.parse(write.variables.metafields[0].value)).toEqual(stored);
+  });
+
+  it("still refuses when the shop id cannot be read", async () => {
+    const { fn } = graphqlWith({ currencyCode: "RON" });
+    await expect(saveBusiness("shop1", fn as any, { deliveryCost: "25" })).rejects.toThrow(/shop id/);
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 });

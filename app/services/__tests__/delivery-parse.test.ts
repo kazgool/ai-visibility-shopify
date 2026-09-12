@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  DELIVERY_CURRENCY_UNKNOWN_LINE,
   deliveryCostLine,
+  deliveryLine,
   deliveryTimeLine,
   normalizeDeliveryText,
   offerShippingPublished,
@@ -238,5 +240,29 @@ describe("deliveryCostLine", () => {
       const line = deliveryCostLine(input, false, "RON");
       if (line !== null) expect(line).toMatch(/^[\x20-\x7e]*$/);
     }
+  });
+});
+
+describe("deliveryLine", () => {
+  const base = { costText: "25 RON", isFrom: false, timeText: "1-2 zile", varies: false };
+
+  it("is the cost line and then the time line", () => {
+    expect(deliveryLine({ ...base, shopCurrency: "RON" })).toBe(
+      "Published for Google: 25 RON. Delivery time published for Google: 1 to 2 days.",
+    );
+  });
+
+  it("says nothing when both fields are empty", () => {
+    expect(deliveryLine({ costText: " ", isFrom: false, timeText: "", varies: false, shopCurrency: "RON" })).toBeNull();
+    expect(deliveryLine({ costText: " ", isFrom: false, timeText: "", varies: false, shopCurrency: null })).toBeNull();
+  });
+
+  // The save keeps the words and publishes nothing; the line says both.
+  it("says why nothing is published when the shop's currency could not be read", () => {
+    const line = deliveryLine({ ...base, shopCurrency: null });
+    expect(line).toBe(DELIVERY_CURRENCY_UNKNOWN_LINE);
+    expect(line).toMatch(/^[\x20-\x7e]*$/);
+    expect(line).not.toMatch(/Published for Google:/);
+    expect(deliveryLine({ ...base, costText: "", shopCurrency: null })).toBe(DELIVERY_CURRENCY_UNKNOWN_LINE);
   });
 });

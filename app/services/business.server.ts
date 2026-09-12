@@ -77,10 +77,22 @@ export type BusinessRecord = BusinessInfo & {
  * shop's ISO currency, the one a cost typed with no currency is in. Pure. A
  * stale reading never survives a changed or emptied text: both are always
  * recomputed.
+ *
+ * `shopCurrency` null means the shop's currency could not be read. The words
+ * the merchant typed are still saved - they are the merchant's, and refusing
+ * the save would lose them - but nothing about delivery is published, because
+ * every published shipping figure carries a currency and the one we would
+ * guess could be wrong. The next save with a readable currency publishes them.
+ * Both readings are cleared rather than kept: a reading left over from an
+ * earlier save would be about the earlier text.
  */
-export function withParsedDelivery(info: BusinessRecord, shopCurrency: string): BusinessRecord {
+export function withParsedDelivery(
+  info: BusinessRecord,
+  shopCurrency: string | null,
+): BusinessRecord {
   const { deliveryCostParsed: _cost, deliveryTimeParsed: _time, ...rest } = info;
   const out: BusinessRecord = { ...rest };
+  if (shopCurrency === null) return out;
   const cost = (info.deliveryCost ?? "").trim();
   if (cost !== "") out.deliveryCostParsed = readDeliveryCost(cost, shopCurrency).parsed;
   const time = readDeliveryTime(info.deliveryTime ?? "");
@@ -195,9 +207,13 @@ export async function saveBusiness(
   const idJson = await idRes.json();
   const shopGid = idJson.data?.shop?.id;
   if (!shopGid) throw new Error("Could not resolve shop id");
+  // A currency we could not read does not block the save: the merchant's own
+  // words are saved either way, and only the published delivery figures are
+  // held back (withParsedDelivery). The Business screen says so in its line
+  // under the field, because a field that publishes nothing and says nothing
+  // is the failure this app exists to avoid.
   const currency = idJson.data?.shop?.currencyCode;
-  if (!currency) throw new Error("Could not resolve the shop's currency");
-  const info = withParsedDelivery(input, String(currency));
+  const info = withParsedDelivery(input, currency ? String(currency) : null);
 
   await db.setting.upsert({
     where: { shopId_key: { shopId, key: SETTING_KEY } },

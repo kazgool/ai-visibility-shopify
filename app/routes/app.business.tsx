@@ -41,7 +41,7 @@ import { SOCIAL_PLATFORMS } from "../services/social-profiles";
 import { hasPaidAccess } from "../services/billing.server";
 // Pure, for the same reason: the delivery line below is computed as the
 // merchant types (CC-PROMPT-AI-READABILITY-4 item 2b).
-import { deliveryCostLine, deliveryTimeLine, parseCountryList } from "../services/delivery-parse";
+import { deliveryLine, parseCountryList } from "../services/delivery-parse";
 
 /** The shop's currency and country: a cost typed with no currency is in the
  * shop's, and no country typed means the shop's own. */
@@ -71,8 +71,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  // A refused read leaves both null: the screen still saves, and the delivery
-  // line falls back to the currency of the last save.
+  // A refused read leaves both null: the screen still saves the words, and
+  // the delivery line says that nothing about delivery is published until a
+  // save can read the currency.
   let shopCurrency: string | null = null;
   let shopCountry: string | null = null;
   try {
@@ -212,13 +213,16 @@ export default function Business() {
   // What goes to Google from what is typed, recomputed on every keystroke by
   // the same functions the save runs (delivery-parse.ts): one line, the cost
   // and then the time (CC-PROMPT-AI-READABILITY-4 items 2b and 4).
-  const costLine =
-    [
-      deliveryCostLine(deliveryCost, deliveryCostIsFrom, shopCurrency ?? business?.deliveryCostParsed?.currency ?? ""),
-      deliveryTimeLine(deliveryTime, deliveryVaries),
-    ]
-      .filter((line): line is string => line !== null)
-      .join(" ") || null;
+  // A currency that could not be read is not filled in from the last save:
+  // the save running now cannot read it either, so it publishes nothing, and
+  // the line has to say what that save does (delivery-parse deliveryLine).
+  const costLine = deliveryLine({
+    costText: deliveryCost,
+    isFrom: deliveryCostIsFrom,
+    timeText: deliveryTime,
+    varies: deliveryVaries,
+    shopCurrency,
+  });
   const [returnDays, setReturnDays] = useState(
     business?.returnDays != null ? String(business.returnDays) : "",
   );

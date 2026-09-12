@@ -126,6 +126,23 @@ facts. Republica BIO: 567 questions to 612.
 and both blocks after it for the m31 collagen creamer, from the corpus read
 and Republica BIO's business record, and prints the nodes as JSON.
 
+### A currency we cannot read no longer costs the merchant their words
+
+Item 2a made `saveBusiness` read the shop's currency, because a delivery cost
+typed with no currency is in the shop's, and refuse the save when the read
+failed. That is the wrong thing to lose: the words on that screen are the
+merchant's own, typed by hand, and a refused save loses them over a figure
+they never asked for. The save now stores the record either way and holds
+back only what is published: with no currency, `withParsedDelivery` writes
+neither `deliveryCostParsed` nor `deliveryTimeParsed`, and clears any earlier
+reading rather than leaving one that is about earlier text. The Business
+screen says so in the one line under the fields (`deliveryLine`, which now
+composes both halves): "Not published for Google: we could not read your
+store's currency, so neither a delivery price nor a delivery time is
+published. What you typed is saved; it is published the next time this screen
+can read your currency." The shop id is still required - there is nothing to
+write the metafield to without it.
+
 ## Pushed and tagged 11 September 2026 (deploy-2026-09-11-2, at e357304)
 
 The version number the Developer Dashboard shows for this deploy goes in
