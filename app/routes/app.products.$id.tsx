@@ -33,7 +33,6 @@ import {
   diffFactRows,
   factKey,
   humanMerge,
-  humanRowCount,
   readFacts,
   withFactsHuman,
 } from "../services/facts-human";

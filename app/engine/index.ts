@@ -3,6 +3,10 @@
 // Pure functions only: no Shopify, no Prisma, no I/O. That is what makes the
 // port testable against the WordPress original (DICTIONARY-PORT §9 exit test).
 
+import { extractFromText, type ExtractOptions, type Fact } from "./extract";
+import { DEFAULT_DICTIONARY } from "./dictionary";
+import { prepareText, prepareTextCased } from "./normalize";
+
 export {
   extractFromText,
   collidingTerms,
@@ -92,10 +96,6 @@ export {
   type CitationCheck,
   type CitationVerdict,
 } from "./citation";
-
-import { extractFromText, type ExtractOptions, type Fact } from "./extract";
-import { DEFAULT_DICTIONARY } from "./dictionary";
-import { prepareText, prepareTextCased } from "./normalize";
 
 /**
  * Extract comparable attributes from a Shopify product.

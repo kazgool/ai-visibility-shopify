@@ -731,7 +731,6 @@ export function productNodesOf(
   for (const node of list) {
     const types = Array.isArray(node?.types) ? node.types.map(String) : [];
     if (!types.includes("Product")) continue;
-    const id = typeof node?.id === "string" ? node.id : "";
     if (isOurNode(node as { ours?: boolean })) ours += 1;
     else theirs += 1;
   }

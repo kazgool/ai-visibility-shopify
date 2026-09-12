@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 // could not run is a sentence and never a zero. An empty file with only its
 // headings is a correct answer; a file with a fabricated zero row is not.
 
-import { aggregateFindings, themeNodeAggregate, type ScanRowLike } from "../seo-aggregate";
+import { aggregateFindings, type ScanRowLike } from "../seo-aggregate";
 import { readinessOf } from "../seo-readiness";
 import { FINDING_OWNER } from "../seo-findings";
 import { csvCell, csvRows } from "../report-metrics";

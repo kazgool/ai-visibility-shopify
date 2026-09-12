@@ -28,7 +28,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { enqueue } from "../services/queue.server";
 import { checkAppEmbed, contentEmbedDeepLink, embedDeepLink } from "../services/embed-check.server";
-import { businessFor } from "../services/business.server";
+import { businessFor, saveShopLocale, shopLocaleFor } from "../services/business.server";
 import { hasPaidAccess, freeProductIds } from "../services/billing.server";
 import { crawlerHitsForDashboard } from "../services/crawler-hits.server";
 import { describeJobKind } from "../services/job-kinds";
@@ -37,7 +37,6 @@ import { liveJobFilter, presentJob } from "../services/job-stale";
 import { altProblem, metricTiles, passProblem } from "../services/dashboard-metrics";
 import { resolveLadder } from "../services/dashboard-steps";
 import { cataloguePassCard, type CataloguePassCard } from "../services/catalogue-pass-card";
-import { saveShopLocale, shopLocaleFor } from "../services/business.server";
 import { fetchShopLocale, resolveContentLanguage } from "../services/content-language";
 import { DashboardLadder } from "../components/DashboardLadder";
 

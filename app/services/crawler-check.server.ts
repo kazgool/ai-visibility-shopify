@@ -10,6 +10,9 @@
 
 import db from "../db.server";
 
+import { CAUSE_TEXT, disallowedAgents, familyReport, ROBOTS_ONLY_TOKENS, type Cause } from "./crawler-info";
+import { VISIBLE_CONTENT_CLASS } from "./seo-onpage";
+
 export const AGENTS: Record<string, string> = {
   GPTBot: "Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)",
   "OAI-SearchBot":
@@ -54,9 +57,6 @@ export const AGENTS: Record<string, string> = {
 const VERIFIED_BY_ADDRESS = new Set(["Googlebot", "Bingbot"]);
 const VERIFIED_BY_ADDRESS_NOTE =
   " This crawler's real requests come from its own published addresses, and some firewalls let only those through, so a refusal of this test request does not prove the real crawler is refused. Google Search Console and Bing Webmaster Tools answer that from the inside.";
-
-import { CAUSE_TEXT, disallowedAgents, familyReport, ROBOTS_ONLY_TOKENS, type Cause } from "./crawler-info";
-import { VISIBLE_CONTENT_CLASS } from "./seo-onpage";
 
 export { CRAWLER_INFO, NON_CRAWLER_TOKENS } from "./crawler-info";
 

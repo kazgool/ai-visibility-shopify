@@ -9,9 +9,9 @@ import db from "../db.server";
 import type { GraphqlFn } from "./admin.server";
 import { NAMESPACE } from "./facts.server";
 import { takeSeoSnapshot, type TakeSnapshotResult } from "./seo-snapshot.server";
+import { PLANS, type PlanHandle } from "./plans";
 
 export { PLANS, type PlanHandle } from "./plans";
-import { PLANS, type PlanHandle } from "./plans";
 
 /**
  * Comped access, for our own stores, agencies and anyone we choose to give the

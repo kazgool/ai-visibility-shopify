@@ -7,7 +7,6 @@ import {
   BlockStack,
   InlineStack,
   Text,
-  Button,
   Badge,
   Banner,
   Box,

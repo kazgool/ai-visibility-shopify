@@ -74,7 +74,6 @@ import {
   type ListingProperty,
   type Readiness,
   type ReadinessGroup,
-  type ShopWideItem,
   type SurfaceContext,
 } from "../services/seo-readiness";
 import {
@@ -600,7 +599,6 @@ export function SeoDashboardScreen({ data }: { data: SeoDashboardData }) {
     budget,
     blockedBy,
     since,
-    business,
     blogPosts,
     collections,
     published,

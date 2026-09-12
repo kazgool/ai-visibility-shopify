@@ -19,5 +19,17 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx prisma generate
-      - run: npx vitest run
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Check Liquid syntax
+        run: node scripts/check-liquid.mjs
+      - name: Check rendered Liquid JSON
+        run: node scripts/check-liquid-json.mjs
+      - name: Lint
+        run: npm run lint

@@ -7,6 +7,8 @@
 import type { Task } from "graphile-worker";
 import db from "../app/db.server";
 import {
+  dictionaryFor,
+  extraStopwordsFor,
   extractOneProduct,
   runBulkExtract,
   withdrawIfIneligible,
@@ -16,8 +18,11 @@ import { prefsFor } from "../app/services/eligibility.server";
 import { reconcileMirrors } from "../app/services/mirror-reconcile.server";
 import { adminGraphql, type GraphqlFn } from "../app/services/admin.server";
 import {
+  grantSeoUnlock,
+  isSeoUnlocked,
   mayProcessAutomatically,
   mayProcessAutomaticallyCached,
+  syncSeoUnlockMetafield,
 } from "../app/services/billing.server";
 import { fetchCollections, writeCollections } from "../app/services/collections.server";
 import { pingCollections } from "../app/services/indexnow.server";
@@ -31,7 +36,10 @@ import { refreshCurrentPageFacts, refreshWrittenSince } from "../app/services/se
 import {
   runCollectionSeoApply,
   runCollectionSeoQueueBuild,
+  runSeoApply,
+  runSeoQueueBuild,
   type CollectionSeoApplyItem,
+  type SeoApplyItem,
 } from "../app/services/seo-bulk.server";
 import {
   cappedBudget,
@@ -43,12 +51,6 @@ import {
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
-import { dictionaryFor, extraStopwordsFor } from "../app/services/extract.server";
-import {
-  grantSeoUnlock,
-  isSeoUnlocked,
-  syncSeoUnlockMetafield,
-} from "../app/services/billing.server";
 import {
   scanStorefront,
   recordThemeScan,
@@ -62,7 +64,6 @@ import {
   type ProductSnapshot,
   type SeoWatchChange,
 } from "../app/services/seo-watch";
-import { runSeoQueueBuild, runSeoApply, type SeoApplyItem } from "../app/services/seo-bulk.server";
 import { crawlerHitCutoff } from "../app/services/retention";
 import { describeGraphqlError } from "../app/services/graphql-errors";
 import { beatingGraphql, createHeartbeat } from "../app/services/job-heartbeat";

@@ -18,6 +18,8 @@
 import type { ProductInput } from "./facts.server";
 import { classifyMetaField } from "./seo.server";
 
+import type { Finding } from "./seo-findings";
+
 // The finding vocabulary - the codes, the Finding shape and CHECK_LABEL -
 // lives in ./seo-findings (no ".server" suffix and no import that has one),
 // because build step 4 renders those labels in the browser and this module
@@ -32,8 +34,6 @@ export {
   type FindingCode,
   type FindingSource,
 } from "./seo-findings";
-
-import { findingsOf, type Finding } from "./seo-findings";
 
 export const IDENTIFIERS = ["barcode", "vendor", "sku", "image"] as const;
 export type Identifier = (typeof IDENTIFIERS)[number];

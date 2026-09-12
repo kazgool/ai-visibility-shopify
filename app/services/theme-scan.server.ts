@@ -10,6 +10,7 @@
 import db from "../db.server";
 import { describeGraphqlBody, named } from "./graphql-errors";
 import { NAMESPACE } from "./facts.server";
+import { isOurNode, objectCarriesOurMarker } from "./conflicts";
 
 /** One top-level JSON-LD node, after @graph is flattened. */
 export type LdNode = {
@@ -206,8 +207,6 @@ export {
   objectCarriesOurMarker,
   OUR_NODE_MARKER,
 } from "./conflicts";
-
-import { isOurNode, objectCarriesOurMarker } from "./conflicts";
 
 /**
  * Resolve an `@id` to the form it actually identifies, so a relative id from
