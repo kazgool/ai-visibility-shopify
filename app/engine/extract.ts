@@ -11,6 +11,13 @@ import { measurements } from "./measurements";
 import { diacriticPattern, normalize } from "./normalize";
 import { isUsablePhrase, trimPhrase } from "./phrase";
 import { stopwordSet } from "./stopwords";
+import {
+  containsNegator,
+  cutByWindow,
+  endsOnLooseFigure,
+  safetyAllows,
+  safetyTermIsWhole,
+} from "./delimit";
 
 export type Fact = { k: string; v: string };
 
@@ -265,6 +272,8 @@ function prefixCapture(
   negators: Set<string>,
   terms: Set<string>,
   groupTerms: Set<string>,
+  /** The group's own label, for the safety rule (batch 5 item 6, rule 6). */
+  label: string,
 ): string[] {
   const pattern = new RegExp(
     `(?<![\\p{L}\\p{N}])${diacriticPattern(base)}\\s+((?:[\\p{L}\\p{N}-]+\\s+){0,2}[\\p{L}\\p{N}-]+)`,
@@ -296,6 +305,29 @@ function prefixCapture(
       if (kept.length > 0 && CAPTURE_STOPS.has(normalize(word))) break;
       kept.push(word);
     }
+
+    // Batch 5 item 6, rule 2. isNegated reads what stands BEFORE the term and
+    // is blind to a negator the capture swallowed: "with no harsh sulfates"
+    // went out as a key ingredient, which is the opposite of an ingredient.
+    if (containsNegator(kept, negators)) continue;
+
+    // Batch 5 item 6, rule 4. A capture that ends on a figure has lost the
+    // noun the figure measured: "contains approximately 140mg" drops "of
+    // caffeine per 6oz serving" and no longer says 140 mg of what.
+    if (endsOnLooseFigure(kept)) continue;
+
+    // Batch 5 item 6, rule 5. The window is three words. When all three were
+    // taken and the sentence carries straight on, this is not a value, it is
+    // the first three words of a phrase: "with our new nourishing", "for
+    // ladies could". A capture that ended at punctuation, at a connector or
+    // at the end of the sentence ended where the merchant ended it.
+    const window = cutByWindow(text, match.index! + match[0].length, kept.length === words.length);
+    if (window) continue;
+
+    // Batch 5 item 6, rule 6. Under a safety label a fragment is not a
+    // partial answer, it is a dangerous one: an allergen line cut at "urme"
+    // states the opposite of what the merchant wrote. Whole or nothing.
+    if (!safetyAllows(label, kept.length < words.length)) continue;
 
     // Truncation keeps the part that is a value and drops the part that is
     // prose, but on one shape it keeps prose: "square neckline finished with
@@ -510,7 +542,7 @@ export function extractFromText(
       }
 
       if (isPrefix) {
-        hits = hits.concat(prefixCapture(text, base, stops, negators, terms, ownTerms));
+        hits = hits.concat(prefixCapture(text, base, stops, negators, terms, ownTerms, group.label));
         continue;
       }
 
@@ -546,6 +578,12 @@ export function extractFromText(
         if (APPEARANCE_QUALIFIER.test(before)) continue;
         const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 20);
         if (APPEARANCE_QUALIFIER_AFTER.test(after)) continue;
+        // Batch 5 item 6, rule 6. Under a safety label the merchant's
+        // statement goes out whole or not at all. "poate contine urme de
+        // soia" matched by the term "poate contine urme" publishes a trace
+        // allergen warning with the allergen removed. The scan carries on:
+        // the same term may stand whole later in the text.
+        if (!safetyTermIsWhole(group.label, text, m.index! + m[0].length)) continue;
         hits.push(term);
         break;
       }
