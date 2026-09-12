@@ -44,6 +44,7 @@ import { checkMetaFields } from "../services/seo-scan";
 import { CHECK_METHOD } from "../services/seo-findings";
 import { scanRowFor } from "../services/seo-aggregate.server";
 import { pageBudget, scanOneProductPage } from "../services/seo-page.server";
+import { recordProductSchemaObservation } from "../services/storefront-observation.server";
 import {
   writeSeo,
   revertSeo,
@@ -457,6 +458,17 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
       productId: id,
       origin,
       password: password?.value,
+      deps: {
+        recordSchemaObservation: async (productId, completeProductNode) => {
+          const graphql = async <T = any>(query: string, variables: Record<string, unknown> = {}): Promise<T> => {
+            const response = await admin.graphql(query, { variables });
+            const json: any = await response.json();
+            if (json.errors?.length) throw new Error(JSON.stringify(json.errors));
+            return json.data as T;
+          };
+          await recordProductSchemaObservation(graphql, productId, completeProductNode);
+        },
+      },
     });
 
     // Refusals are sentences, not exceptions. Whatever happened, the loader

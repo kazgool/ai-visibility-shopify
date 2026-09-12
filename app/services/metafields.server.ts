@@ -12,6 +12,10 @@ const DEFINITIONS = [
   { key: "facts", type: "json", name: "Comparable attributes" },
   { key: "questions", type: "json", name: "Starter questions" },
   { key: "fit_for", type: "single_line_text_field", name: "Who it suits" },
+  // A non-content, per-product reading of the public page. The content block
+  // uses this instead of one unrelated product's theme scan before it emits a
+  // Product fragment, so an unread product safely remains unknown.
+  { key: "schema_observation", type: "json", name: "Product schema observation" },
   { key: "state", type: "json", name: "AI Visibility state" },
 ] as const;
 

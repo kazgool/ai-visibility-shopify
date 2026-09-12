@@ -1486,6 +1486,11 @@ export function duplicateNodes(nodes: LdNode[]): {
   return [...seen.values()].filter((entry) => entry.count > 1);
 }
 
+/** Our complete Product node, not the facts-only fragment that joins it. */
+export function completeProductNodeSeen(nodes: LdNode[]): boolean {
+  return nodes.some((node) => node.types.includes("Product") && isOurNode(node) && node.fragment !== true);
+}
+
 function sameAddress(a: string, b: string): boolean {
   const strip = (value: string) => value.split("#")[0].replace(/\/$/, "");
   return strip(a) === strip(b);
@@ -1893,6 +1898,12 @@ export type ScanDeps = {
    * 30 minutes read "stuck" while it was running.
    */
   onProgress?: (done: number, total: number) => Promise<void>;
+  /**
+   * Best-effort bridge to the product's public schema observation metafield.
+   * The page scanner owns the evidence; callers own Admin API access. A
+   * failure here must never discard an otherwise successful page reading.
+   */
+  recordSchemaObservation?: (productId: string, completeProductNode: boolean) => Promise<void>;
 };
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -2290,6 +2301,15 @@ export async function scanShopPages(input: {
         findings: [...keptFromSourceA, ...reading.findings] as any,
       },
     });
+    if (reading.status === "ok" && input.deps?.recordSchemaObservation) {
+      try {
+        await input.deps.recordSchemaObservation(row.productId, completeProductNodeSeen(reading.nodes));
+      } catch (error) {
+        // The database row is the scan's durable record. This optional Liquid
+        // gate may retry on the next read and must not invalidate that record.
+        log?.(`seo_scan ${origin}: schema observation for ${row.productId} was not stored (${describeError(error)})`);
+      }
+    }
     await onProgress?.(report.scanned, budget);
   }
 
@@ -2498,6 +2518,15 @@ export async function scanOneProductPage(input: {
       findings: [...keptFromSourceA, ...reading.findings] as any,
     },
   });
+
+  if (reading.status === "ok" && input.deps?.recordSchemaObservation) {
+    try {
+      await input.deps.recordSchemaObservation(input.productId, completeProductNodeSeen(reading.nodes));
+    } catch {
+      // The scan record is authoritative. This small storefront safety gate
+      // is best effort and never turns a successful page read into an error.
+    }
+  }
 
   // Spent after the fetch, not before: a page that could not be reached still
   // cost a request and still counts, but a refusal above costs nothing.

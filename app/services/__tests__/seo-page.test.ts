@@ -1131,6 +1131,23 @@ describe("Read this page now", () => {
     expect(written.findings.map((f: any) => f.code)).toContain("A1");
   });
 
+  it("records our complete Product node for this product only after a successful public read", async () => {
+    settings(10);
+    mockScanFindUnique.mockResolvedValue(ROW);
+    const observed = vi.fn(async () => undefined);
+    const html = CANONICAL + ourProductLd(`${URL_A}#product`) + MIRROR_LINK;
+    const { impl } = routedFetch(() => reply(html, { url: URL_A }));
+
+    await scanOneProductPage({
+      shopId: "shop1",
+      productId: "gid://shopify/Product/1",
+      origin: ORIGIN,
+      deps: { fetchImpl: impl as any, recordSchemaObservation: observed },
+    });
+
+    expect(observed).toHaveBeenCalledWith("gid://shopify/Product/1", true);
+  });
+
   it("refuses when the allowance is gone, and fetches nothing", async () => {
     settings(500);
     const { impl, productUrls } = routedFetch(() => reply(CLEAN, { url: URL_A }));

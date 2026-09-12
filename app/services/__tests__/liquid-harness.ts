@@ -114,6 +114,8 @@ export function storefront(options: {
    * block expects numbers: that is the shape that broke a live store.
    */
   reviews?: Record<string, unknown>;
+  /** The per-product public-page observation that gates the facts fragment. */
+  schemaObservation?: Record<string, unknown> | null;
 }): Record<string, unknown> {
   const data = options.data ?? {};
   const mf = (value: unknown) => (value === undefined || value === null ? undefined : { value });
@@ -152,6 +154,7 @@ export function storefront(options: {
           facts: mf(data.facts),
           fit_for: mf(data.fitFor),
           questions: mf(data.questions),
+          schema_observation: mf(options.schemaObservation),
         },
         reviews: options.reviews ?? {},
       },

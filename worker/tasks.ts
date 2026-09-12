@@ -48,6 +48,7 @@ import {
   type MarketsInfo,
   type SourceBReport,
 } from "../app/services/seo-page.server";
+import { recordProductSchemaObservation } from "../app/services/storefront-observation.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
@@ -1199,6 +1200,9 @@ export async function scanProductPagesForShop(
       markets: await readMarkets(graphql, logger, shop.domain),
       deps: {
         log: (message) => logger.info(message),
+        recordSchemaObservation: async (productId, completeProductNode) => {
+          await recordProductSchemaObservation(graphql, productId, completeProductNode);
+        },
         onProgress: async (done, total) => {
           await beat.progress(done, total);
           await options.onProgress?.(done, total);

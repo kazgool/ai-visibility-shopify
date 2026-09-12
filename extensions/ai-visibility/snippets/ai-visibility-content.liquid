@@ -26,9 +26,11 @@
     hidden_groups   the dictionary group labels the facts list leaves out,
                     from shop.metafields['$app'].facts_display (the shop object
                     is not visible inside a rendered snippet, so it is passed)
-    our_product_node  theme_scan.ourProductNode: true when the last theme scan
-                    found our complete Product node on the product page, which
-                    is what the facts fragment below adds to
+    product_schema_observation
+                    a reading of this product's own public page. The facts
+                    fragment below is emitted only when it says our complete
+                    Product node is present. An absent or unread observation
+                    is unknown, never a decision made from another product.
 
   Rules, all from the PRD and CLAUDE.md:
   - Renders nothing at all - no wrapper, no heading, no whitespace - unless
@@ -121,15 +123,15 @@
           A Product fragment: @context, @type, the @id our complete node in the
           head carries, our marker and additionalProperty. Nothing else, so it
           describes no second product - it adds to the one node sharing its
-          @id. Emitted only when that node exists: `our_product_node` is the
-          theme scan's reading of the product page it last fetched, true when
-          our complete Product node was on it (full mode, or extend mode on a
-          theme with no Product node). A rendered block cannot see the head
-          embed's mode or whether that embed is on, so this is behaviour
-          observed on the storefront rather than a setting read. Unknown -
-          no scan yet, the password page, a scan from before this flag - is
-          not true, and emits nothing: a lone fragment would be a second,
-          incomplete Product.
+          @id. Emitted only when that node exists: the per-product observation
+          is true when our complete Product node was on this product's own
+          page (full mode,
+          or extend mode on a theme with no Product node). A rendered block
+          cannot see the head embed's mode or whether that embed is on, so
+          this follows a per-product storefront observation rather than a
+          shop-wide verdict from one arbitrary page. Unknown - no successful
+          page read yet - is not true, and emits nothing: a lone fragment
+          would be a second, incomplete Product.
 
           Never under the theme's @id. The theme scan stores the @id of the one
           product page it read, so that value names a different product on
@@ -144,7 +146,7 @@
           last fact can be a hidden one, and a comma before the closing
           bracket is invalid JSON that every parser drops silently.
         {%- endcomment -%}
-        {%- if our_product_node == true -%}
+        {%- if product_schema_observation.productNode == 'complete' and product_schema_observation.version == 1 -%}
           <script type="application/ld+json">
             {
               "@context": "https://schema.org",
