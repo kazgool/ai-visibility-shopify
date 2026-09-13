@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { productSchemaObservation, recordProductSchemaObservation } from "../storefront-observation.server";
+import {
+  ensureProductSchemaObservationDefinition,
+  productSchemaObservation,
+  recordProductSchemaObservation,
+} from "../storefront-observation.server";
 
 describe("per-product storefront schema observation", () => {
   it("uses a small stable value, not a timestamp that would trigger product updates on every page read", () => {
@@ -11,6 +15,19 @@ describe("per-product storefront schema observation", () => {
     const graphql = vi.fn(async () => ({ product: { metafield: { value: JSON.stringify(productSchemaObservation(true)) } } }));
     await expect(recordProductSchemaObservation(graphql as any, "gid://shopify/Product/1", true)).resolves.toBe(false);
     expect(graphql).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates the public product definition idempotently before a scanner writes observations", async () => {
+    const graphql = vi.fn(async () => ({ metafieldDefinitionCreate: { userErrors: [{ code: "TAKEN" }] } }));
+    await expect(ensureProductSchemaObservationDefinition(graphql as any)).resolves.toBeUndefined();
+    const variables = (graphql.mock.calls[0] as unknown as [string, { definition: Record<string, unknown> }])[1];
+    expect(variables.definition).toMatchObject({
+      key: "schema_observation",
+      namespace: "$app",
+      ownerType: "PRODUCT",
+      type: "json",
+      access: { storefront: "PUBLIC_READ" },
+    });
   });
 
   it("writes a changed result under its own metafield, never the provenance state", async () => {

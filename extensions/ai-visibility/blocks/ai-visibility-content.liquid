@@ -31,7 +31,8 @@
       show_questions: block.settings.show_questions,
       show_links: block.settings.show_links,
       hidden_groups: shop.metafields['$app'].facts_display.value.hidden,
-      product_schema_observation: product.metafields['$app'].schema_observation.value
+      product_schema_observation: product.metafields['$app'].schema_observation.value,
+      our_product_node: shop.metafields['$app'].theme_scan.value.ourProductNode
     -%}
   {%- endif -%}
 {%- endunless -%}

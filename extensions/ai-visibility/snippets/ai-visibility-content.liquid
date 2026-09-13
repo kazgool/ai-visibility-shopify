@@ -28,9 +28,12 @@
                     is not visible inside a rendered snippet, so it is passed)
     product_schema_observation
                     a reading of this product's own public page. The facts
-                    fragment below is emitted only when it says our complete
-                    Product node is present. An absent or unread observation
-                    is unknown, never a decision made from another product.
+                    fragment below follows it when present. Until a product
+                    has its first observation, our_product_node retains the
+                    existing safe storefront behaviour.
+    our_product_node
+                    legacy shop observation used only while this product has
+                    no observation yet; per-product evidence always wins.
 
   Rules, all from the PRD and CLAUDE.md:
   - Renders nothing at all - no wrapper, no heading, no whitespace - unless
@@ -129,9 +132,11 @@
           or extend mode on a theme with no Product node). A rendered block
           cannot see the head embed's mode or whether that embed is on, so
           this follows a per-product storefront observation rather than a
-          shop-wide verdict from one arbitrary page. Unknown - no successful
-          page read yet - is not true, and emits nothing: a lone fragment
-          would be a second, incomplete Product.
+          shop-wide verdict from one arbitrary page. During the one-time
+          rollout, a product with no observation yet retains the previous
+          shop-level result, so publishing this extension never makes its
+          visible structured data disappear. Once an observation exists it
+          always wins, including an explicit "absent" result.
 
           Never under the theme's @id. The theme scan stores the @id of the one
           product page it read, so that value names a different product on
@@ -146,7 +151,15 @@
           last fact can be a hidden one, and a comma before the closing
           bracket is invalid JSON that every parser drops silently.
         {%- endcomment -%}
-        {%- if product_schema_observation.productNode == 'complete' and product_schema_observation.version == 1 -%}
+        {%- assign av_product_node_complete = false -%}
+        {%- if product_schema_observation != blank -%}
+          {%- if product_schema_observation.productNode == 'complete' and product_schema_observation.version == 1 -%}
+            {%- assign av_product_node_complete = true -%}
+          {%- endif -%}
+        {%- elsif our_product_node == true -%}
+          {%- assign av_product_node_complete = true -%}
+        {%- endif -%}
+        {%- if av_product_node_complete -%}
           <script type="application/ld+json">
             {
               "@context": "https://schema.org",

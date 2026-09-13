@@ -25,6 +25,14 @@ const SET_OBSERVATION = `#graphql
   }
 `;
 
+const CREATE_DEFINITION = `#graphql
+  mutation CreateProductSchemaObservationDefinition($definition: MetafieldDefinitionInput!) {
+    metafieldDefinitionCreate(definition: $definition) {
+      userErrors { field message code }
+    }
+  }
+`;
+
 export type ProductSchemaObservation = {
   /** `complete` means this exact product URL rendered our non-fragment Product node. */
   productNode: "complete" | "absent";
@@ -33,6 +41,27 @@ export type ProductSchemaObservation = {
 
 export function productSchemaObservation(complete: boolean): ProductSchemaObservation {
   return { productNode: complete ? "complete" : "absent", version: 1 };
+}
+
+/**
+ * The scanner has an offline Admin session, so it can create this public
+ * definition without waiting for an interactive OAuth round trip. Shopify
+ * treats TAKEN as the expected idempotent result after the first scan.
+ */
+export async function ensureProductSchemaObservationDefinition(graphql: GraphqlFn): Promise<void> {
+  const result = await graphql<any>(CREATE_DEFINITION, {
+    definition: {
+      key: "schema_observation",
+      name: "Product schema observation",
+      type: "json",
+      namespace: "$app",
+      ownerType: "PRODUCT",
+      access: { storefront: "PUBLIC_READ" },
+    },
+  });
+  const errors = result?.metafieldDefinitionCreate?.userErrors ?? [];
+  const real = errors.filter((error: { code?: string }) => error.code !== "TAKEN");
+  if (real.length) throw new Error(`metafieldDefinitionCreate schema_observation: ${JSON.stringify(real)}`);
 }
 
 function sameObservation(raw: unknown, next: ProductSchemaObservation): boolean {

@@ -44,7 +44,10 @@ import { checkMetaFields } from "../services/seo-scan";
 import { CHECK_METHOD } from "../services/seo-findings";
 import { scanRowFor } from "../services/seo-aggregate.server";
 import { pageBudget, scanOneProductPage } from "../services/seo-page.server";
-import { recordProductSchemaObservation } from "../services/storefront-observation.server";
+import {
+  ensureProductSchemaObservationDefinition,
+  recordProductSchemaObservation,
+} from "../services/storefront-observation.server";
 import {
   writeSeo,
   revertSeo,
@@ -466,6 +469,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
             if (json.errors?.length) throw new Error(JSON.stringify(json.errors));
             return json.data as T;
           };
+          await ensureProductSchemaObservationDefinition(graphql);
           await recordProductSchemaObservation(graphql, productId, completeProductNode);
         },
       },

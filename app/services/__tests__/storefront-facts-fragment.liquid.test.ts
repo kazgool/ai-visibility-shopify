@@ -80,18 +80,28 @@ describe("the facts fragment in the content snippet", () => {
     expect(ourNodes(allHidden, "Product")).toHaveLength(0);
   });
 
-  it("is not emitted unless this product was observed with our complete node: a lone fragment would be a second product", async () => {
+  it("uses this product's observation when it exists: an explicit absence overrides the old shop-wide verdict", async () => {
     for (const schemaObservation of [
-      null,
-      {},
+      { version: 2 },
       { productNode: "absent", version: 1 },
       { productNode: "complete", version: 2 },
     ]) {
-      const html = await renderBlock(EMBED, storefront({ settings: defaults, data: { facts: FACTS }, schemaObservation }));
+      const html = await renderBlock(
+        EMBED,
+        storefront({ settings: defaults, data: { facts: FACTS }, themeScan: { ourProductNode: true }, schemaObservation }),
+      );
       expect(ldObjects(html).filter((n) => n["@type"] === "Product")).toHaveLength(0);
       // The visible list is unaffected.
       expect(html).toContain("<dt");
     }
+  });
+
+  it("retains the legacy verdict only until this product receives its first observation", async () => {
+    const html = await renderBlock(
+      EMBED,
+      storefront({ settings: defaults, data: { facts: FACTS }, themeScan: { ourProductNode: true }, schemaObservation: null }),
+    );
+    expect(ourNodes(html, "Product")).toHaveLength(1);
   });
 
   it("does not use a shop-level observation from a different product", async () => {

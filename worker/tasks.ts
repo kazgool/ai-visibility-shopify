@@ -48,7 +48,10 @@ import {
   type MarketsInfo,
   type SourceBReport,
 } from "../app/services/seo-page.server";
-import { recordProductSchemaObservation } from "../app/services/storefront-observation.server";
+import {
+  ensureProductSchemaObservationDefinition,
+  recordProductSchemaObservation,
+} from "../app/services/storefront-observation.server";
 import { writeAltText } from "../app/services/alt-text.server";
 import { extractProduct } from "../app/engine";
 import { AGENTS, runCrawlerCheck } from "../app/services/crawler-check.server";
@@ -1192,6 +1195,14 @@ export async function scanProductPagesForShop(
   const beat = jobHeartbeat(jobRun.id, logger);
 
   try {
+    // Make the app-owned observation readable by Liquid before the first page
+    // result is written. A failure is logged but does not turn a page scan
+    // into a failed job; the next nightly pass retries it.
+    try {
+      await ensureProductSchemaObservationDefinition(graphql);
+    } catch (error) {
+      logger.info(`seo_scan ${shop.domain}: schema observation definition was not ensured (${describeError(error)})`);
+    }
     const report = await scanShopPages({
       shopId: shop.id,
       origin,
