@@ -24,6 +24,7 @@ import {
   isExportTable,
   keyFigures,
   listingCsv,
+  adminProductUrl,
   productFindingsCsv,
   reportHeading,
   shopWideCsv,
@@ -88,6 +89,14 @@ function facts(over: Partial<FactsRow> = {}): FactsRow {
   };
 }
 
+/**
+ * The two domains a merchant file can carry, deliberately different in every
+ * fixture here: the primary domain the storefront column is built from, and
+ * the .myshopify handle the admin column is keyed by. A fixture where they
+ * match cannot fail when the wrong one is used.
+ */
+const SHOP = "the-shop.myshopify.com";
+
 function source(rows: ScanRowLike[], over: Partial<DashboardSource> = {}): DashboardSource {
   return {
     domain: "republicabio.ro",
@@ -108,7 +117,7 @@ function merchantFiles(data: DashboardSource, rows: ScanRowLike[]): [string, str
     ["findings", findingsCsv(data, NOW)],
     ["shopwide", shopWideCsv(data, derived, NOW)],
     ["listing", listingCsv(data, derived, NOW)],
-    ["products", productFindingsCsv(data, rows, NOW)],
+    ["products", productFindingsCsv(data, rows, SHOP, NOW)],
   ];
   if (data.since.before) {
     files.push(["since", ownerSinceCsv(reportHeading(data, NOW), data.since.before, data.since.today)]);
@@ -614,13 +623,36 @@ describe("the per-product export", () => {
   // Changed on purpose by CC-PROMPT-AI-READABILITY-3 addendum item 9: the fixture now carries B10 and B1 in place of the hidden B17 and B2, so the 32 rows are all visible findings.
   it("names each product and what was found on it", () => {
     const data = source(fiftyProducts());
-    const table = cells(productFindingsCsv(data, fiftyProducts(), NOW)).slice(4);
+    const table = cells(productFindingsCsv(data, fiftyProducts(), SHOP, NOW)).slice(4);
     // 12 B10 + 8 A5 + 8 B1 + 4 B15
     expect(table.length).toBe(32);
     expect(table[0][0]).toBe("p-0");
-    expect(table[0][1]).toBe("/products/p-0");
-    expect(table[0][3]).toMatch(/^(You|Us|Your theme)$/);
+    expect(table[0][1]).toBe("https://republicabio.ro/products/p-0");
+    expect(table[0][2]).toBe("https://admin.shopify.com/store/the-shop/products/0");
+    expect(table[0][4]).toMatch(/^(You|Us|Your theme)$/);
     expect(table.join(" ")).not.toMatch(/\bB10\b/);
+  });
+
+  // 14 September 2026. Both address columns are whole URLs a spreadsheet can
+  // open, and they are built from different domains: the storefront from the
+  // shop's primary domain, the admin one from its .myshopify handle. The
+  // fixtures deliberately disagree, so a build that uses one domain for both
+  // fails here rather than in a merchant's Downloads folder.
+  it("gives every row a storefront address and an admin address, from the right domain each", () => {
+    const rows = fiftyProducts();
+    const table = cells(productFindingsCsv(source(rows), rows, SHOP, NOW)).slice(4);
+    for (const line of table) {
+      expect(line[1]).toMatch(/^https:\/\/republicabio\.ro\/products\//);
+      expect(line[2]).toMatch(/^https:\/\/admin\.shopify\.com\/store\/the-shop\/products\/\d+$/);
+    }
+    expect(cells(productFindingsCsv(source(rows), rows, SHOP, NOW))[3][2]).toBe("Edit in Shopify");
+  });
+
+  it("leaves the admin cell empty rather than building half a link", () => {
+    const rows = fiftyProducts().map((r) => ({ ...r, productId: "" })) as ScanRowLike[];
+    const table = cells(productFindingsCsv(source(rows), rows, SHOP, NOW)).slice(4);
+    expect(table.length).toBeGreaterThan(0);
+    for (const line of table) expect(line[2]).toBe("");
   });
 
   // Addendum item 9: a check no merchant sees adds no row to this file either.
@@ -635,36 +667,58 @@ describe("the per-product export", () => {
       ],
     })) as ScanRowLike[];
     const data = source(rows);
-    const table = cells(productFindingsCsv(data, rows, NOW)).slice(4);
+    const table = cells(productFindingsCsv(data, rows, SHOP, NOW)).slice(4);
     // The same 32 as the visible findings alone: 12 B10 + 8 A5 + 8 B1 + 4 B15.
     expect(table.length).toBe(32);
   });
 
   it("is headings and a sentence on a store with no findings at all", () => {
     const clean = [row(1, []), row(2, [])];
-    const table = cells(productFindingsCsv(source(clean), clean, NOW));
+    const table = cells(productFindingsCsv(source(clean), clean, SHOP, NOW));
     expect(table[1][0]).toContain("No product carries a finding");
     expect(table[3][0]).toBe("Product");
     expect(table.length).toBe(4);
   });
 
   it("is headings and a sentence on an empty store", () => {
-    const table = cells(productFindingsCsv(source([]), [], NOW));
+    const table = cells(productFindingsCsv(source([]), [], SHOP, NOW));
     expect(table[1][0]).toContain("No product carries a finding");
     expect(table.length).toBe(4);
   });
 
   it("says so in the file when it stops at the cap", () => {
     const rows = fiftyProducts();
-    const text = productFindingsCsv(source(rows), rows, NOW, 5);
+    const text = productFindingsCsv(source(rows), rows, SHOP, NOW, 5);
     expect(text).toContain("This file stopped at 5 rows");
     expect(cells(text).slice(4).length).toBe(6);
   });
 
   it("carries no check code and no search vocabulary", () => {
     const rows = oneEightyNine();
-    const text = productFindingsCsv(source(rows), rows, NOW);
+    const text = productFindingsCsv(source(rows), rows, SHOP, NOW);
     expect(text).not.toMatch(/\b[AB]\d{1,2}\b/);
+  });
+});
+
+describe("the admin address of a product", () => {
+  it("is built from the .myshopify handle and the numeric id", () => {
+    expect(adminProductUrl("the-shop.myshopify.com", "gid://shopify/Product/123")).toBe(
+      "https://admin.shopify.com/store/the-shop/products/123",
+    );
+  });
+
+  it("takes a shop domain that is already a handle", () => {
+    expect(adminProductUrl("the-shop", "gid://shopify/Product/123")).toBe(
+      "https://admin.shopify.com/store/the-shop/products/123",
+    );
+  });
+
+  it("is empty rather than wrong when there is no id to point at", () => {
+    expect(adminProductUrl("the-shop.myshopify.com", null)).toBe("");
+    expect(adminProductUrl("the-shop.myshopify.com", undefined)).toBe("");
+    expect(adminProductUrl("the-shop.myshopify.com", "")).toBe("");
+    expect(adminProductUrl("the-shop.myshopify.com", "gid://shopify/Product/")).toBe("");
+    expect(adminProductUrl("", "gid://shopify/Product/123")).toBe("");
   });
 });
 

@@ -633,12 +633,37 @@ export const PRODUCT_ROW_CAP = 50000;
 const PRODUCTS_HEADER = [
   "Product",
   "Product page",
+  "Edit in Shopify",
   "What we found",
   "Whose it is",
   "Where it is done",
 ];
 
-export type ProductRowSource = Pick<ScanRowLike, "handle" | "findings">;
+export type ProductRowSource = Pick<ScanRowLike, "handle" | "productId" | "findings">;
+
+/**
+ * The admin address of one product, or "" when the row cannot name one.
+ *
+ * Two domains are in play and they are not interchangeable. `DashboardSource.domain`
+ * is the shop's primary domain (example.com), which is what a shopper types and
+ * what the storefront column is built from. The admin address is keyed by the
+ * shop's own .myshopify handle, which is why `shopDomain` is passed in
+ * separately rather than derived from the one already on the source: deriving
+ * it would produce admin.shopify.com/store/example.com, a link that looks right
+ * in a spreadsheet and opens nothing.
+ *
+ * An empty cell when the id is missing or malformed, never a half-built URL. A
+ * merchant who clicks a link expects a product, and a 404 costs more trust than
+ * a blank.
+ */
+export function adminProductUrl(shopDomain: string, productId: string | null | undefined): string {
+  if (!productId) return "";
+  const numeric = /(\d+)\s*$/.exec(productId)?.[1];
+  if (!numeric) return "";
+  const store = shopDomain.toLowerCase().replace(/\.myshopify\.com$/, "");
+  if (!store) return "";
+  return `https://admin.shopify.com/store/${store}/products/${numeric}`;
+}
 
 /**
  * One row per product per finding.
@@ -647,12 +672,19 @@ export type ProductRowSource = Pick<ScanRowLike, "handle" | "findings">;
  * this app stores when it reads a page, and fetching 20,000 titles from the
  * Admin API to decorate a spreadsheet is a cost the merchant would pay in
  * waiting for the file. The handle is what the merchant sees in their own URL
- * bar, and the second column is the path itself, so a row can be opened rather
- * than searched for.
+ * bar.
+ *
+ * Two addresses per row, both whole rather than relative (14 September 2026).
+ * The storefront one was the path alone, `/products/<handle>`, which a
+ * spreadsheet cannot open: a cell has no page to be relative to. The admin one
+ * is new, and is the one the work is actually done at - every merchant-owned
+ * finding in this file ends "Shopify, Products, open one", and this column is
+ * that sentence made clickable.
  */
 export function productFindingsCsv(
   data: DashboardSource,
   rows: ProductRowSource[],
+  shopDomain: string,
   now: Date,
   cap = PRODUCT_ROW_CAP,
 ): string {
@@ -675,7 +707,8 @@ export function productFindingsCsv(
       const steps = OWNER_STEPS[code];
       body.push([
         row.handle ?? "",
-        row.handle ? `/products/${row.handle}` : "",
+        row.handle ? `https://${data.domain}/products/${row.handle}` : "",
+        adminProductUrl(shopDomain, row.productId),
         label,
         GROUP_WORD[FINDING_OWNER[code]],
         steps ? steps.where : "",

@@ -16,6 +16,7 @@ import {
   DataTable,
   Divider,
 } from "@shopify/polaris";
+import { ExportButton } from "../components/ExportButton";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { hasPaidAccess } from "../services/billing.server";
@@ -1572,27 +1573,16 @@ export default function Report() {
               <InlineStack gap="200" wrap>
                 <Button onClick={() => window.print()}>Print or save as PDF</Button>
                 {/* Resource routes, not a query parameter on this one: see the
-                    comment at the top of app.report.export.$table.tsx.
-                    target="_blank" is load-bearing - Polaris renders url as a
-                    Remix Link, which intercepts the click and asks the router
-                    for the route instead of letting the browser fetch the
-                    file. */}
-                <Button
-                  url="/app/report/export/families"
-                  target="_blank"
-                  disabled={!canExport}
-                  download
-                >
+                    comment at the top of app.report.export.$table.tsx. Fetched
+                    rather than navigated to: under this app's token-exchange
+                    auth a target="_blank" download hands the merchant the
+                    login page as a file. See app/components/ExportButton.tsx. */}
+                <ExportButton url="/app/report/export/families" disabled={!canExport}>
                   Export the table of details as CSV
-                </Button>
-                <Button
-                  url="/app/report/export/weakest"
-                  target="_blank"
-                  disabled={!canExport}
-                  download
-                >
+                </ExportButton>
+                <ExportButton url="/app/report/export/weakest" disabled={!canExport}>
                   Export the weakest products as CSV
-                </Button>
+                </ExportButton>
               </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
                 {canExport

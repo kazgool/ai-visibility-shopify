@@ -250,10 +250,14 @@ export async function scanRowFor(
  */
 export async function allScanRows(
   shopId: string,
-): Promise<{ handle: string | null; findings: unknown }[]> {
-  const out: { handle: string | null; findings: unknown }[] = [];
+): Promise<{ productId: string; handle: string | null; findings: unknown }[]> {
+  // productId travels with the row because the per-product export builds an
+  // admin link from it (seo-report.ts adminProductUrl). It is already in the
+  // select above, so carrying it costs one string per row and saves the export
+  // a second read of the same table.
+  const out: { productId: string; handle: string | null; findings: unknown }[] = [];
   await forEachRow(shopId, false, (row) => {
-    out.push({ handle: row.handle ?? null, findings: row.findings });
+    out.push({ productId: row.productId, handle: row.handle ?? null, findings: row.findings });
   });
   return out;
 }

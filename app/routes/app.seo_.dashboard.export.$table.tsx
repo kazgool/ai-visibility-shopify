@@ -83,7 +83,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // aggregates. Read a batch at a time, like every other full-catalogue read
     // in this app, so a 20,000-product shop never holds its scan table twice.
     const rows = await allScanRows(shop.id);
-    body = productFindingsCsv(source, rows, now);
+    // session.shop, not source.domain: the admin link column is keyed by the
+    // .myshopify handle, and source.domain is the shop's primary domain.
+    body = productFindingsCsv(source, rows, session.shop, now);
   }
 
   // The byte order mark for the same reason the other two exports carry one:

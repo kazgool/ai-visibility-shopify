@@ -15,7 +15,8 @@
 // dedicated dashboard exists. Build step 5 moves it to /app/seo/dashboard;
 // nothing here is written for that position.
 
-import { BlockStack, Button, Card, Divider, InlineStack, Text } from "@shopify/polaris";
+import { BlockStack, Card, Divider, InlineStack, Text } from "@shopify/polaris";
+import { ExportButton } from "./ExportButton";
 import {
   NO_SNAPSHOT_SENTENCE,
   WRITTEN_EMPTY_SENTENCE,
@@ -129,12 +130,15 @@ export function SeoSinceCard({
         </BlockStack>
 
         <InlineStack gap="200">
-          <Button url="/app/seo/export/since" download target="_blank">
+          {/* ExportButton, not a link: under this app's token-exchange auth a
+              target="_blank" download hands the merchant the login page as a
+              file. See app/components/ExportButton.tsx. */}
+          <ExportButton url="/app/seo/export/since">
             Take the comparison away (CSV)
-          </Button>
-          <Button url="/app/seo/export/written" download target="_blank">
+          </ExportButton>
+          <ExportButton url="/app/seo/export/written">
             Take the written list away (CSV)
-          </Button>
+          </ExportButton>
         </InlineStack>
       </BlockStack>
     </Card>

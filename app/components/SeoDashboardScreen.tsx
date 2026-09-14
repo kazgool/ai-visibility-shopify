@@ -38,6 +38,7 @@ import {
   type ThemeNodeAggregate,
 } from "../services/seo-aggregate";
 import type { CollectionSeoQueue } from "../services/seo-collections.server";
+import { ExportButton } from "./ExportButton";
 import { dialArc, formatCount } from "../services/report-metrics";
 import {
   LISTING_UNMEASURED_SENTENCE,
@@ -1644,11 +1645,12 @@ function CountedCard({ rows }: { rows: CheckRow[] }) {
  * route answers a request without one with a 409 and a sentence, and a button
  * that can only fail is not a button.
  *
- * target="_blank" is load-bearing on all of them: Polaris renders `url` as a
- * Remix Link, which would otherwise intercept the click and ask the router for
- * the route instead of letting the browser fetch the file. The printable
- * report is the one link that is meant to be a route, so it has no `download`
- * and no `target`, and stays inside the frame it is authenticated in.
+ * The five spreadsheets are ExportButton, not links. They were
+ * `target="_blank" download` links until 14 September 2026, which under this
+ * app's token-exchange auth downloaded the login page as a file instead of the
+ * spreadsheet; ExportButton's own docblock has the mechanism. The printable
+ * report is the one that is meant to be a route, so it stays a link and stays
+ * inside the frame it is authenticated in.
  */
 function TakeItAway({ hasSnapshot }: { hasSnapshot: boolean }) {
   return (
@@ -1661,22 +1663,22 @@ function TakeItAway({ hasSnapshot }: { hasSnapshot: boolean }) {
           <Button url="/app/seo/dashboard/print" variant="primary">
             Open the printable report
           </Button>
-          <Button url="/app/seo/dashboard/export/findings" target="_blank" download>
+          <ExportButton url="/app/seo/dashboard/export/findings">
             Spreadsheet: what we looked for
-          </Button>
-          <Button url="/app/seo/dashboard/export/products" target="_blank" download>
+          </ExportButton>
+          <ExportButton url="/app/seo/dashboard/export/products">
             Spreadsheet: which products
-          </Button>
-          <Button url="/app/seo/dashboard/export/shopwide" target="_blank" download>
+          </ExportButton>
+          <ExportButton url="/app/seo/dashboard/export/shopwide">
             Spreadsheet: the shop-wide fixes
-          </Button>
-          <Button url="/app/seo/dashboard/export/listing" target="_blank" download>
+          </ExportButton>
+          <ExportButton url="/app/seo/dashboard/export/listing">
             Spreadsheet: what Google asks for
-          </Button>
+          </ExportButton>
           {hasSnapshot ? (
-            <Button url="/app/seo/dashboard/export/since" target="_blank" download>
+            <ExportButton url="/app/seo/dashboard/export/since">
               Spreadsheet: then and now
-            </Button>
+            </ExportButton>
           ) : null}
         </InlineStack>
         <Text as="p" variant="bodySm" tone="subdued">

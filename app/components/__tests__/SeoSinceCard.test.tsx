@@ -180,13 +180,21 @@ describe("written by this app since then", () => {
 });
 
 describe("the exports", () => {
-  it("links both CSVs from the card", () => {
+  // Asserted on data-export-url rather than href since 14 September 2026: both
+  // buttons fetch their file with the frame's session token instead of opening
+  // it as a link, because a link opened in a new tab carries no token under
+  // this app's auth and downloads the login page instead. The route each one
+  // points at is still the thing worth asserting, so ExportButton keeps it in
+  // the markup. See app/components/ExportButton.tsx.
+  it("offers both CSVs from the card, each pointed at its own route", () => {
     const html = renderToStaticMarkup(
       <AppProvider i18n={{}}>
         <SeoSinceCard before={facts()} today={null} />
       </AppProvider>,
     );
-    expect(html).toContain('href="/app/seo/export/since"');
-    expect(html).toContain('href="/app/seo/export/written"');
+    expect(html).toContain('data-export-url="/app/seo/export/since"');
+    expect(html).toContain('data-export-url="/app/seo/export/written"');
+    // Not a link: the defect being guarded against is exactly an anchor.
+    expect(html).not.toContain('href="/app/seo/export/since"');
   });
 });
