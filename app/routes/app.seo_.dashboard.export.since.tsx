@@ -26,10 +26,9 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { isSeoUnlocked } from "../services/billing.server";
-import { CSV_BOM } from "../services/report-metrics";
+import { excelXmlFromCsv } from "../services/report-metrics";
 import { readSeoDashboardSource } from "../services/seo-dashboard.server";
 import { exportFilename, reportHeading } from "../services/seo-report";
-import { excelXmlFromCsv } from "../services/report-metrics";
 import { ownerSinceCsv } from "../services/seo-since";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
