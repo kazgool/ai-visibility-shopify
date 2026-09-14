@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { BlockStack, Button, Text } from "@shopify/polaris";
 
 /**
@@ -9,10 +10,9 @@ import { BlockStack, Button, Text } from "@shopify/polaris";
  *
  * This app authenticates with `unstable_newEmbeddedAuthStrategy` (token
  * exchange, app/shopify.server.ts). Under that strategy there is no session
- * cookie at all. Every authenticated request proves itself with the App Bridge
- * session token, which App Bridge attaches as an Authorization header to
- * same-origin `fetch` calls made from inside the embedded frame - which is why
- * every form and every fetcher in this app works.
+ * cookie at all. Every authenticated request proves itself with a short-lived
+ * App Bridge session token. The token must be requested with `shopify.idToken()`
+ * and sent as an Authorization header; native browser `fetch` does not add it.
  *
  * `target="_blank"` is not a fetch. It is a top-level navigation in a fresh
  * browsing context, so it carries no session token and no cookie, and
@@ -47,6 +47,7 @@ export function ExportButton({
   disabled?: boolean;
   variant?: "primary" | "secondary";
 }) {
+  const shopify = useAppBridge();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,9 +55,14 @@ export function ExportButton({
     setBusy(true);
     setError(null);
     try {
-      // Same-origin and relative on purpose: App Bridge attaches the session
-      // token to same-origin requests only.
-      const res = await fetch(url);
+      // Native fetch does not attach App Bridge credentials by itself. Ask
+      // App Bridge for the current short-lived token and send it explicitly;
+      // otherwise authenticate.admin redirects to /auth/login and the old
+      // bug returns that HTML page as the apparent spreadsheet.
+      const token = await shopify.idToken();
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (!res.ok) {
         // The export routes answer a refusal with a plain sentence rather
@@ -99,7 +105,7 @@ export function ExportButton({
     } finally {
       setBusy(false);
     }
-  }, [url]);
+  }, [shopify, url]);
 
   return (
     <span data-export-url={url}>
