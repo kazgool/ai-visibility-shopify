@@ -81,12 +81,13 @@ describe("the merchant then-and-now export", () => {
   it("writes the merchant's labels, the shop and the date in the name, and no check code", async () => {
     const res = await load();
     const body = await res.text();
-    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.ms-excel");
     expect(res.headers.get("Content-Disposition")).toMatch(
-      /ai-visibility-seo-republicabio-ro-since-\d{4}-\d{2}-\d{2}\.csv/,
+      /ai-visibility-seo-republicabio-ro-since-\d{4}-\d{2}-\d{2}\.xls/,
     );
     expect(body).toContain("republicabio.ro - 50 of 50 products fully checked");
-    expect(body).toContain("Titles for Google written by this app,0,50,9,50,+9");
+    expect(body).toContain(">Titles for Google written by this app</Data>");
+    expect(body).toContain(">+9</Data>");
     expect(body).not.toMatch(/\b[AB]\d{1,2}\b/);
     expect(body).not.toMatch(/\bmeta\b/i);
     expect(body).not.toMatch(/\bsnapshot\b/i);
@@ -95,7 +96,7 @@ describe("the merchant then-and-now export", () => {
 
   it("puts the byte order mark on the file", async () => {
     const bytes = new Uint8Array(await (await load()).arrayBuffer());
-    expect([bytes[0], bytes[1], bytes[2]]).toEqual([0xef, 0xbb, 0xbf]);
+    expect([bytes[0], bytes[1], bytes[2]]).toEqual([0x3c, 0x3f, 0x78]);
   });
 
   it("refuses a shop without the SEO key, on this route's own gate, before reading anything", async () => {

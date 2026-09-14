@@ -372,7 +372,7 @@ export function exportFilename(
     .replace(/\.myshopify\.com$/, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `ai-visibility-${module}-${shop || "shop"}-${table}-${isoDay(date)}.csv`;
+  return `ai-visibility-${module}-${shop || "shop"}-${table}-${isoDay(date)}.xls`;
 }
 
 // ---------------------------------------------------------------------------

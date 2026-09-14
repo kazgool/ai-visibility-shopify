@@ -85,16 +85,17 @@ describe("the SEO export route", () => {
     const res = await load("since");
     const body = await res.text();
 
-    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.ms-excel");
     // The shop and the date in the name (5 September 2026), and a module
     // token that keeps this per-code file apart from the merchant dashboard's
     // since file, which shares the table name.
     expect(res.headers.get("Content-Disposition")).toMatch(
-      /^attachment; filename="ai-visibility-seo-operator-mrdigital-dev-since-\d{4}-\d{2}-\d{2}\.csv"$/,
+      /^attachment; filename="ai-visibility-seo-operator-mrdigital-dev-since-\d{4}-\d{2}-\d{2}\.xls"$/,
     );
     expect(body).toContain("2026-09-05T08:00:00.000Z");
     expect(body).toContain("2026-09-20T03:45:00.000Z");
-    expect(body).toContain("Products with a meta title,30,50,45,50,+15");
+    expect(body).toContain(">Products with a meta title</Data>");
+    expect(body).toContain(">+15</Data>");
   });
 
   it("puts the byte order mark on the file, for Excel on Windows", async () => {
@@ -102,13 +103,13 @@ describe("the SEO export route", () => {
     // leading BOM by specification, so a string assertion here can only ever
     // fail. The Report export's test found this first.
     const bytes = new Uint8Array(await (await load("since")).arrayBuffer());
-    expect([bytes[0], bytes[1], bytes[2]]).toEqual([0xef, 0xbb, 0xbf]);
+    expect([bytes[0], bytes[1], bytes[2]]).toEqual([0x3c, 0x3f, 0x78]);
   });
 
   it("exports the written list as its own file", async () => {
     const res = await load("written");
     expect(res.headers.get("Content-Disposition")).toMatch(
-      /ai-visibility-seo-operator-mrdigital-dev-written-\d{4}-\d{2}-\d{2}\.csv/,
+      /ai-visibility-seo-operator-mrdigital-dev-written-\d{4}-\d{2}-\d{2}\.xls/,
     );
     expect(await res.text()).toContain("Snapshot taken");
   });

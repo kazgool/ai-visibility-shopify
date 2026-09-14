@@ -242,10 +242,10 @@ describe("the formula-injection guard, on every export in this app", () => {
 describe("filenames a merchant can tell apart", () => {
   it("carries the shop and the date", () => {
     expect(exportFilename("republicabio.ro", "findings", NOW)).toBe(
-      "ai-visibility-seo-republicabio-ro-findings-2026-09-05.csv",
+      "ai-visibility-seo-republicabio-ro-findings-2026-09-05.xls",
     );
     expect(exportFilename("mrdigital-dev.myshopify.com", "products", NOW)).toBe(
-      "ai-visibility-seo-mrdigital-dev-products-2026-09-05.csv",
+      "ai-visibility-seo-mrdigital-dev-products-2026-09-05.xls",
     );
   });
 
@@ -253,13 +253,13 @@ describe("filenames a merchant can tell apart", () => {
     // The merchant dashboard and the operator screen both export "since";
     // the Report screen's files are not about the SEO module at all.
     expect(exportFilename("mrdigital-dev.myshopify.com", "since", NOW)).toBe(
-      "ai-visibility-seo-mrdigital-dev-since-2026-09-05.csv",
+      "ai-visibility-seo-mrdigital-dev-since-2026-09-05.xls",
     );
     expect(exportFilename("mrdigital-dev.myshopify.com", "since", NOW, "seo-operator")).toBe(
-      "ai-visibility-seo-operator-mrdigital-dev-since-2026-09-05.csv",
+      "ai-visibility-seo-operator-mrdigital-dev-since-2026-09-05.xls",
     );
     expect(exportFilename("mrdigital-dev.myshopify.com", "families", NOW, "report")).toBe(
-      "ai-visibility-report-mrdigital-dev-families-2026-09-05.csv",
+      "ai-visibility-report-mrdigital-dev-families-2026-09-05.xls",
     );
   });
 

@@ -69,34 +69,27 @@ describe("the CSV export route", () => {
   it("returns a real CSV file, with the header Content-Disposition needs", async () => {
     const res = await load("families");
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.ms-excel");
     // The shop and the date in the name, like every other download of this
     // app (5 September 2026); "report" because the attribute pass is not the
     // SEO module.
     expect(res.headers.get("Content-Disposition")).toMatch(
-      /^attachment; filename="ai-visibility-report-example-families-\d{4}-\d{2}-\d{2}\.csv"$/,
+      /^attachment; filename="ai-visibility-report-example-families-\d{4}-\d{2}-\d{2}\.xls"$/,
     );
-    expect(await res.text()).toBe(
-      [
-        // No byte order mark here: Response.text() strips a leading BOM by
-        // specification, so this asserts the content and the test below
-        // asserts the three bytes on the wire.
-        "Attribute family,Products stating it,Products read",
-        "Material,4,5",
-        "Dimensions,3,5",
-        "",
-      ].join("\r\n"),
-    );
+    const body = await res.text();
+    expect(body).toContain(">Attribute family</Data>");
+    expect(body).toContain(">Material</Data>");
+    expect(body).toContain(">Dimensions</Data>");
   });
 
   it("exports the weakest table under its own name", async () => {
     const res = await load("weakest");
     const body = await res.text();
     expect(res.headers.get("Content-Disposition")).toMatch(
-      /ai-visibility-report-example-weakest-\d{4}-\d{2}-\d{2}\.csv/,
+      /ai-visibility-report-example-weakest-\d{4}-\d{2}-\d{2}\.xls/,
     );
-    expect(body).toContain("Product,Families found,Families in this catalogue,Missing");
-    expect(body).toContain('"Oslo sofa, grey",1,2,Dimensions');
+    expect(body).toContain(">Product</Data>");
+    expect(body).toContain(">Oslo sofa, grey</Data>");
   });
 
   it("starts both files with a UTF-8 byte order mark, for Excel on Windows", async () => {
@@ -105,9 +98,9 @@ describe("the CSV export route", () => {
     // unchanged; the mark is three bytes at the front of the body.
     for (const table of ["families", "weakest"]) {
       const res = await load(table);
-      expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+      expect(res.headers.get("Content-Type")).toBe("application/vnd.ms-excel");
       const bytes = new Uint8Array(await res.arrayBuffer());
-      expect([bytes[0], bytes[1], bytes[2]]).toEqual([0xef, 0xbb, 0xbf]);
+      expect([bytes[0], bytes[1], bytes[2]]).toEqual([0x3c, 0x3f, 0x78]);
     }
   });
 

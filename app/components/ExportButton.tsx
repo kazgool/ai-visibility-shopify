@@ -79,7 +79,7 @@ export function ExportButton({
       }
 
       const type = res.headers.get("Content-Type") ?? "";
-      if (!type.includes("text/csv")) {
+      if (!type.includes("application/vnd.ms-excel")) {
         setError(
           "The server answered with something that is not a spreadsheet, which usually means " +
             "this screen's session has expired. Reload the screen and press it again.",
@@ -138,5 +138,5 @@ export function filenameFrom(disposition: string | null, url: string): string {
     if (match?.[1]) return match[1].trim();
   }
   const tail = url.split("/").filter(Boolean).pop() ?? "export";
-  return `${tail}.csv`;
+  return `${tail}.xls`;
 }

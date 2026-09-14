@@ -29,6 +29,7 @@ import { isSeoUnlocked } from "../services/billing.server";
 import { CSV_BOM } from "../services/report-metrics";
 import { readSeoDashboardSource } from "../services/seo-dashboard.server";
 import { exportFilename, reportHeading } from "../services/seo-report";
+import { excelXmlFromCsv } from "../services/report-metrics";
 import { ownerSinceCsv } from "../services/seo-since";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -60,9 +61,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const now = new Date();
   const body = ownerSinceCsv(reportHeading(source, now), source.since.before, source.since.today);
 
-  return new Response(`${CSV_BOM}${body}\r\n`, {
+  return new Response(excelXmlFromCsv(body), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Type": "application/vnd.ms-excel",
       "Content-Disposition": `attachment; filename="${exportFilename(source.domain, "since", now)}"`,
     },
   });

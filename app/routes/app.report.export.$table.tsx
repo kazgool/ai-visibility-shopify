@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { hasPaidAccess } from "../services/billing.server";
-import { CSV_BOM, familiesCsv, readPass, weakestCsv } from "../services/report-metrics";
+import { excelXmlFromCsv, familiesCsv, readPass, weakestCsv } from "../services/report-metrics";
 import { exportFilename } from "../services/seo-report";
 import { presentJob } from "../services/job-stale";
 
@@ -97,9 +97,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // tables carry Romanian family names and product titles.
   // Named like every other download of this app: the shop, the table and the
   // date, so two files on one desktop can be told apart (5 September 2026).
-  return new Response(`${CSV_BOM}${body}\r\n`, {
+  return new Response(excelXmlFromCsv(body), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Type": "application/vnd.ms-excel",
       "Content-Disposition": `attachment; filename="${exportFilename(session.shop, table, new Date(), "report")}"`,
     },
   });

@@ -46,21 +46,21 @@ describe("the name the file is saved under", () => {
   it("is the one the route asked for", () => {
     expect(
       filenameFrom(
-        'attachment; filename="ai-visibility-seo-republicabio-ro-products-2026-09-14.csv"',
+        'attachment; filename="ai-visibility-seo-republicabio-ro-products-2026-09-14.xls"',
         "/app/seo/dashboard/export/products",
       ),
-    ).toBe("ai-visibility-seo-republicabio-ro-products-2026-09-14.csv");
+    ).toBe("ai-visibility-seo-republicabio-ro-products-2026-09-14.xls");
   });
 
   it("reads an unquoted header too", () => {
-    expect(filenameFrom("attachment; filename=report.csv", "/x/y")).toBe("report.csv");
+    expect(filenameFrom("attachment; filename=report.xls", "/x/y")).toBe("report.xls");
   });
 
   it("falls back to the table's own name rather than one name for all of them", () => {
     // The defect this guards: five files called export.csv in one Downloads
     // folder, which is the same as no name at all.
-    expect(filenameFrom(null, "/app/seo/dashboard/export/products")).toBe("products.csv");
-    expect(filenameFrom(null, "/app/seo/dashboard/export/findings")).toBe("findings.csv");
-    expect(filenameFrom("attachment", "/app/seo/dashboard/export/listing")).toBe("listing.csv");
+    expect(filenameFrom(null, "/app/seo/dashboard/export/products")).toBe("products.xls");
+    expect(filenameFrom(null, "/app/seo/dashboard/export/findings")).toBe("findings.xls");
+    expect(filenameFrom("attachment", "/app/seo/dashboard/export/listing")).toBe("listing.xls");
   });
 });

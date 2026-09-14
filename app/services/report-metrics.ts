@@ -739,6 +739,39 @@ export function csvRows(rows: (string | number)[][]): string {
   return rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
 }
 
+/** Excel-readable XML workbook. Kept dependency-free so production deploys
+ * do not need a native XLSX runtime; Excel opens this as a real .xls workbook.
+ * Data rows are sorted by their first column for deterministic exports. */
+export function excelXmlFromCsv(csv: string): string {
+  const parse = (input: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [], cell = "", quoted = false;
+    for (let i = 0; i < input.length; i++) {
+      const ch = input[i];
+      if (ch === '"') {
+        if (quoted && input[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = !quoted;
+      } else if (ch === "," && !quoted) { row.push(cell); cell = ""; }
+      else if ((ch === "\n" || ch === "\r") && !quoted) {
+        if (ch === "\r" && input[i + 1] === "\n") i++;
+        row.push(cell); rows.push(row); row = []; cell = "";
+      } else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  };
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const rows = parse(csv.replace(/^\uFEFF/, "")).filter((r) => r.some(Boolean));
+  const [header, ...data] = rows;
+  // Narrative comparison exports intentionally keep their authored order.
+  // Product/findings tables are the ones where alphabetical ordering helps.
+  if (/^(product|finding)/i.test(header?.[0] ?? "")) {
+    data.sort((a, b) => (a[0] ?? "").localeCompare(b[0] ?? "", undefined, { sensitivity: "base" }));
+  }
+  const xmlRows = [header, ...data].map((r, ri) => `<Row>${r.map((v) => `<Cell${ri === 0 ? ' ss:StyleID="Header"' : ""}><Data ss:Type="String">${esc(v)}</Data></Cell>`).join("")}</Row>`).join("");
+  return `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="Header"><Font ss:Bold="1"/></Style></Styles><Worksheet ss:Name="Export"><Table>${xmlRows}</Table></Worksheet></Workbook>`;
+}
+
 /**
  * A count with a thousands separator: 20000 reads "20,000".
  *

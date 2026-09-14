@@ -32,7 +32,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { isSeoUnlocked } from "../services/billing.server";
-import { CSV_BOM } from "../services/report-metrics";
+import { excelXmlFromCsv } from "../services/report-metrics";
 import { readSeoDashboardSource } from "../services/seo-dashboard.server";
 import { allScanRows } from "../services/seo-aggregate.server";
 import {
@@ -91,9 +91,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // The byte order mark for the same reason the other two exports carry one:
   // Excel on Windows opens a BOM-less UTF-8 file in the system code page, and
   // every one of these files carries Romanian product handles and sentences.
-  return new Response(`${CSV_BOM}${body}\r\n`, {
+  return new Response(excelXmlFromCsv(body), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Type": "application/vnd.ms-excel",
       "Content-Disposition": `attachment; filename="${exportFilename(source.domain, table, now)}"`,
     },
   });
