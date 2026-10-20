@@ -210,10 +210,13 @@ over memory — APIs moved fast in 2025–2026.
   database: Neon point-in-time restore (Console - Branches - Restore).
   Postgres schema changes additionally need a down path thought out before
   the migration runs, not after.
-- The Fly worker and a local `npm run worker` share the same Neon queue;
+- The Fly machine and a local `npm run worker` share the same Neon queue;
   after changing worker tasks, either `fly deploy` or run the worker
   locally, otherwise jobs sit queued for ever (the dashboard says so after
-  three minutes without movement).
+  three minutes without movement). Since 20 Oct 2026 production runs in
+  maintenance mode (`server/maintenance.ts`, ARCHITECTURE §1): one machine
+  that sleeps when idle, so a stopped machine in `fly status` is normal and
+  not an outage; `/healthz` wakes it.
 - Progress lives in `JobRun` rows, not in the browser. Never build UI that
   implies otherwise.
 
@@ -227,8 +230,8 @@ a product count from this file or from an older document; run
 only) and use what it says today. The storefront password is in `.env.local`
 as `DEV_STORE_STOREFRONT_PASSWORD` and never in this repo; it cannot be
 disabled on dev stores - the crawler check correctly reports it. App id
-405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams
-web, one machine since 20 Oct 2026; ams worker). Neon `ai-visibility-shopify`, Frankfurt. Repo
+405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams,
+one machine running web and worker in maintenance mode since 20 Oct 2026). Neon `ai-visibility-shopify`, Frankfurt. Repo
 `github.com/kazgool/ai-visibility-shopify`, branch `main`.
 
 Neon is on the paid Launch plan since 20 Aug 2026, after the free plan's
@@ -237,8 +240,9 @@ failed on boot with "exceeded the compute time quota", the container exited
 with code 1, and Fly restarted it in a loop, so every screen was blank while
 `fly status` showed the machines started with the health check on warning.
 Launch has no quota to hit, only a bill, so the free plan's cap is no longer
-acting as a brake. The 15-minute poll is what keeps the database awake and is
-the main driver of compute cost. If a blank app ever returns, read the boot
+acting as a brake. The 15-minute poll was what kept the database awake and was
+the main driver of compute cost; in maintenance mode it runs only while the
+machine is awake, which is what makes the Neon Free plan viable again. If a blank app ever returns, read the boot
 logs before anything else: `fly logs -a ai-visibility-all-in-one --no-tail`.
 
 fit_for is by design broader than people: rooms and spaces ("kitchen",

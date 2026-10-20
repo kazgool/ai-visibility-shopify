@@ -1,33 +1,46 @@
 # AI Visibility All-in-One — Fly.io (ARCHITECTURE §1).
-# web: ams, one machine. worker: ams, next to the database (Neon Frankfurt).
-# The second web machine in iad was dropped on 20 Oct 2026 to save about
-# $5/month (CHANGELOG). A deploy or restart of the one web machine is a short
-# outage of the admin, webhooks and the app proxy.
+#
+# Maintenance mode since 20 Oct 2026 (CHANGELOG, Version 48): one machine in
+# ams runs the web server and the worker in one process
+# (server/maintenance.ts). It stops itself after 5 minutes with no request and
+# no job due, and Fly's proxy starts it again on the next request. The target
+# is about $1/month; the cost is a cold start of a few seconds on the first
+# request after a sleep, and schedules that only run while it is awake.
+#
+# Back to always-on: processes web = "npm run docker-start" and
+# worker = "npm run worker", restart policy "always" for the worker,
+# auto_stop off with min_machines_running = 1 (see git history).
 
 app = "ai-visibility-all-in-one"
 primary_region = "ams"
 
 # Time between the stop signal and SIGKILL on a deploy or restart. Fly's
 # default is 5 s, shorter than the worker's 25 s shutdown ceiling
-# (worker/index.ts): a job still running at SIGKILL keeps its queue lock for
-# graphile's four hours and its JobRun row says "running" until then. The web
-# process exits at once on the signal and is unaffected.
+# (worker/runner.ts): a job still running at SIGKILL keeps its queue lock for
+# graphile's four hours and its JobRun row says "running" until then.
 kill_timeout = "30s"
 
 [build]
   dockerfile = "Dockerfile"
 
+# Migrations run once per deploy in a temporary machine, not on every boot:
+# in maintenance mode a boot is what a webhook waits on, and Shopify gives a
+# webhook about 5 s.
+[deploy]
+  release_command = "npx prisma migrate deploy"
+
 [processes]
-  web = "npm run docker-start"
-  worker = "npm run worker"
+  web = "npm run maintenance-start"
 
 [http_service]
   processes = ["web"]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = false   # BfS p95: no cold starts on the request path
+  # The process decides when to stop (it knows about running jobs, Fly's
+  # proxy does not); the proxy only starts it.
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 1   # inert while auto_stop_machines = false
+  min_machines_running = 0
 
   [[http_service.checks]]
     interval = "30s"
@@ -41,19 +54,11 @@ kill_timeout = "30s"
   size = "shared-cpu-1x"
   memory = "1gb"
 
-[[vm]]
-  processes = ["worker"]
-  size = "shared-cpu-1x"
-  memory = "1gb"
-
-# The worker has no health check and no request path, so nothing notices when
-# it dies. It died during a database outage on 20 Aug 2026, Fly exhausted its
-# retries, and jobs sat queued until someone started the machine by hand.
-# "always" keeps flyd restarting it instead of giving up.
+# A clean exit is the idle stop and must leave the machine stopped; a crash
+# exits non-zero and is restarted.
 [[restart]]
-  policy = "always"
-  processes = ["worker"]
+  policy = "on-failure"
+  processes = ["web"]
 
 # Region placement (run once at first deploy):
 #   fly scale count web=1 --region ams
-#   fly scale count worker=1 --region ams

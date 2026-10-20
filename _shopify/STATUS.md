@@ -340,7 +340,7 @@ imported into the development store):
 | Markdown mirror via app proxy | built, cached at extraction time |
 | Dashboard (metrics, actions, setup checklist, AI visibility card) | working |
 | Three-layer freshness: webhooks + 15-min poll + weekly sweep | built, cron wired |
-| Deployed on Fly (ams web + ams worker; iad dropped 20 Oct 2026), Neon Postgres | live at ai-visibility-all-in-one.fly.dev |
+| Deployed on Fly (maintenance mode since 20 Oct 2026: one ams machine, web + worker, sleeps when idle), Neon Postgres | live at ai-visibility-all-in-one.fly.dev |
 
 Coverage on the real catalogue: **352 of 355 products produce attributes**
 with a Romanian furniture dictionary. Dimensions 306, Material 273,

@@ -8,26 +8,35 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
 ## 1. Topology
 
 ```
-                    ┌─ Fly.io region ams ─┐
-  Shopify admin ───▶│  web (Remix)        │
-  App proxy    ───▶ │  shared-cpu-1x 1GB  │
-                    └─────────┬───────────┘
-                    ┌─ ams ───┴───────────┐
-                    │  worker (graphile)  │
-                    │  shared-cpu-1x 1GB  │
-                    └─────────┬───────────┘
+                    ┌─ Fly.io region ams ─────────┐
+  Shopify admin ───▶│  web (Remix) + worker       │  one process,
+  App proxy    ───▶ │  (graphile), shared-cpu-1x  │  stops itself
+  Webhooks     ───▶ │  1GB                        │  when idle
+                    └─────────┬───────────────────┘
                               ▼
                     Neon Postgres, AWS eu-central-1 (Frankfurt)
                     (pooled connection string, DATABASE_URL secret)
 ```
 
-- **App**: one Fly app, two process groups in `fly.toml`:
-  `web` (Remix server, 1 machine, ams) and `worker`
-  (graphile-worker, 1 machine, ams — next to the database).
-  Until 20 October 2026 web also ran a second machine in iad; Marius
-  dropped it to save about $5/month (CHANGELOG). The cost: no web
-  redundancy, so a deploy or restart briefly takes the admin, webhooks
-  and the app proxy down.
+- **App**: maintenance mode since 20 October 2026 (Marius: maintenance
+  at most $1/month while it is unclear whether more stores will come).
+  One Fly app, one process group `web`, one machine in ams, running
+  `server/maintenance.ts`: the Remix server and graphile-worker in one
+  process. It exits cleanly after 5 minutes with no request (health
+  checks excluded) and no job running or due; restart policy
+  "on-failure" leaves it stopped and Fly's proxy starts it on the next
+  request. Migrations run as the deploy's `release_command`, not at boot.
+  Every boot queues one `poll_changes`, whose cursor covers the time
+  asleep; weekly and daily schedules use graphile's `fill` so the
+  occurrence slept through runs on the next wake.
+- **What maintenance mode costs**: a cold start of a few seconds on the
+  first request after a sleep (a webhook may time out once and is then
+  retried by Shopify); schedules run only on a wake; no redundancy; the
+  Built for Shopify p95 is not met on a cold request.
+- **Before 20 October 2026**: web on two machines (ams + iad) and a
+  separate always-on worker machine. `worker/index.ts` and
+  `npm run docker-start` still exist; going back is the fly.toml in git
+  history.
 - **Database**: Neon project `ai-visibility`, Postgres 17, Frankfurt,
   Free plan until real customers, then Launch (~$19/mo). Pooled
   connection string only.
@@ -47,6 +56,8 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
 
 ## 3. Latency budget (Built for Shopify: p95 ≤ 500 ms)
 
+- Maintenance mode: the first request after a sleep pays the boot (a few
+  seconds) and misses this budget; warm requests are as below.
 - EU merchant → ams web → Frankfurt DB: single-digit ms DB hops. Easy.
 - US merchant → ams web (one transatlantic hop, ~90 ms) → Frankfurt DB.
   With iad gone the DB hops are short for everyone; only the request

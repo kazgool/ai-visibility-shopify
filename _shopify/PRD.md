@@ -311,7 +311,7 @@ design requirement, not a feature.
 | Custom paths | App proxy | The only way to serve our own content on the shop domain |
 | Data | Shopify metafields for merchant data, our own database only for jobs, settings and cache | Merchant keeps their work |
 | Jobs | Backend queue (graphile-worker on Postgres), bulk operations for reads | Bulk passes must survive a closed tab; one datastore, no Redis |
-| Hosting | Fly.io, ams; web + worker process groups, one machine each (iad web dropped 20 Oct 2026 for cost, CHANGELOG) | Built for Shopify needs p95 under 500 ms from EU and NA |
+| Hosting | Fly.io, ams; maintenance mode since 20 Oct 2026: one machine runs web and worker and sleeps when idle (ARCHITECTURE §1) | Built for Shopify needs p95 under 500 ms from EU and NA |
 | Database | Neon Postgres (serverless) | Fly Managed Postgres starts at $38/mo — oversized for launch |
 
 **Hosting cost, monthly.** Launch configuration: two shared-cpu-1x web

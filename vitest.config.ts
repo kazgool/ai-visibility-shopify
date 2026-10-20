@@ -10,6 +10,8 @@ export default defineConfig({
       // The worker's tasks had no test of their own until the unlock moved
       // into one (build step 2). The pattern is the same as app's.
       "worker/**/__tests__/**/*.test.ts",
+      // Maintenance mode's idle rule (server/idle.ts).
+      "server/**/__tests__/**/*.test.ts",
     ],
     environment: "node",
     // The route tests import a Remix route inside the test body, which pulls

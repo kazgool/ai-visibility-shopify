@@ -16,7 +16,38 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
-Nothing yet.
+### Maintenance mode: one machine that sleeps, 20 October 2026
+
+Decided by Marius: hosting for at most about $1/month while it is unclear
+whether more stores will come. Not deployed yet.
+
+- **One process.** `server/maintenance.ts` runs the Remix server (the same
+  middleware `remix-serve` uses in production) and graphile-worker together
+  on one Fly machine. The worker setup moved to `worker/runner.ts`, shared
+  with the always-on `worker/index.ts`, which is unchanged in behaviour.
+- **Stops itself.** Every request except `/healthz` counts as activity. The
+  process exits 0 after 5 minutes (`IDLE_MINUTES`) with no request in hand,
+  none in the window, and no job locked or due within the window; the rule
+  is `server/idle.ts`, tested. Restart policy "on-failure" keeps the machine
+  stopped; Fly's proxy starts it on the next request.
+- **Nothing lost while asleep.** Every boot queues one `poll_changes`, whose
+  cursor covers the time asleep. The weekly and daily schedules carry
+  graphile `fill` (1 week, 1 day), so the occurrence slept through runs on
+  the next wake, once.
+- **Faster boot.** Migrations moved to the deploy's `release_command`; a boot
+  no longer runs `prisma migrate deploy`, because a cold webhook waits on it.
+- **What it costs.** A few seconds of cold start on the first request after a
+  sleep (a webhook may time out once and is retried by Shopify); schedules
+  only run on a wake; the Built for Shopify p95 is not met on cold requests.
+- **Verified locally** against the production queue, `IDLE_MINUTES=1`:
+  `/healthz` and `/` answered 200; on boot it ran the Monday `sweep_missing`
+  and `seo_watch` it had missed (graphile fill), the boot poll advanced
+  `last_polled_at` for every shop, and the process logged "idle for 1 min,
+  exiting" and exited 0 after 98 s. Not yet observed on Fly: the
+  release_command, the proxy waking a stopped machine, and the cold-start
+  time.
+- Dependencies: `express`, `compression`, `morgan`, `@remix-run/express`
+  (already present through `@remix-run/serve`, now direct) and their types.
 
 ## Version 47 - 20 October 2026
 
