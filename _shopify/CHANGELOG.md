@@ -16,6 +16,30 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
+### Production outage and one web machine, 20 October 2026
+
+Infrastructure only; no code changed and no app version was created.
+
+- **Outage.** On 20 October the Fly app had no machines at all and was
+  listed as suspended, with its secrets "Staged" because nothing was left to
+  deploy them to. The last JobRun before the outage is dated 2 October, so
+  the admin, webhooks, the app proxy and the worker were down for about 18
+  days. The storefront blocks kept rendering, since they read metafields
+  through Liquid. The restart policy and `min_machines_running` could not
+  help: they act on machines that exist, and none did. Other apps on the
+  same Fly account were suspended in the same period, so the cause looks
+  account-level; it is not established. Restored by redeploying the v97
+  image (`deployment-01M2G38D76B7P0HBPZTYQJXMR3`); `/healthz` returned 200
+  and the worker picked up a dry_run and a bulk_extract at once.
+- **One web machine.** Decided by Marius the same day, to save about
+  $5/month: the iad web machine was destroyed and web runs on one machine in
+  ams. `fly.toml` now says `min_machines_running = 1`, which is cosmetic:
+  with `auto_stop_machines = false` the value does nothing, and `fly deploy`
+  never adds machines to an existing group, so it was not what kept two
+  running. The cost of the decision is no web redundancy: a deploy or a
+  restart of that machine is a short outage of the admin, webhooks and the
+  app proxy. ARCHITECTURE §1 and §3, PRD §5 and CLAUDE.md updated.
+
 The sixth batch, 12 September 2026, built from `CC-PROMPT-BATCH-6.md`: the
 doubt-driven review of batch 5, one commit per item. On top of the fifth
 batch, below. Not pushed and not deployed.

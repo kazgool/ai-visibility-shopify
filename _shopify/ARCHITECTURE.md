@@ -8,22 +8,26 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
 ## 1. Topology
 
 ```
-                    ┌─ Fly.io region ams ─┐      ┌─ Fly.io region iad ─┐
-  Shopify admin ───▶│  web (Remix)        │      │  web (Remix)        │
-  App proxy    ───▶ │  shared-cpu-1x 1GB  │      │  shared-cpu-1x 1GB  │
-                    └─────────┬───────────┘      └─────────┬───────────┘
-                    ┌─ ams ───┴───────────┐                │
-                    │  worker (graphile)  │                │
-                    │  shared-cpu-1x 1GB  │                │
-                    └─────────┬───────────┘                │
-                              ▼                            ▼
+                    ┌─ Fly.io region ams ─┐
+  Shopify admin ───▶│  web (Remix)        │
+  App proxy    ───▶ │  shared-cpu-1x 1GB  │
+                    └─────────┬───────────┘
+                    ┌─ ams ───┴───────────┐
+                    │  worker (graphile)  │
+                    │  shared-cpu-1x 1GB  │
+                    └─────────┬───────────┘
+                              ▼
                     Neon Postgres, AWS eu-central-1 (Frankfurt)
                     (pooled connection string, DATABASE_URL secret)
 ```
 
 - **App**: one Fly app, two process groups in `fly.toml`:
-  `web` (Remix server, 2 machines: ams + iad) and `worker`
+  `web` (Remix server, 1 machine, ams) and `worker`
   (graphile-worker, 1 machine, ams — next to the database).
+  Until 20 October 2026 web also ran a second machine in iad; Marius
+  dropped it to save about $5/month (CHANGELOG). The cost: no web
+  redundancy, so a deploy or restart briefly takes the admin, webhooks
+  and the app proxy down.
 - **Database**: Neon project `ai-visibility`, Postgres 17, Frankfurt,
   Free plan until real customers, then Launch (~$19/mo). Pooled
   connection string only.
@@ -44,7 +48,9 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
 ## 3. Latency budget (Built for Shopify: p95 ≤ 500 ms)
 
 - EU merchant → ams web → Frankfurt DB: single-digit ms DB hops. Easy.
-- US merchant → iad web → Frankfurt DB: ~90 ms per DB round trip.
+- US merchant → ams web (one transatlantic hop, ~90 ms) → Frankfurt DB.
+  With iad gone the DB hops are short for everyone; only the request
+  itself crosses the Atlantic.
   Rule: **at most one DB round trip on any admin request path** —
   session + shop settings load in one query; everything else is either
   cached in-process or deferred to the worker.
@@ -52,7 +58,8 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
   extraction time; the request path is a single indexed read + static
   headers (`Content-Type: text/plain; charset=utf-8`, canonical `Link`).
 - If US install share grows past ~40%, add a Neon read replica in
-  us-east-1 and point iad reads at it. Not before.
+  us-east-1, bring back an iad web machine and point its reads at the
+  replica. Not before.
 
 ## 4. Own database schema (merchant data lives in metafields, not here)
 

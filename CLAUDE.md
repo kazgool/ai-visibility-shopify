@@ -227,8 +227,8 @@ a product count from this file or from an older document; run
 only) and use what it says today. The storefront password is in `.env.local`
 as `DEV_STORE_STOREFRONT_PASSWORD` and never in this repo; it cannot be
 disabled on dev stores - the crawler check correctly reports it. App id
-405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams+iad
-web, ams worker). Neon `ai-visibility-shopify`, Frankfurt. Repo
+405463269377, org 229253428. Fly app `ai-visibility-all-in-one` (ams
+web, one machine since 20 Oct 2026; ams worker). Neon `ai-visibility-shopify`, Frankfurt. Repo
 `github.com/kazgool/ai-visibility-shopify`, branch `main`.
 
 Neon is on the paid Launch plan since 20 Aug 2026, after the free plan's

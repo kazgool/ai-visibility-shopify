@@ -1,5 +1,8 @@
 # AI Visibility All-in-One — Fly.io (ARCHITECTURE §1).
-# web: ams + iad. worker: ams, next to the database (Neon Frankfurt).
+# web: ams, one machine. worker: ams, next to the database (Neon Frankfurt).
+# The second web machine in iad was dropped on 20 Oct 2026 to save about
+# $5/month (CHANGELOG). A deploy or restart of the one web machine is a short
+# outage of the admin, webhooks and the app proxy.
 
 app = "ai-visibility-all-in-one"
 primary_region = "ams"
@@ -24,7 +27,7 @@ kill_timeout = "30s"
   force_https = true
   auto_stop_machines = false   # BfS p95: no cold starts on the request path
   auto_start_machines = true
-  min_machines_running = 2
+  min_machines_running = 1   # inert while auto_stop_machines = false
 
   [[http_service.checks]]
     interval = "30s"
@@ -52,5 +55,5 @@ kill_timeout = "30s"
   processes = ["worker"]
 
 # Region placement (run once at first deploy):
-#   fly scale count web=2 --region ams,iad
+#   fly scale count web=1 --region ams
 #   fly scale count worker=1 --region ams
