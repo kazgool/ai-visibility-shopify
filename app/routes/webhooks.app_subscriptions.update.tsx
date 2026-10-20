@@ -4,6 +4,7 @@ import { describeGraphqlError } from "../services/graphql-errors";
 import db from "../db.server";
 import { planFromName, recordPlan } from "../services/billing.server";
 import { adminGraphql } from "../services/admin.server";
+import { enqueue } from "../services/queue.server";
 
 // Closes the hole in `mayProcessAutomaticallyCached` (billing.server.ts): it
 // reads `Shop.plan`, which was refreshed only when a merchant opened the app
@@ -85,6 +86,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // is recorded immediately rather than waiting for the merchant to open
     // the app again.
     await recordPlan(shop, "none");
+  }
+
+  // A plan change also changes which product webhooks the shop should get
+  // (product-webhooks.server.ts). poll_changes reconciles them; queue it now
+  // rather than wait for the next wake, so a new subscriber gets instant
+  // updates from the start and a cancelled one stops waking the machine.
+  try {
+    await enqueue("poll_changes", {}, { jobKey: "poll_changes:subscription" });
+  } catch (error) {
+    console.error(describeGraphqlError(error, `app_subscriptions/update: queue poll for ${shop}`));
   }
 
   return new Response();

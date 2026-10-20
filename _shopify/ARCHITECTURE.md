@@ -49,7 +49,7 @@ Companion to `PRD.md` §5. This is the document Claude Code builds from.
 | Path | Handled by | Data touched |
 |---|---|---|
 | Admin UI (embedded, Polaris) | web, nearest region | Postgres (settings, job status), Admin API |
-| OAuth, webhooks | web | Postgres (sessions, shops) |
+| OAuth, webhooks | web | Postgres (sessions, shops). Product webhooks are shop-scoped, only for shops that may be processed automatically (`product-webhooks.server.ts`) |
 | App proxy `/apps/ai-visibility/*` | web | **Postgres cache only** — never the Admin API (PRD §5.2) |
 | Extraction, bulk passes, alt text, IndexNow pings, theme JSON-LD detection | worker | Admin API (throttled per PRD §5.5), Postgres |
 | Crawler reachability check | worker (outbound HTTP with bot user agents) | merchant storefront, from outside Shopify's network |

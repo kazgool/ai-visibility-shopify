@@ -19,7 +19,9 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 ### Maintenance mode: one machine that sleeps, 20 October 2026
 
 Decided by Marius: hosting for at most about $1/month while it is unclear
-whether more stores will come. Not deployed yet.
+whether more stores will come. Server part deployed as Fly v101; the
+product webhook change below needs the server first and then
+`shopify app deploy`.
 
 - **One process.** `server/maintenance.ts` runs the Remix server (the same
   middleware `remix-serve` uses in production) and graphile-worker together
@@ -39,6 +41,48 @@ whether more stores will come. Not deployed yet.
 - **What it costs.** A few seconds of cold start on the first request after a
   sleep (a webhook may time out once and is retried by Shopify); schedules
   only run on a wake; the Built for Shopify p95 is not met on cold requests.
+- **Seen on Fly (v101).** The worker process group and its machine were
+  removed by the deploy and the one machine runs `maintenance-start` with
+  restart policy on-failure. It did not sleep: `gilded-lily-jewelry`, a test
+  install with no plan (installed 4 Sep 2026), sent about 50 products/update
+  webhooks a minute, from other apps on that store (Parcelis, Verifix,
+  SurePath, Unlimited Options) recreating and editing products. Our gate
+  skipped every one, but each still had to be answered.
+- **Test installs uninstalled.** Decided by Marius: the app was uninstalled
+  from `gilded-lily-jewelry` and `picturax` (both plan "none", the same
+  agency) with the Admin API `appUninstall` mutation,
+  `scripts/uninstall-shops.ts`, run by Marius; app/uninstalled marked both
+  rows at 05:31 UTC. `gloria-ck6dmnrc` failed (marked uninstalled on 21 Sep,
+  its leftover token is refused) and `kq06yg-s0` (Frozen) has no row or
+  token here; neither sends webhooks. This takes away installs that
+  FREE-TIER-SPEC promises nothing is taken from; Marius's call, recorded
+  here. Republica BIO and mrdigital-dev are refused by the script.
+- **Product webhooks only for shops that may be processed automatically.**
+  products/create, update and delete are no longer declared in
+  `shopify.app.toml`, where they went to every install. They are shop-scoped
+  subscriptions (`app/services/product-webhooks.server.ts`), reconciled by
+  `poll_changes` on every run against `mayProcessAutomatically`: an entitled
+  shop gets exactly the three, any other shop none, a duplicate or a
+  subscription to another address (an old tunnel) is replaced, and nothing
+  already right is written. Only `NODE_ENV=production` reconciles, so a local
+  worker never moves a shop's webhooks to the laptop tunnel.
+  `app_subscriptions/update` queues a poll so a plan change applies at once.
+  Order matters: the server must be live before `shopify app deploy` drops
+  the TOML subscriptions, or the paying shop is without product webhooks
+  until the next wake.
+- **Daily wake and alert.** `.github/workflows/wake.yml` calls `/healthz`
+  once a day (06:17 UTC), retrying through a cold start. The wake runs the
+  boot poll (missed changes, webhook reconcile); a failure fails the run and
+  GitHub emails the owner. Nothing noticed the September outage for 18 days.
+- **Class: traffic from shops that are not processed, waking the machine.**
+  Every path, and what was done: products/create, update, delete
+  (shopify.app.toml) - moved to shop-scoped, gated, fixed. themes/publish
+  (shopify.app.toml) - left: one delivery per theme publish, rare.
+  app/uninstalled, app/scopes_update, app_subscriptions/update and the three
+  compliance topics - left: rare and required. App proxy requests
+  (`/apps/ai-visibility/*` on a non-paying store's storefront, from crawlers)
+  - left, not measured yet: they wake the machine whatever the shop's plan;
+  to be checked in the logs after a few days of sleep.
 - **Verified locally** against the production queue, `IDLE_MINUTES=1`:
   `/healthz` and `/` answered 200; on boot it ran the Monday `sweep_missing`
   and `seo_watch` it had missed (graphile fill), the boot poll advanced

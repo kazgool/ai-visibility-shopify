@@ -25,7 +25,8 @@ export async function enqueue(
     | "seo_queue_build"
     | "seo_apply"
     | "seo_collection_queue"
-    | "seo_collection_apply",
+    | "seo_collection_apply"
+    | "poll_changes",
   payload: Record<string, unknown>,
   /**
    * jobKey de-duplicates: a second addJob with the same key before the first

@@ -37,17 +37,12 @@ api_version = "2026-07"
   uri = "/webhooks/app_subscriptions/update"
   topics = [ "app_subscriptions/update" ]
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/products/delete"
-  topics = [ "products/delete" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/products/update"
-  topics = [ "products/update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/products/create"
-  topics = [ "products/create" ]
+  # products/create, update and delete are not declared here on purpose
+  # (20 Oct 2026): declared here they go to every install, paid or not, and
+  # each one wakes the maintenance-mode machine. They are shop-scoped
+  # subscriptions instead, created only for shops that may be processed
+  # automatically and reconciled on every poll
+  # (app/services/product-webhooks.server.ts). The routes are unchanged.
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/themes/publish"

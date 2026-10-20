@@ -1,0 +1,33 @@
+name: Daily wake and health check
+
+# Maintenance mode (ARCHITECTURE §1): the one Fly machine sleeps when idle.
+# Once a day this wakes it, which runs poll_changes on boot: anything a
+# webhook missed is picked up and every shop's product webhooks are
+# reconciled. If /healthz does not answer 200, the run fails and GitHub emails
+# the repository owner - the alert that was missing during the 18-day outage
+# of September and October 2026.
+#
+# Do not make this frequent: every call keeps the machine awake for at least
+# the idle window (5 minutes).
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, 06:17 UTC
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the app and check /healthz
+        run: |
+          # A cold start takes a few seconds; retry before calling it down.
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://ai-visibility-all-in-one.fly.dev/healthz || true)
+            echo "attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::ai-visibility-all-in-one /healthz did not answer 200"
+          exit 1

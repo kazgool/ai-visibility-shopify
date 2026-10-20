@@ -70,6 +70,7 @@ import {
 } from "../app/services/seo-watch";
 import { crawlerHitCutoff } from "../app/services/retention";
 import { describeGraphqlError } from "../app/services/graphql-errors";
+import { productWebhookAppUrl, reconcileProductWebhooks } from "../app/services/product-webhooks.server";
 import { beatingGraphql, createHeartbeat } from "../app/services/job-heartbeat";
 import { contentLanguageFor } from "../app/services/business.server";
 
@@ -406,7 +407,30 @@ export const poll_changes: Task = async (_payload, helpers) => {
       // product. The cursor is deliberately left unadvanced: the next run,
       // once the shop is paid again, picks the window back up from here
       // rather than losing whatever changed while it was skipped.
-      if (!(await mayProcessAutomatically(shop, graphql))) {
+      const entitled = await mayProcessAutomatically(shop, graphql);
+
+      // Product webhooks follow the same gate (product-webhooks.server.ts):
+      // only a shop that may be processed automatically is sent them, so a
+      // test install never wakes the maintenance-mode machine. Reconciled on
+      // every run; a failure is logged and retried next run, never fatal to
+      // the poll.
+      const appUrl = productWebhookAppUrl();
+      if (appUrl) {
+        try {
+          const changed = await reconcileProductWebhooks(graphql, entitled, appUrl);
+          if (changed.created || changed.removed) {
+            helpers.logger.info(
+              `poll_changes ${shop.domain}: product webhooks ${changed.created} created, ${changed.removed} removed`,
+            );
+          }
+        } catch (error) {
+          helpers.logger.error(
+            `poll_changes ${shop.domain}: product webhooks not reconciled - ${describeError(error)}`,
+          );
+        }
+      }
+
+      if (!entitled) {
         helpers.logger.info(
           `poll_changes ${shop.domain}: skipped, no active subscription or comp`,
         );
