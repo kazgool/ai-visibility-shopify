@@ -16,9 +16,14 @@ Shopify one for one: the heading below called Version 5 is Shopify's version
 
 ## Unreleased
 
-### Production outage and one web machine, 20 October 2026
+Nothing yet.
 
-Infrastructure only; no code changed and no app version was created.
+## Version 47 - 20 October 2026
+
+### Production outage and one web machine
+
+Infrastructure and documents only; no code or extension changed. Released
+with `shopify app deploy` to date it, tag `deploy-2026-10-20-1`.
 
 - **Outage.** On 20 October the Fly app had no machines at all and was
   listed as suspended, with its secrets "Staged" because nothing was left to
@@ -39,6 +44,8 @@ Infrastructure only; no code changed and no app version was created.
   running. The cost of the decision is no web redundancy: a deploy or a
   restart of that machine is a short outage of the admin, webhooks and the
   app proxy. ARCHITECTURE §1 and §3, PRD §5 and CLAUDE.md updated.
+
+## Deployed by 14 September 2026 (Shopify versions up to 46, not relabelled at the time)
 
 The sixth batch, 12 September 2026, built from `CC-PROMPT-BATCH-6.md`: the
 doubt-driven review of batch 5, one commit per item. On top of the fifth
